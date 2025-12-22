@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HumanOrigin</title>
+    <style>
+        :root { 
+            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+            background: #1C1C1E; 
+            color: #EBEBF5;
+            user-select: none;
+            cursor: default;
+        }
+        
+        body { 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            height: 100vh; 
+            margin: 0; 
+        }
+
+        .ho-icon {
+            font-weight: 700;
+            font-size: 1rem;
+            letter-spacing: 2px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 40px;
+        }
+        
+        button {
+            background: transparent;
+            border: 1px solid #444;
+            color: #fff;
+            padding: 12px 30px;
+            font-size: 0.9rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 180px;
+        }
+
+        button:hover {
+            border-color: #888;
+        }
+
+        /* État actif discret */
+        .recording-state {
+            background: #fff !important;
+            color: #000 !important;
+            border-color: #fff !important;
+        }
+
+        .status-text {
+            margin-top: 30px;
+            font-size: 0.8rem;
+            color: #666; 
+        }
+
+        #result-area {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .path-display {
+            font-family: -apple-system, sans-serif;
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 5px;
+            max-width: 80vw;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="ho-icon">HumanOrigin™</div>
+
+    <button id="main-btn">Initialiser</button>
+
+    <div class="status-text" id="status">Prêt.</div>
+
+    <div id="result-area">
+        <div style="color:#fff; font-weight:500;">Certificat généré</div>
+        <div class="path-display" id="file-path">...</div>
+    </div>
+
+    <script>
+        const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke || window.__TAURI__.invoke;
+        const listen = window.__TAURI__.event?.listen || window.__TAURI__.listen;
+
+        const mainBtn = document.getElementById('main-btn');
+        const statusEl = document.getElementById('status');
+        const resDiv = document.getElementById('result-area');
+        const pathEl = document.getElementById('file-path');
+
+        let isRecording = false;
+
+        mainBtn.addEventListener('click', async () => {
+            if (!isRecording) {
+                try {
+                    await invoke('start_scan');
+                    isRecording = true;
+                    mainBtn.innerText = "Clôturer la session";
+                    mainBtn.classList.add('recording-state');
+                    statusEl.innerText = "Observation en cours...";
+                    resDiv.style.display = 'none';
+                } catch (e) { console.error(e); }
+            } else {
+                try {
+                    statusEl.innerText = "Génération du document...";
+                    await invoke('stop_scan');
+                } catch (e) { console.error(e); }
+            }
+        });
+
+        if (listen) {
+            listen('analysis-result', (event) => {
+                isRecording = false;
+                mainBtn.innerText = "Initialiser";
+                mainBtn.classList.remove('recording-state');
+                
+                statusEl.innerText = "Terminé.";
+                resDiv.style.display = 'block';
+                pathEl.innerText = event.payload.certificate_path;
+            });
+
+            listen('analysis-error', (event) => {
+                statusEl.innerText = event.payload;
+                setTimeout(() => { 
+                    if(isRecording) statusEl.innerText = "Observation en cours...";
+                    else statusEl.innerText = "Prêt.";
+                }, 3000);
+            });
+        }
+    </script>
+</body>
+</html>
