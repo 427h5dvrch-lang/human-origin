@@ -492,14 +492,14 @@ fn generate_html_certificate(metadata: &ProjectMetadata, identity: &UserIdentity
     </body>
     </html>
     "#, 
-    metadata.project_name, // <--- C'EST LUI QU'ON AVAIT OUBLIÉ ! (Pour le <title>)
-    Utc::now().format("%d/%m/%Y"), // Date
-    metadata.project_name, // Nom projet (Corps)
-    metadata.sessions_count, // Nb sessions (Corps)
+    metadata.project_name, 
+    Utc::now().format("%d/%m/%Y"), 
+    metadata.project_name, 
+    metadata.sessions_count, 
     duration_str, 
     total_keys, 
     total_clicks, 
-    metadata.sessions_count, // Nb sessions (Grille)
+    metadata.sessions_count, 
     table_rows, 
     identity.ho_id)
 }
@@ -625,19 +625,6 @@ fn stop_scan(state: State<AppState>) -> Result<ScanResult, String> {
 }
 
 #[tauri::command]
-fn open_project_folder(project_name: String) -> Result<(), String> {
-    let doc_path = dirs::document_dir().ok_or("Impossible de trouver Documents")?;
-    let path = doc_path.join("HumanOrigin").join("Projets").join(project_name);
-    if path.exists() { Command::new("open").arg(path).spawn().map_err(|e| e.to_string())?; Ok(()) } else { Err("Dossier introuvable".into()) }
-}
-
-#[tauri::command]
-fn open_file(path: String) -> Result<(), String> {
-    Command::new("open").arg(path).spawn().map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
 fn generate_intermediate_certificate(_project_path: String) -> Result<String, String> { Ok("OK".into()) }
 
 #[tauri::command]
@@ -709,6 +696,39 @@ fn finalize_project(project_path: String) -> Result<String, String> {
     metadata.status = "LOCKED".to_string();
     fs::write(json_path, serde_json::to_string_pretty(&metadata).unwrap()).map_err(|e| e.to_string())?;
     Ok(html_path.to_string_lossy().to_string())
+}
+
+// =============================================================
+//  CROSS-PLATFORM FILE OPENERS (FIX WINDOWS)
+// =============================================================
+
+#[tauri::command]
+fn open_project_folder(project_name: String) -> Result<(), String> {
+    let doc_path = dirs::document_dir().ok_or("Impossible de trouver Documents")?;
+    let path = doc_path.join("HumanOrigin").join("Projets").join(project_name);
+    
+    if path.exists() { 
+        #[cfg(target_os = "windows")]
+        Command::new("explorer").arg(path).spawn().map_err(|e| e.to_string())?;
+
+        #[cfg(not(target_os = "windows"))]
+        Command::new("open").arg(path).spawn().map_err(|e| e.to_string())?;
+        
+        Ok(()) 
+    } else { 
+        Err("Dossier introuvable".into()) 
+    }
+}
+
+#[tauri::command]
+fn open_file(path: String) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    Command::new("explorer").arg(path).spawn().map_err(|e| e.to_string())?;
+
+    #[cfg(not(target_os = "windows"))]
+    Command::new("open").arg(path).spawn().map_err(|e| e.to_string())?;
+    
+    Ok(())
 }
 
 fn main() {
