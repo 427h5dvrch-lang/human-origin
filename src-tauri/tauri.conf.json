@@ -27,14 +27,17 @@
       "active": true,
       "targets": "all",
       "identifier": "com.humanorigin.app",
-      "icon": [],  
+      "icon": [
+        "icons/icon.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
       "resources": [],
       "copyright": "",
       "category": "DeveloperTool",
       "shortDescription": "",
       "longDescription": "",
       "externalBin": []
-    },
     },
     "security": {
       "csp": null
