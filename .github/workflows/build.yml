@@ -1,37 +1,59 @@
-name: Release
+name: Release App
+
+# C'est ici que ça se joue : on déclenche SEULEMENT sur les tags v...
 on:
   push:
-    branches:
-      - main
-      - master
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Get version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.VERSION }}
+          release_name: HumanOrigin ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+
   build-tauri:
-    permissions:
-      contents: write
+    needs: create-release
     strategy:
       fail-fast: false
       matrix:
-        platform: [windows-latest]
-
+        platform: [macos-latest, windows-latest]
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
-      - name: setup node
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: lts/*
-      - name: install Rust stable
+          node-version: 20
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-      - name: install frontend dependencies
+      - name: Install frontend dependencies
         run: npm install
-      - name: Build the app
+      - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: "HumanOrigin v__VERSION__"
-          releaseBody: "Version Windows"
-          releaseDraft: true
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
