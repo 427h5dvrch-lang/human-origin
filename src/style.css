@@ -1,0 +1,263 @@
+/* =========================================
+   RESET & BASE
+   ========================================= */
+:root {
+  --primary-color: #000000;
+  --accent-color: #007aff; /* Apple Blue */
+  --danger-color: #ff3b30; /* Apple Red */
+  --success-color: #34c759; /* Apple Green */
+  --bg-color: #ffffff;
+  --text-color: #333333;
+  --text-secondary: #888888;
+  --input-bg: #f2f2f7;
+  --border-radius: 10px;
+  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-stack);
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh; /* Prend toute la hauteur de la fenêtre */
+  overflow: hidden; /* Empêche le scroll global moche */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* =========================================
+   CONTAINER PRINCIPAL (SCROLLABLE)
+   ========================================= */
+.container {
+  width: 100%;
+  max-width: 480px; /* Un peu plus large pour le Vault */
+  max-height: 100vh; /* Ne dépasse jamais l'écran */
+  overflow-y: auto; /* Active le scroll SI nécessaire */
+  padding: 40px 20px;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+/* Cache la barre de scroll pour faire "App Native" */
+.container::-webkit-scrollbar {
+  display: none;
+}
+.container {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* =========================================
+   TYPOGRAPHIE
+   ========================================= */
+h1 {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  color: var(--text-secondary);
+  margin-bottom: 40px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+
+h2 {
+  font-size: 28px;
+  margin: 10px 0 30px 0;
+  font-weight: 700;
+}
+
+.instruction {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 15px;
+}
+
+/* =========================================
+   INPUTS & FORMULAIRES
+   ========================================= */
+input[type="text"],
+input[type="password"] {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 15px;
+  border: 1px solid transparent;
+  background-color: var(--input-bg);
+  border-radius: var(--border-radius);
+  font-size: 14px;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+input:focus {
+  background-color: #fff;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+/* =========================================
+   BOUTONS
+   ========================================= */
+button {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: var(--border-radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.2s;
+  background-color: var(--primary-color);
+  color: #fff;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button.secondary {
+  background-color: transparent;
+  color: var(--text-color);
+  border: 1px solid #e5e5e5;
+  margin-top: 10px;
+  font-weight: 500;
+}
+
+button.secondary:hover {
+  background-color: #f9f9f9;
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-decoration: none;
+  margin-top: 15px;
+  width: auto;
+  display: inline-block;
+}
+
+button.link:hover {
+  color: var(--text-color);
+  background: none;
+}
+
+button.warning {
+  color: var(--danger-color);
+  border-color: #ffcdd2;
+}
+
+button.warning:hover {
+  background-color: #fff0f0;
+}
+
+#btn-main {
+  background-color: var(--primary-color);
+  color: white;
+  height: 50px;
+  font-size: 16px;
+}
+
+/* =========================================
+   ÉTATS & INDICATEURS
+   ========================================= */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.dot {
+  height: 8px;
+  width: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot.ready {
+  background-color: #ccc;
+}
+
+.dot.active {
+  background-color: var(--danger-color);
+  box-shadow: 0 0 8px var(--danger-color);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* =========================================
+   LISTE DES PROJETS
+   ========================================= */
+#project-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.project-item {
+  background: #fff;
+  border: 1px solid #eee;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.project-item:hover {
+  border-color: var(--text-color);
+  color: var(--text-color);
+}
+
+/* =========================================
+   RESULT CARD
+   ========================================= */
+#result-card {
+  display: none; /* Masqué par défaut */
+  background: #fff;
+}
+
+.metric {
+  margin: 20px 0;
+  padding: 15px;
+  background: #f9f9f9;
+  border-radius: var(--border-radius);
+}
+
+.metric-value {
+  font-size: 32px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 1px;
+  margin-top: 5px;
+}
+
+.human-badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 5px;
+}

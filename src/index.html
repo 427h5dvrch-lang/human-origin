@@ -1,145 +1,86 @@
 <!DOCTYPE html>
 <html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HumanOrigin</title>
-    <style>
-        :root { 
-            font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
-            background: #1C1C1E; 
-            color: #EBEBF5;
-            user-select: none;
-            cursor: default;
-        }
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1 onclick="resetApp()">HUMAN ORIGIN™</h1>
+
+      <div id="project-ui">
+        <p class="instruction">Sur quoi travaillez-vous ?</p>
         
-        body { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            height: 100vh; 
-            margin: 0; 
-        }
+        <input type="text" id="project-input" placeholder="Nouveau projet..." />
+        <button id="btn-load" onclick="createProject()">Créer / Charger</button>
 
-        .ho-icon {
-            font-weight: 700;
-            font-size: 1rem;
-            letter-spacing: 2px;
-            color: #666;
-            text-transform: uppercase;
-            margin-bottom: 40px;
-        }
+        <div id="recent-list-container">
+            <p class="instruction" style="margin-top: 20px; font-size: 11px; opacity: 0.5;">PROJETS RÉCENTS</p>
+            <div id="project-list"></div>
+        </div>
+
+        <div style="margin-top: 40px; border-top: 1px solid #eee; padding-top: 15px; background: #fafafa; border-radius: 8px; padding: 15px;">
+            <p class="instruction" style="font-size: 10px; opacity: 0.6; margin-bottom: 10px; text-transform: uppercase; font-weight: bold;">☁️ HumanOrigin Sync (Zero-Knowledge)</p>
+            
+            <div style="display: flex; gap: 5px; margin-bottom: 10px;">
+                <input type="text" id="vault-alias" placeholder="Alias (ex: philippe)" style="font-size: 12px; padding: 8px; width: 40%;" />
+                <input type="password" id="vault-secret" placeholder="Phrase Secrète" style="font-size: 12px; padding: 8px; width: 60%;" />
+            </div>
+
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button class="secondary link" onclick="syncPush()" style="font-size: 11px; color: #007aff; background: white; border: 1px solid #ddd;">🔐 Connecter cet appareil</button>
+                <button class="secondary link" onclick="syncPull()" style="font-size: 11px; background: white; border: 1px solid #ddd;">🔓 Se connecter à mon identité</button>
+            </div>
+            <p style="font-size: 9px; color: #999; margin-top: 8px; text-align: center;">Crée une sauvegarde chiffrée locale (Cloud simulé).</p>
+        </div>
+      </div>
+
+      <div id="scan-ui" style="display: none;">
+        <div class="status-indicator">
+          <span id="status-dot" class="dot ready"></span>
+          <span id="status-text">Prêt à capturer</span>
+        </div>
+        <h2 id="current-project-name">...</h2>
         
-        button {
-            background: transparent;
-            border: 1px solid #444;
-            color: #fff;
-            padding: 12px 30px;
-            font-size: 0.9rem;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            min-width: 180px;
-        }
+        <div id="controls">
+          <button id="btn-main" onclick="toggleScan()">Commencer la Session</button>
+        </div>
 
-        button:hover {
-            border-color: #888;
-        }
+        <div style="margin-top: 20px; display: flex; gap: 10px;">
+            <button class="secondary" onclick="openFolder()" style="margin-top:0; font-size:12px;">📂 Dossier</button>
+            <button class="secondary warning" onclick="finalizeProject()" style="margin-top:0; font-size:12px; color:#d32f2f; border-color:#ffcdd2;">🔒 Finaliser</button>
+        </div>
 
-        /* État actif discret */
-        .recording-state {
-            background: #fff !important;
-            color: #000 !important;
-            border-color: #fff !important;
-        }
+        <button class="secondary link" onclick="resetApp()">Changer de projet</button>
+      </div>
 
-        .status-text {
-            margin-top: 30px;
-            font-size: 0.8rem;
-            color: #666; 
-        }
+      <div id="result-card">
+        <div class="result-header">Session Terminée</div>
+        
+        <div class="metric">
+          <div class="metric-value" id="res-time">00:00</div>
+          <div class="metric-label">Concentration réelle</div>
+        </div>
 
-        #result-area {
-            display: none;
-            margin-top: 20px;
-            text-align: center;
-        }
+        <div class="metric">
+          <div class="metric-value" id="res-keys">0</div>
+          <div class="metric-label">Frappes clavier</div>
+        </div>
 
-        .path-display {
-            font-family: -apple-system, sans-serif;
-            font-size: 0.75rem;
-            color: #888;
-            margin-top: 5px;
-            max-width: 80vw;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+        <div class="metric">
+          <div class="metric-label">Signature Rythmique</div>
+          <div class="human-badge" id="res-rhythm">Analyse en cours...</div>
+        </div>
 
-    </style>
-</head>
-<body>
+        <div style="margin-top: 20px;">
+            <button onclick="openFolder()">📂 Voir le Certificat F2</button>
+            <button class="secondary" onclick="returnToScan()">Nouvelle Session</button>
+        </div>
+      </div>
 
-    <div class="ho-icon">HumanOrigin™</div>
-
-    <button id="main-btn">Initialiser</button>
-
-    <div class="status-text" id="status">Prêt.</div>
-
-    <div id="result-area">
-        <div style="color:#fff; font-weight:500;">Certificat généré</div>
-        <div class="path-display" id="file-path">...</div>
     </div>
-
-    <script>
-        const invoke = window.__TAURI__.core?.invoke || window.__TAURI__.tauri?.invoke || window.__TAURI__.invoke;
-        const listen = window.__TAURI__.event?.listen || window.__TAURI__.listen;
-
-        const mainBtn = document.getElementById('main-btn');
-        const statusEl = document.getElementById('status');
-        const resDiv = document.getElementById('result-area');
-        const pathEl = document.getElementById('file-path');
-
-        let isRecording = false;
-
-        mainBtn.addEventListener('click', async () => {
-            if (!isRecording) {
-                try {
-                    await invoke('start_scan');
-                    isRecording = true;
-                    mainBtn.innerText = "Clôturer la session";
-                    mainBtn.classList.add('recording-state');
-                    statusEl.innerText = "Observation en cours...";
-                    resDiv.style.display = 'none';
-                } catch (e) { console.error(e); }
-            } else {
-                try {
-                    statusEl.innerText = "Génération du document...";
-                    await invoke('stop_scan');
-                } catch (e) { console.error(e); }
-            }
-        });
-
-        if (listen) {
-            listen('analysis-result', (event) => {
-                isRecording = false;
-                mainBtn.innerText = "Initialiser";
-                mainBtn.classList.remove('recording-state');
-                
-                statusEl.innerText = "Terminé.";
-                resDiv.style.display = 'block';
-                pathEl.innerText = event.payload.certificate_path;
-            });
-
-            listen('analysis-error', (event) => {
-                statusEl.innerText = event.payload;
-                setTimeout(() => { 
-                    if(isRecording) statusEl.innerText = "Observation en cours...";
-                    else statusEl.innerText = "Prêt.";
-                }, 3000);
-            });
-        }
-    </script>
-</body>
+    <script src="main.js"></script>
+  </body>
 </html>
