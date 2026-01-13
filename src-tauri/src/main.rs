@@ -7,775 +7,430 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
-use tauri::State;
+use std::time::{Duration};
+use tauri::{State, Manager};
 use chrono::Utc;
 use serde::{Serialize, Deserialize};
 use device_query::{DeviceQuery, DeviceState, Keycode};
 use std::process::Command;
 use uuid::Uuid;
-
-// --- CRYPTO IMPORTS ---
-use argon2::{Argon2, Algorithm, Version, Params}; 
-use aes_gcm::{
-    aead::{Aead, KeyInit},
-    Aes256Gcm, Nonce 
-};
-use rand::{rngs::OsRng, RngCore};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64}; 
-
-const IDLE_THRESHOLD_MS: i64 = 30_000; 
+use tauri_plugin_deep_link; 
 
 // =============================================================
-//  VAULT V1 : FORMAT OFFICIEL
+//  STRUCTURES
 // =============================================================
 
-#[derive(Serialize, Deserialize, Debug)]
-struct VaultFile {
-    vault_version: String,
-    alias: String,
-    kdf: String,
-    cipher: String,
-    salt_b64: String,
-    nonce_b64: String,
-    encrypted_blob_b64: String, 
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct VaultPayload {
-    ho_id: String,
-    identity_data: UserIdentity,
-    registry_snapshot: Option<IdentityRegistry>,
-    calibration_profile: Option<serde_json::Value>
+#[derive(Serialize)]
+struct LiveStats {
+    is_scanning: bool,
+    duration_sec: u64,
+    keystrokes: u64,
+    clicks: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
-struct UserIdentity {
-    ho_id: String,
-    created_at_utc: String,
-    device_fingerprint_version: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct RegistryEntry {
-    cert_type: String, project_name: String, session_index: u32, issued_at_utc: String, path: String,           
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct IdentityRegistry {
-    registry_version: String, ho_id: String, certificates: Vec<RegistryEntry>,
-}
-
-// =============================================================
-//  VAULT V1 : LOGIQUE CRYPTO & RÉSEAU
-// =============================================================
-
-fn derive_key(secret: &str, salt: &[u8]) -> Result<[u8; 32], String> {
-    let mut key = [0u8; 32];
-    let params = Params::default();
-    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
-    argon2.hash_password_into(secret.as_bytes(), salt, &mut key)
-        .map_err(|e| format!("Erreur KDF: {}", e))?;
-    Ok(key)
-}
-
-#[tauri::command]
-async fn vault_sync_push(alias: String, secret: String) -> Result<String, String> {
-    let identity = get_or_create_identity().map_err(|e| e.to_string())?;
+struct SessionAnalysis {
+    score: i32,                 
+    verdict_label: String,      
+    verdict_color: String,      
+    inactivity_penalty: i32,
+    burst_penalty: i32,
+    density_penalty: i32,
+    activity_histogram: Vec<u32>, 
+    evidence_score: i32,
+    evidence_label: String, 
+    flags: Vec<String>,    
+    total_events: u32,
     
-    let doc_path = dirs::document_dir().ok_or("Err doc")?;
-    let reg_path = doc_path.join("HumanOrigin").join("registry.json");
-    let registry: Option<IdentityRegistry> = if reg_path.exists() {
-        let c = fs::read_to_string(&reg_path).unwrap_or_default();
-        serde_json::from_str(&c).ok()
-    } else { None };
+    // NOUVEAU : On sépare pour la DB
+    keystrokes_count: u32,
+    clicks_count: u32,
 
-    let payload = VaultPayload {
-        ho_id: identity.ho_id.clone(),
-        identity_data: identity,
-        registry_snapshot: registry,
-        calibration_profile: None,
-    };
-    let payload_json = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
-
-    let mut salt = [0u8; 16];
-    OsRng.fill_bytes(&mut salt);
-    let mut nonce = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce);
-
-    let key = derive_key(&secret, &salt)?;
-    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
-    let nonce_obj = Nonce::from_slice(&nonce);
-
-    let encrypted_bytes = cipher.encrypt(nonce_obj, payload_json.as_bytes())
-        .map_err(|_| "Erreur de chiffrement")?;
-
-    let vault_file = VaultFile {
-        vault_version: "1.0".to_string(),
-        alias: alias.clone(),
-        kdf: "argon2id".to_string(),
-        cipher: "aes-256-gcm".to_string(),
-        salt_b64: BASE64.encode(salt),
-        nonce_b64: BASE64.encode(nonce),
-        encrypted_blob_b64: BASE64.encode(encrypted_bytes),
-    };
-
-    // ENVOI AU SERVEUR
-    let client = reqwest::Client::new();
-    let res = client.post(format!("http://localhost:3000/vault/{}", alias))
-        .json(&vault_file)
-        .send()
-        .await
-        .map_err(|e| format!("Erreur réseau: {}", e))?;
-
-    if res.status().is_success() {
-        Ok("Identité chiffrée et synchronisée sur le Cloud.".into())
-    } else {
-        Err("Le serveur a refusé la connexion.".into())
-    }
+    wall_duration_sec: u64, 
+    active_est_sec: u64,    
+    effort_score: f64,      
 }
 
-#[tauri::command]
-async fn vault_sync_pull(alias: String, secret: String) -> Result<String, String> {
-    // RÉCUPÉRATION DEPUIS LE SERVEUR
-    let res = reqwest::get(format!("http://localhost:3000/vault/{}", alias))
-        .await
-        .map_err(|e| format!("Erreur réseau: {}", e))?;
-
-    if !res.status().is_success() {
-        return Err("Aucun coffre trouvé pour cet alias.".into());
-    }
-
-    let vault: VaultFile = res.json().await.map_err(|_| "Données corrompues".to_string())?;
-
-    let salt = BASE64.decode(&vault.salt_b64).map_err(|_| "Salt corrompu")?;
-    let nonce = BASE64.decode(&vault.nonce_b64).map_err(|_| "Nonce corrompu")?;
-    let encrypted_bytes = BASE64.decode(&vault.encrypted_blob_b64).map_err(|_| "Blob corrompu")?;
-
-    let key = derive_key(&secret, &salt)?;
-    let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
-    let nonce_obj = Nonce::from_slice(&nonce);
-    
-    let decrypted_bytes = cipher.decrypt(nonce_obj, encrypted_bytes.as_ref())
-        .map_err(|_| "ÉCHEC : Phrase secrète incorrecte.")?;
-
-    let payload_str = String::from_utf8(decrypted_bytes).map_err(|_| "UTF8 error")?;
-    let payload: VaultPayload = serde_json::from_str(&payload_str).map_err(|_| "Erreur JSON Payload")?;
-
-    let doc_path = dirs::document_dir().ok_or("Err doc")?;
-    let base_path = doc_path.join("HumanOrigin");
-    if !base_path.exists() { fs::create_dir_all(&base_path).map_err(|e| e.to_string())?; }
-    
-    let id_path = base_path.join("identity.json");
-    fs::write(id_path, serde_json::to_string_pretty(&payload.identity_data).unwrap()).map_err(|e| e.to_string())?;
-
-    if let Some(reg) = payload.registry_snapshot {
-        let reg_path = base_path.join("registry.json");
-        fs::write(reg_path, serde_json::to_string_pretty(&reg).unwrap()).map_err(|e| e.to_string())?;
-    }
-
-    Ok(format!("Connexion réussie. HO-ID {} restaurée.", payload.ho_id))
-}
-
-// =============================================================
-//  HELPER FUNCTIONS
-// =============================================================
-
-fn get_or_create_identity() -> Result<UserIdentity, String> {
-    let doc_path = dirs::document_dir().ok_or("Impossible de trouver Documents")?;
-    let base_path = doc_path.join("HumanOrigin");
-    if !base_path.exists() { fs::create_dir_all(&base_path).map_err(|e| e.to_string())?; }
-    let identity_path = base_path.join("identity.json");
-
-    if identity_path.exists() {
-        let content = fs::read_to_string(&identity_path).map_err(|e| e.to_string())?;
-        let identity: UserIdentity = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-        Ok(identity)
-    } else {
-        let new_id = format!("HO-{}", Uuid::new_v4());
-        let identity = UserIdentity {
-            ho_id: new_id,
-            created_at_utc: Utc::now().to_rfc3339(),
-            device_fingerprint_version: "v1".to_string(),
-        };
-        fs::write(&identity_path, serde_json::to_string_pretty(&identity).unwrap()).map_err(|e| e.to_string())?;
-        Ok(identity)
-    }
-}
-
-fn update_central_registry(ho_id: &str, entry: RegistryEntry) -> Result<(), String> {
-    let doc_path = dirs::document_dir().ok_or("Impossible de trouver Documents")?;
-    let registry_path = doc_path.join("HumanOrigin").join("registry.json");
-    let mut registry: IdentityRegistry;
-
-    if registry_path.exists() {
-        let content = fs::read_to_string(&registry_path).map_err(|e| e.to_string())?;
-        registry = serde_json::from_str(&content).unwrap_or(IdentityRegistry {
-            registry_version: "1.0".to_string(), ho_id: ho_id.to_string(), certificates: Vec::new(),
-        });
-        if registry.ho_id != ho_id { registry.ho_id = ho_id.to_string(); }
-    } else {
-        registry = IdentityRegistry { registry_version: "1.0".to_string(), ho_id: ho_id.to_string(), certificates: Vec::new() };
-    }
-    registry.certificates.push(entry);
-    fs::write(registry_path, serde_json::to_string_pretty(&registry).unwrap()).map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-// =============================================================
-//  BIOMÉTRIE & LOGIQUE MÉTIER
-// =============================================================
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct ProductionContext {
-    detected_pattern: String,
-    confidence_score: f64,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct TemporalDynamics { iki_mean_ms: Option<f64>, iki_variance: Option<f64>, burstiness_index: Option<f64> }
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct KeyboardDynamics { total_keystrokes: u64, backspace_count: u64, backspace_ratio: Option<f64> }
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct MouseDynamics { total_clicks: u64 }
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct ActivityPresence { active_seconds: u64, idle_seconds: u64, longest_idle_period_sec: Option<u64>, idle_events_count: u64 }
-
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct BiometricProof {
-    session_id: String,
-    ho_id: String,
-    timestamp_start: String,
-    timestamp_end: String,
-    version: String,
-    analysis_mode: String,
-    production_context: ProductionContext,
+#[derive(Serialize)]
+struct FinalizationResult {
+    html_path: String,
     project_name: String,
-    session_index: u32,
-    temporal: TemporalDynamics,
-    keyboard: KeyboardDynamics,
-    mouse: MouseDynamics,
-    activity: ActivityPresence,
-}
-
-fn determine_production_context(
-    iki_variance: Option<f64>, 
-    _burstiness: Option<f64>, 
-    backspace_ratio: Option<f64>,
-    total_keys: u64,
-    total_clicks: u64
-) -> ProductionContext {
-    let raw_score = total_keys as f64 / 500.0;
-    let confidence_score = if raw_score > 1.0 { 1.0 } else { raw_score };
-
-    if total_keys < 50 {
-        return ProductionContext { detected_pattern: "low_data_volume".to_string(), confidence_score };
-    }
-
-    let var = iki_variance.unwrap_or(0.0);
-    let back = backspace_ratio.unwrap_or(0.0);
-    let mouse_keyboard_ratio = if total_keys > 0 { total_clicks as f64 / total_keys as f64 } else { 0.0 };
-
-    if mouse_keyboard_ratio > 0.2 || (total_keys < 200 && total_clicks > 50) {
-        return ProductionContext { detected_pattern: "revision_activity".to_string(), confidence_score };
-    }
-    if var < 5000.0 && back < 0.05 {
-        return ProductionContext { detected_pattern: "reference_based_input".to_string(), confidence_score };
-    }
-    if var > 10000.0 || back > 0.08 {
-        return ProductionContext { detected_pattern: "free_composition".to_string(), confidence_score };
-    }
-    ProductionContext { detected_pattern: "mixed_activity".to_string(), confidence_score: confidence_score * 0.8 }
-}
-
-struct RuntimeBuffers {
-    keystroke_timestamps: Vec<i64>, backspace_timestamps: Vec<i64>, click_timestamps: Vec<i64>, last_input_timestamp: i64, idle_periods: Vec<(i64, i64)>, 
+    total_active_seconds: u64,
+    total_keystrokes: u64,
+    session_count: u32,
+    scp_score: i32,
+    evidence_score: i32, 
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 struct ProjectMetadata {
-    project_name: String, created_at_utc: String, last_activity_utc: String, sessions_count: u32,
-    #[serde(default)] total_active_seconds: u64,
-    #[serde(default = "default_status")] status: String,
-    #[serde(default)] calibration_status: Option<String>,
+    project_name: String,
+    created_at_utc: String,
+    last_activity_utc: String,
+    sessions_count: u32,
+    total_active_seconds: u64,
+    status: String,
 }
-fn default_status() -> String { "ACTIVE".to_string() }
 
-#[derive(Serialize)]
-struct ScanResult { status: String, sessions_count: u32, active_seconds_added: u64, certificate_path: String, proof_data: BiometricProof }
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct BiometricProof {
+    session_id: String,
+    timestamp_start: String,
+    timestamp_end: String,
+    project_name: String,
+    session_index: u32,
+    keyboard_dynamics: KeyboardStats,
+    mouse_dynamics: MouseStats,
+    analysis: SessionAnalysis, 
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct KeyboardStats { total_keystrokes: u64, backspace_count: u64 }
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+struct MouseStats { total_clicks: u64 }
+
+struct RuntimeBuffers {
+    keystroke_timestamps: Vec<i64>,
+    backspace_timestamps: Vec<i64>,
+    click_timestamps: Vec<i64>,
+    start_timestamp: i64,
+    start_rfc3339: String, 
+}
 
 struct AppState {
-    is_scanning: Arc<Mutex<bool>>, active_project_path: Arc<Mutex<Option<PathBuf>>>, session_start: Arc<Mutex<Option<chrono::DateTime<Utc>>>>, runtime: Arc<Mutex<RuntimeBuffers>>,
+    is_scanning: Arc<Mutex<bool>>,
+    active_project_path: Arc<Mutex<Option<PathBuf>>>,
+    runtime: Arc<Mutex<RuntimeBuffers>>,
 }
 
-fn calculate_iki_stats(timestamps: &Vec<i64>) -> (Option<f64>, Option<f64>) {
-    if timestamps.len() < 2 { return (None, None); }
-    let mut intervals = Vec::new();
-    for i in 0..timestamps.len() - 1 {
-        let diff = (timestamps[i+1] - timestamps[i]) as f64;
-        if diff < IDLE_THRESHOLD_MS as f64 { intervals.push(diff); }
-    }
-    if intervals.is_empty() { return (None, None); }
-    let sum: f64 = intervals.iter().sum();
-    let mean = sum / intervals.len() as f64;
-    let variance_sum: f64 = intervals.iter().map(|val| (val - mean).powi(2)).sum();
-    (Some(mean), Some(variance_sum / intervals.len() as f64))
-}
+// =============================================================
+//  MOTEUR MATHÉMATIQUE
+// =============================================================
 
-fn calculate_burstiness(mean: f64, variance: f64) -> Option<f64> {
-    if mean == 0.0 { return None; }
-    let std_dev = variance.sqrt();
-    Some((std_dev - mean) / (std_dev + mean))
-}
+fn calculate_scp(
+    start_ms: i64, 
+    end_ms: i64, 
+    keystrokes: &Vec<i64>, 
+    clicks: &Vec<i64>
+) -> SessionAnalysis {
+    let wall_duration_sec = std::cmp::max(1, (end_ms - start_ms) / 1000) as u64;
+    let window_size = 30; 
+    let num_windows = (wall_duration_sec / window_size) + 1;
+    let mut histogram = vec![0u32; num_windows as usize];
+    let mut total_events = 0;
 
-fn calculate_activity_stats(rt: &mut RuntimeBuffers, session_start_ms: i64, session_end_ms: i64) -> (u64, u64, u64) {
-    rt.idle_periods.clear();
-    let mut all_events = Vec::new();
-    all_events.extend_from_slice(&rt.keystroke_timestamps);
-    all_events.extend_from_slice(&rt.click_timestamps);
-    all_events.sort(); 
-    if all_events.is_empty() { return (0, ((session_end_ms - session_start_ms) / 1000) as u64, 0); }
-    let mut idle_seconds_total = 0u64;
-    let mut longest_idle = 0u64;
-    if let Some(&first_event) = all_events.first() {
-        if first_event - session_start_ms > IDLE_THRESHOLD_MS {
-            let gap = (first_event - session_start_ms) / 1000;
-            idle_seconds_total += gap as u64;
-            if gap as u64 > longest_idle { longest_idle = gap as u64; }
-            rt.idle_periods.push((session_start_ms, first_event));
+    // Comptage précis
+    let keystrokes_count = keystrokes.len() as u32;
+    let clicks_count = clicks.len() as u32;
+
+    for k in keystrokes {
+        if *k >= start_ms && *k <= end_ms {
+            let idx = ((k - start_ms) / 1000 / (window_size as i64)) as usize;
+            if idx < histogram.len() { histogram[idx] += 1; total_events += 1; }
         }
     }
-    for i in 0..all_events.len() - 1 {
-        let diff = all_events[i+1] - all_events[i];
-        if diff > IDLE_THRESHOLD_MS {
-            let gap = diff / 1000;
-            idle_seconds_total += gap as u64;
-            if gap as u64 > longest_idle { longest_idle = gap as u64; }
-            rt.idle_periods.push((all_events[i], all_events[i+1]));
+    for c in clicks {
+        if *c >= start_ms && *c <= end_ms {
+            let idx = ((c - start_ms) / 1000 / (window_size as i64)) as usize;
+            if idx < histogram.len() { histogram[idx] += 1; total_events += 1; }
         }
     }
-    if let Some(&last_event) = all_events.last() {
-        if session_end_ms - last_event > IDLE_THRESHOLD_MS {
-            let gap = (session_end_ms - last_event) / 1000;
-            idle_seconds_total += gap as u64;
-            if gap as u64 > longest_idle { longest_idle = gap as u64; }
-            rt.idle_periods.push((last_event, session_end_ms));
-        }
-    }
-    let total_sec = ((session_end_ms - session_start_ms) / 1000) as u64;
-    (total_sec.saturating_sub(idle_seconds_total), idle_seconds_total, longest_idle)
-}
-fn generate_html_certificate(metadata: &ProjectMetadata, identity: &UserIdentity, total_duration: u64, total_keys: u64, total_clicks: u64, sessions_list: &Vec<serde_json::Value>) -> String {
-    let hours = total_duration / 3600;
-    let mins = (total_duration % 3600) / 60;
-    let duration_str = if hours > 0 { format!("{}h {}m", hours, mins) } else { format!("{} min", mins) };
+
+    let active_windows = histogram.iter().filter(|&&x| x > 0).count() as u32;
+    let active_est_sec = std::cmp::min(wall_duration_sec, (active_windows as u64) * 30);
     
-    // On nettoie les variables inutilisées pour supprimer les warnings
-    let _ = sessions_list.first(); 
-    let _ = sessions_list.last();
+    let mut score = 100;
     
-    let mut table_rows = String::new();
-    for session in sessions_list {
-        let date = session["date"].as_str().unwrap_or("").split('T').next().unwrap_or("");
-        let dur = session["duration_sec"].as_u64().unwrap_or(0);
-        let m = dur / 60;
-        let s = dur % 60;
+    let inactivity_ratio = if num_windows > 0 { 1.0 - (active_windows as f64 / num_windows as f64) } else { 0.0 };
+    let mut pen_inactivity = 0;
+    if inactivity_ratio > 0.4 { pen_inactivity = 15; }
+    if inactivity_ratio > 0.7 { pen_inactivity = 30; } 
+    
+    let mut pen_burst = 0;
+    if num_windows >= 6 && total_events > 50 {
+        let mut sorted_hist = histogram.clone();
+        sorted_hist.sort_by(|a, b| b.cmp(a)); 
+        let top_10_percent_count = (num_windows as f64 * 0.1).ceil() as usize;
+        let events_in_top: u32 = sorted_hist.iter().take(top_10_percent_count).sum();
+        let burst_ratio = events_in_top as f64 / total_events as f64;
         
-        let pattern_raw = session["production_context"]["detected_pattern"].as_str().unwrap_or("undefined");
-        let pattern_label = match pattern_raw {
-            "free_composition" => "Flux Créatif (Composition)",
-            "reference_based_input" => "Saisie Référencée",
-            "revision_activity" => "Édition & Révision",
-            "low_data_volume" => "Volume Faible",
-            _ => "Mixte / Indéterminé"
-        };
+        if burst_ratio > 0.6 { pen_burst = 20; }
+        if burst_ratio > 0.85 { pen_burst = 40; } 
+    }
 
-        table_rows.push_str(&format!(
-            "<tr class='row'><td><span class='sess-idx'>#{}</span></td><td>{}</td><td>{}m {}s</td><td><span class='tag'>{}</span></td></tr>", 
-            session["index"], date, m, s, pattern_label
+    let max_events = *histogram.iter().max().unwrap_or(&0);
+    let mut pen_density = 0;
+    if max_events > 300 { pen_density = 25; } 
+    
+    score = score - pen_inactivity - pen_burst - pen_density;
+    if score < 0 { score = 0; }
+
+    let (mut verdict_label, mut verdict_color) = if score >= 80 {
+        ("COHÉRENT".to_string(), "#10b981".to_string()) 
+    } else if score >= 50 {
+        ("IRRÉGULIER".to_string(), "#f59e0b".to_string()) 
+    } else {
+        ("ATYPIQUE".to_string(), "#ef4444".to_string()) 
+    };
+
+    let mut evidence_score = 100;
+    let mut flags: Vec<String> = vec![];
+
+    if total_events < 30 {
+        flags.push("LOW_EVENTS".into());
+        evidence_score -= 60;
+    }
+    if wall_duration_sec < 45 { 
+        flags.push("SHORT_SESSION".into());
+        evidence_score -= 40;
+    }
+    if active_windows < 2 {
+        flags.push("LOW_ACTIVE_WINDOWS".into());
+        evidence_score -= 40;
+    }
+    if evidence_score < 0 { evidence_score = 0; }
+
+    let evidence_label = if evidence_score >= 70 { "FORT" } 
+        else if evidence_score >= 40 { "MOYEN" } 
+        else if evidence_score >= 15 { "FAIBLE" } 
+        else { "NON_CONCLUANT" };
+
+    if evidence_label == "NON_CONCLUANT" {
+        verdict_label = "NON CONCLUANT".into();
+        verdict_color = "#6b7280".into(); 
+    }
+
+    let active_minutes = (active_est_sec as f64) / 60.0;
+    let total_actions = total_events as f64;
+    let effort_score = if active_minutes > 0.0 { total_actions / active_minutes } else { 0.0 };
+
+    SessionAnalysis {
+        score, verdict_label, verdict_color, inactivity_penalty: pen_inactivity, burst_penalty: pen_burst, density_penalty: pen_density,
+        activity_histogram: histogram, evidence_score, evidence_label: evidence_label.to_string(), flags,
+        total_events: total_events as u32,
+        keystrokes_count, // AJOUTÉ
+        clicks_count,     // AJOUTÉ
+        wall_duration_sec, active_est_sec, effort_score,
+    }
+}
+
+// =============================================================
+//  GÉNÉRATEUR CERTIFICAT (FIX CSS {{}})
+// =============================================================
+
+fn generate_html_certificate(metadata: &ProjectMetadata, proofs: &Vec<BiometricProof>) -> String {
+    let mut total_k = 0;
+    let mut weighted_scp = 0;
+    let mut weighted_evidence = 0;
+    let mut session_rows = String::new();
+    
+    for p in proofs {
+        total_k += p.keyboard_dynamics.total_keystrokes;
+        weighted_scp += p.analysis.score;
+        weighted_evidence += p.analysis.evidence_score;
+        
+        let mut bars_html = String::new();
+        let max_val = *p.analysis.activity_histogram.iter().max().unwrap_or(&1);
+        for val in &p.analysis.activity_histogram {
+            let height = if max_val > 0 { (*val as f64 / max_val as f64) * 100.0 } else { 0.0 };
+            let color = if *val > 300 { "#ef4444" } else { "#ddd" }; 
+            bars_html.push_str(&format!("<div class='bar' style='height:{}%; background:{}'></div>", height, color));
+        }
+
+        let flags_html = if !p.analysis.flags.is_empty() { format!("<br><span style='font-size:9px; color:#ef4444'>⚠️ {}</span>", p.analysis.flags.join(", ")) } else { "".to_string() };
+
+        session_rows.push_str(&format!(
+            "<tr>
+                <td><strong>#{}</strong></td>
+                <td><div class='mini-graph'>{}</div></td>
+                <td>
+                    {} frappes<br>
+                    <span style='font-size:10px; color:#666'>{} acts/min</span>
+                </td>
+                <td>
+                    <span class='badge' style='background:{}'>{}</span>
+                    <div style='font-size:10px; margin-top:4px; color:#666'>
+                        SCP: {} | Preuve: <strong>{}</strong>{}
+                    </div>
+                </td>
+            </tr>",
+            p.session_index, 
+            bars_html, 
+            p.keyboard_dynamics.total_keystrokes,
+            p.analysis.effort_score.round(), 
+            p.analysis.verdict_color, 
+            p.analysis.verdict_label,
+            p.analysis.score,
+            p.analysis.evidence_label,
+            flags_html
         ));
     }
+    
+    let avg_scp = if proofs.len() > 0 { weighted_scp / proofs.len() as i32 } else { 0 };
+    let avg_evidence = if proofs.len() > 0 { weighted_evidence / proofs.len() as i32 } else { 0 };
+    let global_color = if avg_evidence < 30 { "#6b7280" } else if avg_scp >= 80 { "#10b981" } else if avg_scp >= 50 { "#f59e0b" } else { "#ef4444" };
+    let duration_min = metadata.total_active_seconds / 60;
 
+    // ATTENTION: CSS AVEC DOUBLES ACCOLADES {{ }}
     format!(r#"
-    <!DOCTYPE html>
-    <html lang="fr">
-    <head>
-        <meta charset="UTF-8">
-        <title>Certificat de Production Comportementale - {}</title>
-        <style>
-            body {{ font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f0f2f5; color: #1a1a1a; margin: 0; padding: 40px; line-height: 1.5; }}
-            .paper {{ max-width: 800px; margin: 0 auto; background: white; padding: 60px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border-radius: 4px; border-top: 6px solid #1a1a1a; }}
-            .header {{ display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 2px solid #f0f0f0; padding-bottom: 20px; }}
-            .brand h1 {{ font-size: 12px; letter-spacing: 2px; text-transform: uppercase; color: #666; margin: 0 0 5px 0; }}
-            .brand h2 {{ font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.5px; }}
-            .meta {{ text-align: right; font-size: 12px; color: #666; font-family: 'Courier New', monospace; }}
-            .statement {{ background: #fafafa; border-left: 4px solid #333; padding: 20px; font-size: 15px; margin-bottom: 40px; color: #444; }}
-            .grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 40px; }}
-            .stat-box {{ background: #fff; border: 1px solid #eee; padding: 15px; border-radius: 8px; text-align: center; }}
-            .val {{ display: block; font-size: 22px; font-weight: 700; color: #000; }}
-            .lbl {{ font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 1px; margin-top: 5px; display: block; }}
-            
-            table {{ width: 100%; border-collapse: collapse; font-size: 13px; }}
-            th {{ text-align: left; color: #888; font-weight: 500; padding: 10px; border-bottom: 1px solid #ddd; font-size: 11px; text-transform: uppercase; }}
-            td {{ padding: 12px 10px; border-bottom: 1px solid #f5f5f5; }}
-            .sess-idx {{ color: #999; font-family: monospace; }}
-            .tag {{ background: #f0f0f0; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; color: #555; }}
-            
-            .disclaimer {{ margin-top: 60px; font-size: 11px; color: #888; border-top: 1px solid #eee; padding-top: 20px; text-align: justify; }}
-            .footer {{ margin-top: 20px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #aaa; font-family: monospace; }}
-            .signature {{ color: #000; font-weight: bold; border: 1px solid #000; padding: 5px 10px; border-radius: 4px; display: inline-block; }}
-        </style>
+    <!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Certificat HumanOrigin</title>
+    <style>
+        body {{ background: #f3f4f6; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #111; }} 
+        .paper {{ max-width: 850px; margin: 0 auto; background: white; padding: 60px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); border-top: 8px solid #000; }}
+        .header {{ display: flex; justify-content: space-between; border-bottom: 2px solid #eee; padding-bottom: 30px; margin-bottom: 40px; }} 
+        .brand h1 {{ font-size: 14px; letter-spacing: -1px; margin: 0; color: #666; text-transform: uppercase; }} 
+        .brand h2 {{ font-size: 32px; font-weight: 800; margin: 5px 0 0 0; letter-spacing: -1px; }} 
+        .meta {{ text-align: right; font-size: 12px; color: #888; font-family: monospace; }}
+        .score-card {{ background: #fafafa; border: 1px solid #eee; padding: 30px; display: flex; align-items: center; justify-content: space-between; border-radius: 8px; margin-bottom: 40px; }} 
+        .score-circle {{ width: 100px; height: 100px; border-radius: 50%; border: 8px solid {}; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 800; color: {}; }} 
+        .score-details {{ flex: 1; margin-left: 30px; }}
+        .grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 50px; }} 
+        .stat {{ border-left: 3px solid #000; padding-left: 15px; }} 
+        .stat .val {{ font-size: 24px; font-weight: 700; display: block; }} 
+        .stat .lbl {{ font-size: 12px; text-transform: uppercase; color: #666; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }} 
+        th {{ text-align: left; color: #999; font-size: 11px; text-transform: uppercase; padding-bottom: 15px; border-bottom: 1px solid #ddd; }} 
+        td {{ padding: 15px 0; border-bottom: 1px solid #f5f5f5; vertical-align: middle; }}
+        .badge {{ padding: 6px 12px; border-radius: 20px; color: white; font-weight: 600; font-size: 12px; }} 
+        .mini-graph {{ display: flex; align-items: flex-end; height: 30px; width: 150px; gap: 2px; }} 
+        .bar {{ width: 100%; min-height: 2px; }}
+        .footer {{ margin-top: 80px; padding-top: 20px; border-top: 1px solid #eee; font-size: 11px; color: #999; font-family: monospace; display: flex; justify-content: space-between; }}
+    </style>
     </head>
-    <body>
-        <div class="paper">
-            <div class="header">
-                <div class="brand">
-                    <h1>HumanOrigin Core</h1>
-                    <h2>Certificat de Production</h2>
-                </div>
-                <div class="meta">
-                    REF: F4-LOCKED<br>
-                    DATE: {}
-                </div>
-            </div>
+    <body><div class="paper">
+    <div class="header"><div class="brand"><h1>HUMAN ORIGIN // CORE</h1><h2>Audit de Cohérence</h2></div><div class="meta">REF: {}<br>DATE: {}</div></div>
+    <div class="score-card"><div class="score-circle">{}</div><div class="score-details"><h3>Score de Cohérence (SCP)</h3><p>Indice de continuité physique (HO-2).</p><p style="font-size:12px; color:#666; margin-top:5px;">Qualité de la preuve : <strong>{} / 100</strong></p></div></div>
+    <div class="grid"><div class="stat"><span class="val">{} min</span><span class="lbl">Temps Actif (Est.)</span></div><div class="stat"><span class="val">{}</span><span class="lbl">Frappes Totales</span></div><div class="stat"><span class="val">{}</span><span class="lbl">Sessions</span></div></div>
+    <h3>Signature Temporelle</h3><table><thead><tr><th width="10%">ID</th><th width="40%">Histogramme (30s)</th><th width="20%">Volume</th><th width="30%">Analyse (Gate & SCP)</th></tr></thead><tbody>{}</tbody></table>
+    <div class="footer"><span>Généré par HumanOrigin v1.0 (Forensic Engine)</span><span>CRYPTOGRAPHIC PROOF: SHA-256 (Simulated)</span></div></div></body></html>
+    "#, metadata.project_name, Utc::now().format("%d-%m-%Y"), global_color, global_color, avg_scp, avg_evidence, duration_min, total_k, metadata.sessions_count, session_rows)
+}
 
-            <div class="statement">
-                <strong>ATTESTATION DE CONTINUITÉ</strong><br><br>
-                Ce document certifie que le projet <strong>"{}"</strong> est le résultat d'un effort humain continu, réalisé à travers <strong>{}</strong> sessions de travail distinctes.<br>
-                Les données biométriques collectées (dynamique de frappe, rythme, interactions clavier standard) confirment une production manuelle et organique, compatible avec un opérateur humain standard.
-            </div>
+// =============================================================
+//  COMMANDES TAURI
+// =============================================================
 
-            <div class="grid">
-                <div class="stat-box">
-                    <span class="val">{}</span>
-                    <span class="lbl">Temps Cumulé</span>
-                </div>
-                <div class="stat-box">
-                    <span class="val">{}</span>
-                    <span class="lbl">Frappes</span>
-                </div>
-                <div class="stat-box">
-                    <span class="val">{}</span>
-                    <span class="lbl">Clics</span>
-                </div>
-                <div class="stat-box">
-                    <span class="val">{}</span>
-                    <span class="lbl">Sessions</span>
-                </div>
-            </div>
+#[tauri::command]
+fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
+    let is_scanning = *state.is_scanning.lock().unwrap();
+    let rt = state.runtime.lock().unwrap();
 
-            <h3>Traçabilité Temporelle (Audit Trail)</h3>
-            <table>
-                <thead>
-                    <tr>
-                        <th width="15%">ID Session</th>
-                        <th width="30%">Date</th>
-                        <th width="20%">Durée</th>
-                        <th>Qualification de l'Effort</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {}
-                </tbody>
-            </table>
+    if !is_scanning || rt.start_timestamp == 0 {
+        return Ok(LiveStats { is_scanning: false, duration_sec: 0, keystrokes: 0, clicks: 0 });
+    }
 
-            <div class="disclaimer">
-                <strong>LIMITES DE RESPONSABILITÉ & PORTÉE :</strong><br>
-                Ce certificat qualifie exclusivement la nature comportementale de l'effort de production (conditions observables). Il ne constitue pas une preuve d'originalité intellectuelle, ne valide pas le contenu sémantique, et n'atteste pas de la paternité juridique de l'œuvre au sens du Code de la Propriété Intellectuelle. Il sert uniquement à distinguer une production humaine opérée via des périphériques standards d'un processus de génération automatisée sans intervention motrice humaine mesurable.
-            </div>
+    let now_ms = Utc::now().timestamp_millis();
+    let duration_sec = ((now_ms - rt.start_timestamp).max(0) as u64) / 1000;
 
-            <div class="footer">
-                <span>ID ANONYME: {}</span>
-                <span class="signature">CRYPTOGRAPHICALLY SIGNED</span>
-            </div>
-        </div>
-    </body>
-    </html>
-    "#, 
-    metadata.project_name, 
-    Utc::now().format("%d/%m/%Y"), 
-    metadata.project_name, 
-    metadata.sessions_count, 
-    duration_str, 
-    total_keys, 
-    total_clicks, 
-    metadata.sessions_count, 
-    table_rows, 
-    identity.ho_id)
+    Ok(LiveStats {
+        is_scanning: true,
+        duration_sec,
+        keystrokes: rt.keystroke_timestamps.len() as u64,
+        clicks: rt.click_timestamps.len() as u64,
+    })
 }
 
 #[tauri::command]
 fn get_projects() -> Result<Vec<String>, String> {
-    let doc_path = dirs::document_dir().ok_or("Impossible de trouver Documents")?;
-    let projects_path = doc_path.join("HumanOrigin").join("Projets");
-    if !projects_path.exists() { return Ok(Vec::new()); }
+    let doc_path = dirs::document_dir().ok_or("Err Documents")?;
+    let path = doc_path.join("HumanOrigin").join("Projets");
     let mut projects = Vec::new();
-    if let Ok(entries) = fs::read_dir(projects_path) {
+    if let Ok(entries) = fs::read_dir(path) {
         for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if path.is_dir() {
-                    if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                        if !name.starts_with('.') { projects.push(name.to_string()); }
-                    }
+            if let Ok(e) = entry {
+                if let Some(name) = e.path().file_name().and_then(|n| n.to_str()) {
+                    if !name.starts_with('.') { projects.push(name.to_string()); }
                 }
             }
         }
     }
-    projects.sort();
     Ok(projects)
 }
 
 #[tauri::command]
-fn initialize_project(project_name: String, _app_handle: tauri::AppHandle) -> Result<String, String> {
-    let doc_path = dirs::document_dir().ok_or("Impossible de trouver le dossier Documents")?;
-    let base_path = doc_path.join("HumanOrigin").join("Projets");
-    let project_path = base_path.join(&project_name);
-    let certs_path = project_path.join("certificats");
-    if !project_path.exists() {
-        fs::create_dir_all(&certs_path).map_err(|e| e.to_string())?;
-        let metadata = ProjectMetadata { project_name: project_name.clone(), created_at_utc: Utc::now().to_rfc3339(), last_activity_utc: Utc::now().to_rfc3339(), sessions_count: 0, total_active_seconds: 0, status: "ACTIVE".to_string(), calibration_status: None };
-        let json_path = project_path.join("project.json");
-        fs::write(json_path, serde_json::to_string_pretty(&metadata).unwrap()).map_err(|e| e.to_string())?;
-    }
-    let _ = get_or_create_identity();
+fn initialize_project(project_name: String) -> Result<String, String> {
+    let doc_path = dirs::document_dir().ok_or("Err Documents")?;
+    let project_path = doc_path.join("HumanOrigin").join("Projets").join(&project_name);
+    fs::create_dir_all(project_path.join("certificats")).map_err(|e| e.to_string())?;
+    let metadata = ProjectMetadata { project_name: project_name.clone(), created_at_utc: Utc::now().to_rfc3339(), last_activity_utc: Utc::now().to_rfc3339(), sessions_count: 0, total_active_seconds: 0, status: "ACTIVE".to_string() };
+    fs::write(project_path.join("project.json"), serde_json::to_string_pretty(&metadata).unwrap()).map_err(|e| e.to_string())?;
     Ok(project_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-fn activate_project(project_path: String, state: State<AppState>) -> Result<ProjectMetadata, String> {
-    let path = PathBuf::from(&project_path);
-    let json_path = path.join("project.json");
-    if !json_path.exists() { return Err("Projet introuvable".into()); }
-    let content = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
-    let metadata: ProjectMetadata = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+fn activate_project(project_path: String, state: State<AppState>) -> Result<(), String> {
     let mut active = state.active_project_path.lock().unwrap();
-    *active = Some(path);
-    Ok(metadata)
+    *active = Some(PathBuf::from(project_path));
+    Ok(())
 }
 
 #[tauri::command]
 fn start_scan(state: State<AppState>) -> Result<String, String> {
-    let path_opt = state.active_project_path.lock().unwrap().clone();
-    let path = path_opt.ok_or("Aucun projet actif")?;
+    let mut scanning = state.is_scanning.lock().unwrap();
+    if *scanning { return Err("Déjà en cours".into()); }
+    *scanning = true;
+    let mut rt = state.runtime.lock().unwrap();
+    rt.keystroke_timestamps.clear(); rt.backspace_timestamps.clear(); rt.click_timestamps.clear();
+    rt.start_timestamp = Utc::now().timestamp_millis(); rt.start_rfc3339 = Utc::now().to_rfc3339(); 
+    Ok("Scan Démarré".into())
+}
+
+#[tauri::command]
+fn stop_scan(state: State<AppState>) -> Result<SessionAnalysis, String> {
+    let mut scanning = state.is_scanning.lock().unwrap();
+    if !*scanning { return Err("Pas de session".into()); }
+    *scanning = false;
+    let path_buf = state.active_project_path.lock().unwrap().clone().ok_or("Pas de projet actif")?;
+    let rt = state.runtime.lock().unwrap();
+    let end_ms = Utc::now().timestamp_millis();
+    let start_ms = rt.start_timestamp;
+    let analysis = calculate_scp(start_ms, end_ms, &rt.keystroke_timestamps, &rt.click_timestamps);
+    let json_path = path_buf.join("project.json");
+    let content = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
+    let mut metadata: ProjectMetadata = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    metadata.sessions_count += 1; metadata.total_active_seconds += analysis.active_est_sec; metadata.last_activity_utc = Utc::now().to_rfc3339();
+    let proof = BiometricProof { session_id: Uuid::new_v4().to_string(), timestamp_start: rt.start_rfc3339.clone(), timestamp_end: Utc::now().to_rfc3339(), project_name: metadata.project_name.clone(), session_index: metadata.sessions_count, keyboard_dynamics: KeyboardStats { total_keystrokes: rt.keystroke_timestamps.len() as u64, backspace_count: rt.backspace_timestamps.len() as u64 }, mouse_dynamics: MouseStats { total_clicks: rt.click_timestamps.len() as u64 }, analysis: analysis.clone() };
+    let proof_name = format!("session_{}.json", metadata.sessions_count);
+    fs::write(path_buf.join("certificats").join(proof_name), serde_json::to_string_pretty(&proof).unwrap()).map_err(|e| e.to_string())?;
+    fs::write(json_path, serde_json::to_string_pretty(&metadata).unwrap()).map_err(|e| e.to_string())?;
+    Ok(analysis)
+}
+
+#[tauri::command]
+fn finalize_project(project_path: String) -> Result<FinalizationResult, String> {
+    let path = PathBuf::from(project_path);
     let json_path = path.join("project.json");
+    let certs_dir = path.join("certificats");
     let content = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
     let metadata: ProjectMetadata = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    if metadata.status == "LOCKED" { return Err("Projet Verrouillé".into()); }
-    let mut scanning = state.is_scanning.lock().unwrap();
-    if *scanning { return Err("Session déjà en cours".into()); }
-    *scanning = true;
-    let mut start = state.session_start.lock().unwrap();
-    *start = Some(Utc::now());
-    let mut rt = state.runtime.lock().unwrap();
-    rt.keystroke_timestamps.clear(); rt.backspace_timestamps.clear(); rt.click_timestamps.clear(); rt.idle_periods.clear(); rt.last_input_timestamp = Utc::now().timestamp_millis();
-    Ok("Session Démarrée".into())
-}
-
-#[tauri::command]
-fn stop_scan(state: State<AppState>) -> Result<ScanResult, String> {
-    let mut scanning = state.is_scanning.lock().unwrap();
-    if !*scanning { return Err("Aucune session en cours".into()); }
-    *scanning = false;
-    let path_opt = state.active_project_path.lock().unwrap().clone();
-    let path = path_opt.ok_or("Erreur chemin projet")?;
-    let json_path = path.join("project.json");
-    let certs_dir = path.join("certificats");
-    let start_opt = state.session_start.lock().unwrap().clone();
-    let start_time_utc = start_opt.ok_or("Erreur temps début")?;
-    let start_ms = start_time_utc.timestamp_millis();
-    let end_ms = Utc::now().timestamp_millis();
-    let identity = get_or_create_identity().map_err(|e| e.to_string())?;
-    let content = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
-    let mut metadata: ProjectMetadata = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    let mut rt = state.runtime.lock().unwrap();
-    let (active_sec, idle_sec, max_idle) = calculate_activity_stats(&mut rt, start_ms, end_ms);
-    let (iki_mean, iki_var) = calculate_iki_stats(&rt.keystroke_timestamps);
-    let burstiness = if let (Some(m), Some(v)) = (iki_mean, iki_var) { calculate_burstiness(m, v) } else { None };
-    let total_k = rt.keystroke_timestamps.len() as u64;
-    let back_ratio = if total_k > 0 { Some(rt.backspace_timestamps.len() as f64 / total_k as f64) } else { None };
-    let total_c = rt.click_timestamps.len() as u64;
-    metadata.sessions_count += 1;
-    metadata.last_activity_utc = Utc::now().to_rfc3339();
-    metadata.total_active_seconds += active_sec;
-    let context = determine_production_context(iki_var, burstiness, back_ratio, total_k, total_c);
-
-    let proof = BiometricProof {
-        session_id: format!("SESS-{}", Utc::now().format("%Y%m%d-%H%M%S")),
-        ho_id: identity.ho_id.clone(),
-        timestamp_start: start_time_utc.to_rfc3339(),
-        timestamp_end: Utc::now().to_rfc3339(),
-        version: "V2-FORENSIC-B2".to_string(),
-        analysis_mode: "heuristic_v1.5".to_string(),
-        production_context: context, 
-        project_name: metadata.project_name.clone(),
-        session_index: metadata.sessions_count,
-        temporal: TemporalDynamics { iki_mean_ms: iki_mean, iki_variance: iki_var, burstiness_index: burstiness },
-        keyboard: KeyboardDynamics { total_keystrokes: total_k, backspace_count: rt.backspace_timestamps.len() as u64, backspace_ratio: back_ratio },
-        mouse: MouseDynamics { total_clicks: total_c },
-        activity: ActivityPresence { active_seconds: active_sec, idle_seconds: idle_sec, idle_events_count: rt.idle_periods.len() as u64, longest_idle_period_sec: Some(max_idle) },
-    };
-    let cert_filename = format!("HO-F2-SESS{}-{}.json", metadata.sessions_count, Utc::now().format("%Y%m%d-%H%M%S"));
-    let cert_path = certs_dir.join(&cert_filename);
-    fs::write(&cert_path, serde_json::to_string_pretty(&proof).unwrap()).map_err(|e| e.to_string())?;
-    fs::write(json_path, serde_json::to_string_pretty(&metadata).unwrap()).map_err(|e| e.to_string())?;
-    let reg_entry = RegistryEntry { cert_type: "F2".to_string(), project_name: metadata.project_name.clone(), session_index: metadata.sessions_count, issued_at_utc: Utc::now().to_rfc3339(), path: cert_path.to_string_lossy().to_string() };
-    let _ = update_central_registry(&identity.ho_id, reg_entry);
-    Ok(ScanResult { status: "Session arrêtée".into(), sessions_count: metadata.sessions_count, active_seconds_added: active_sec, certificate_path: cert_filename, proof_data: proof })
-}
-
-#[tauri::command]
-fn generate_intermediate_certificate(_project_path: String) -> Result<String, String> { Ok("OK".into()) }
-
-#[tauri::command]
-fn finalize_project(project_path: String) -> Result<String, String> {
-    let path = PathBuf::from(&project_path);
-    let json_path = path.join("project.json");
-    let certs_dir = path.join("certificats");
-    if !certs_dir.exists() { return Err("Aucun certificat trouvé.".into()); }
-    let identity = get_or_create_identity().map_err(|e| e.to_string())?;
-    let content = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
-    let mut metadata: ProjectMetadata = serde_json::from_str(&content).map_err(|e| e.to_string())?;
-    if metadata.status == "LOCKED" { return Err("Projet déjà finalisé.".into()); }
-    let mut audit_trail = Vec::new();
-    let mut calculated_duration = 0;
-    let mut total_keystrokes_global = 0;
-    let mut total_clicks_global = 0;
-    if let Ok(entries) = fs::read_dir(&certs_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                    if filename.starts_with("HO-F2") && filename.ends_with(".json") {
-                        if let Ok(f2_content) = fs::read_to_string(&path) {
-                            if let Ok(f2) = serde_json::from_str::<BiometricProof>(&f2_content) {
-                                calculated_duration += f2.activity.active_seconds;
-                                total_keystrokes_global += f2.keyboard.total_keystrokes;
-                                total_clicks_global += f2.mouse.total_clicks;
-                                audit_trail.push(serde_json::json!({ 
-                                    "index": f2.session_index, 
-                                    "date": f2.timestamp_start, 
-                                    "duration_sec": f2.activity.active_seconds, 
-                                    "rhythm_variance": f2.temporal.iki_variance,
-                                    "production_context": f2.production_context,
-                                    "file_ref": filename 
-                                }));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    audit_trail.sort_by_key(|k| k["index"].as_u64().unwrap_or(0));
-    
-    let interpretation_notice = serde_json::json!({
-        "scope": "behavioral_conditions_only",
-        "excludes": ["originality", "authorship", "source_legitimacy"],
-        "statement": "This certificate qualifies behavioral production modes, not intellectual originality."
-    });
-
-    let html_content = generate_html_certificate(&metadata, &identity, calculated_duration, total_keystrokes_global, total_clicks_global, &audit_trail);
-    let html_filename = format!("CERTIFICAT_FINAL_{}.html", metadata.project_name.replace(" ", "_"));
-    let html_path = certs_dir.join(&html_filename);
-    fs::write(&html_path, html_content).map_err(|e| e.to_string())?;
-    
-    let final_cert = serde_json::json!({
-        "certificate_type": "HO-F4-FINAL", 
-        "ho_id": identity.ho_id, 
-        "analysis_mode": "heuristic_v1.5", 
-        "project_name": metadata.project_name,
-        "issued_at_utc": Utc::now().to_rfc3339(),
-        "interpretation_notice": interpretation_notice,
-        "global_stats": { "total_declared_sessions": metadata.sessions_count, "total_verified_proofs": audit_trail.len(), "total_active_seconds": calculated_duration, "total_keystrokes": total_keystrokes_global, "total_clicks": total_clicks_global },
-        "forensic_audit_trail": audit_trail, 
-        "status": "LOCKED"
-    });
-    let json_filename = format!("HO-F4-FINAL-{}.json", Utc::now().format("%Y%m%d-%H%M%S"));
-    fs::write(certs_dir.join(json_filename), serde_json::to_string_pretty(&final_cert).unwrap()).map_err(|e| e.to_string())?;
-    metadata.status = "LOCKED".to_string();
-    fs::write(json_path, serde_json::to_string_pretty(&metadata).unwrap()).map_err(|e| e.to_string())?;
-    Ok(html_path.to_string_lossy().to_string())
-}
-
-// =============================================================
-//  CROSS-PLATFORM FILE OPENERS (FIX WINDOWS)
-// =============================================================
-
-#[tauri::command]
-fn open_project_folder(project_name: String) -> Result<(), String> {
-    let doc_path = dirs::document_dir().ok_or("Impossible de trouver Documents")?;
-    let path = doc_path.join("HumanOrigin").join("Projets").join(project_name);
-    
-    if path.exists() { 
-        #[cfg(target_os = "windows")]
-        Command::new("explorer").arg(path).spawn().map_err(|e| e.to_string())?;
-
-        #[cfg(not(target_os = "windows"))]
-        Command::new("open").arg(path).spawn().map_err(|e| e.to_string())?;
-        
-        Ok(()) 
-    } else { 
-        Err("Dossier introuvable".into()) 
-    }
+    let mut all_proofs = Vec::new(); let mut total_keys = 0; let mut avg_scp = 0; let mut avg_evidence = 0;
+    if let Ok(entries) = fs::read_dir(certs_dir) { for entry in entries { if let Ok(e) = entry { if e.path().extension().map(|s| s == "json").unwrap_or(false) { if let Ok(c) = fs::read_to_string(e.path()) { if let Ok(proof) = serde_json::from_str::<BiometricProof>(&c) { total_keys += proof.keyboard_dynamics.total_keystrokes; avg_scp += proof.analysis.score; avg_evidence += proof.analysis.evidence_score; all_proofs.push(proof); } } } } } }
+    all_proofs.sort_by_key(|k| k.session_index); if all_proofs.len() > 0 { avg_scp /= all_proofs.len() as i32; avg_evidence /= all_proofs.len() as i32; }
+    let html = generate_html_certificate(&metadata, &all_proofs); let html_path = path.join("CERTIFICAT_FINAL.html"); fs::write(&html_path, html).map_err(|e| e.to_string())?;
+    Ok(FinalizationResult { html_path: html_path.to_string_lossy().to_string(), project_name: metadata.project_name, total_active_seconds: metadata.total_active_seconds, total_keystrokes: total_keys, session_count: metadata.sessions_count, scp_score: avg_scp, evidence_score: avg_evidence })
 }
 
 #[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    Command::new("explorer").arg(path).spawn().map_err(|e| e.to_string())?;
-
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     Command::new("open").arg(path).spawn().map_err(|e| e.to_string())?;
-    
     Ok(())
 }
 
 fn main() {
     let is_scanning = Arc::new(Mutex::new(false));
     let active_project_path = Arc::new(Mutex::new(None));
-    let session_start = Arc::new(Mutex::new(None));
-    let runtime = Arc::new(Mutex::new(RuntimeBuffers { keystroke_timestamps: Vec::new(), backspace_timestamps: Vec::new(), click_timestamps: Vec::new(), idle_periods: Vec::new(), last_input_timestamp: 0 }));
-    let is_scanning_for_thread = is_scanning.clone();
-    let runtime_for_thread = runtime.clone();
-
+    let runtime = Arc::new(Mutex::new(RuntimeBuffers { keystroke_timestamps: Vec::new(), backspace_timestamps: Vec::new(), click_timestamps: Vec::new(), start_timestamp: 0, start_rfc3339: String::new() }));
+    let is_scanning_clone = is_scanning.clone(); let runtime_clone = runtime.clone();
+    tauri_plugin_deep_link::prepare("com.humanorigin.app");
+    thread::spawn(move || { let device_state = DeviceState::new(); let mut prev_keys = vec![]; let mut prev_mouse = vec![]; loop { thread::sleep(Duration::from_millis(20)); { let scanning = is_scanning_clone.lock().unwrap(); if !*scanning { continue; } } let keys = device_state.get_keys(); let mouse = device_state.get_mouse(); let now = Utc::now().timestamp_millis(); if keys != prev_keys && keys.len() > prev_keys.len() { let mut rt = runtime_clone.lock().unwrap(); rt.keystroke_timestamps.push(now); let is_back = keys.contains(&Keycode::Backspace); let prev_back = prev_keys.contains(&Keycode::Backspace); if is_back && !prev_back { rt.backspace_timestamps.push(now); } } prev_keys = keys; let current_buttons = mouse.button_pressed; let pressed_now = current_buttons.iter().filter(|&&b| b).count(); let pressed_prev = prev_mouse.iter().filter(|&&b| b).count(); if pressed_now > pressed_prev { let mut rt = runtime_clone.lock().unwrap(); rt.click_timestamps.push(now); } prev_mouse = current_buttons; } });
+    
     tauri::Builder::default()
-        .manage(AppState { is_scanning, active_project_path, session_start, runtime })
-        .setup(move |_app| { 
-            thread::spawn(move || {
-                let device_state = DeviceState::new();
-                let mut prev_keys: Vec<Keycode> = vec![];
-                let mut prev_mouse_buttons: Vec<bool> = vec![];
-                loop {
-                    {
-                        let scanning = is_scanning_for_thread.lock().unwrap();
-                        if !*scanning { thread::sleep(Duration::from_millis(500)); continue; }
-                    }
-                    let keys = device_state.get_keys();
-                    let mouse = device_state.get_mouse();
-                    let current_mouse_buttons = mouse.button_pressed;
-                    let now = Utc::now().timestamp_millis();
-                    let mut activity_detected = false;
-                    if keys != prev_keys && keys.len() > prev_keys.len() {
-                        let mut rt = runtime_for_thread.lock().unwrap();
-                        rt.keystroke_timestamps.push(now); rt.last_input_timestamp = now;
-                        if keys.contains(&Keycode::Backspace) && !prev_keys.contains(&Keycode::Backspace) { rt.backspace_timestamps.push(now); }
-                        activity_detected = true;
-                    }
-                    if !activity_detected && current_mouse_buttons != prev_mouse_buttons {
-                         let pressed_count_now = current_mouse_buttons.iter().filter(|&&b| b).count();
-                         let pressed_count_prev = prev_mouse_buttons.iter().filter(|&&b| b).count();
-                         if pressed_count_now > pressed_count_prev { let mut rt = runtime_for_thread.lock().unwrap(); rt.click_timestamps.push(now); rt.last_input_timestamp = now; }
-                    }
-                    prev_keys = keys; prev_mouse_buttons = current_mouse_buttons;
-                    thread::sleep(Duration::from_millis(20));
-                }
-            });
-            Ok(())
-        })
+        .manage(AppState { is_scanning, active_project_path, runtime })
+        .setup(|app| { let handle = app.handle(); tauri_plugin_deep_link::register("humanorigin", move |request| { let _ = handle.emit_all("scheme-request", request); }).unwrap(); Ok(()) })
         .invoke_handler(tauri::generate_handler![
-            initialize_project, activate_project, start_scan, stop_scan, generate_intermediate_certificate, finalize_project, get_projects, open_project_folder, open_file,
-            vault_sync_push, vault_sync_pull 
+            get_projects, initialize_project, activate_project, start_scan, stop_scan, finalize_project, open_file, 
+            get_live_stats 
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

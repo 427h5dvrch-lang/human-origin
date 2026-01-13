@@ -1,26 +1,29 @@
 {
   "build": {
-    "beforeDevCommand": "",
-    "beforeBuildCommand": "",
-    "devPath": "../src",
-    "distDir": "../src",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist",
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "human-origin",
+    "productName": "HumanOrigin",
     "version": "0.1.0"
   },
   "tauri": {
     "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      },
+      "all": true,
       "http": {
         "all": true,
         "request": true,
-        "scope": ["http://localhost:3000/*"]
+        "scope": ["https://*"]
+      },
+      "shell": {
+        "all": true,
+        "open": true
+      },
+      "dialog": {
+        "all": true
       }
     },
     "bundle": {
@@ -34,7 +37,7 @@
       ],
       "resources": [],
       "copyright": "",
-      "category": "DeveloperTool",
+      "category": "Productivity",
       "shortDescription": "",
       "longDescription": "",
       "externalBin": []
@@ -47,8 +50,9 @@
         "fullscreen": false,
         "resizable": true,
         "title": "HumanOrigin",
-        "width": 800,
-        "height": 600
+        "width": 1000,
+        "height": 800,
+        "center": true
       }
     ]
   }

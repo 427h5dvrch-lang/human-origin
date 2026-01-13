@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HumanOrigin</title>
+    <style>
+      :root { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 16px; line-height: 24px; color: #0f0f0f; background-color: #f6f6f6; }
+      body { margin: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; }
+      .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05); width: 400px; text-align: center; }
+      h1 { margin-top: 0; font-size: 24px; margin-bottom: 20px; letter-spacing: -0.5px; }
+      
+      input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+      
+      button { width: 100%; padding: 12px; background-color: #000; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; margin-bottom: 10px; font-size: 14px; transition: background 0.2s; }
+      button:hover { background-color: #333; }
+      button.secondary { background-color: #f0f0f0; color: #333; }
+      button.danger { background-color: #ef4444; }
+
+      .dashboard { margin: 20px 0; padding: 20px; background: #fafafa; border: 1px solid #eee; border-radius: 8px; display: none; }
+      .timer { font-size: 32px; font-weight: 700; font-family: monospace; display: block; margin-bottom: 10px; }
+      .stats-row { display: flex; justify-content: space-around; font-size: 14px; color: #666; }
+      .stat-item strong { display: block; font-size: 18px; color: #000; }
+      
+      .info-text { color: #666; font-size: 14px; margin-bottom: 20px; line-height: 1.4; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>HumanOrigin</h1>
+
+      <div id="login-screen">
+        <p class="info-text">Un lien sécurisé vous sera envoyé par email pour vous connecter.</p>
+        <input type="email" id="email" placeholder="votre@email.com" />
+        <button id="login-btn">Recevoir un lien de connexion</button>
+      </div>
+
+      <div id="app-screen" style="display: none;">
+        <div id="project-section">
+            <h3>Nouveau Projet</h3>
+            <input id="project-name" placeholder="Nom du projet (ex: Mon Roman)" />
+            <button id="init-btn">Créer / Ouvrir</button>
+        </div>
+        <div id="controls-section" style="display: none;">
+            <h3 id="current-project-title">Projet Actif</h3>
+            <div id="live-dashboard" class="dashboard">
+                <span id="timer" class="timer">00:00</span>
+                <div class="stats-row"><div class="stat-item"><strong id="keystrokes-display">0</strong>Frappes</div><div class="stat-item"><strong id="clicks-display">0</strong>Clics</div></div>
+                <div style="margin-top:10px; font-size:10px; color:#999">MODE DIAGNOSTIC</div>
+            </div>
+            <button id="start-btn">▶ Démarrer Session</button>
+            <button id="stop-btn" class="danger" style="display: none;">⏹ Arrêter</button>
+            <button id="finalize-btn" class="secondary" style="margin-top: 20px;">🔒 Sceller & Certifier</button>
+        </div>
+        <button id="logout-btn" class="secondary" style="margin-top:30px; font-size:12px;">Se déconnecter</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
