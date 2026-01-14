@@ -2,23 +2,37 @@ import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { createClient } from "@supabase/supabase-js";
 
-// --- SUPABASE ---
+// --- SUPABASE KEYS ---
 const supabaseUrl = "https://bhlisgvozsgqxugrfsiu.supabase.co";
-const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobGlzZ3ZvenNncXh1Z3Jmc2l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNTI5NDEsImV4cCI6MjA4MzcyODk0MX0.L43rUuDFtg-QH7lVCFTFkJzMTjNUX7BWVXqmVMvIwZ0"; 
+const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobGlzZ3ZvenNncXh1Z3Jmc2l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNTI5NDEsImV4cCI6MjA4MzcyODk0MX0.L43rUuDFtg-QH7lVCFTFkJzMTjNUX7BWVXqmVMvIwZ0";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // --- STATE ---
 let currentUser = null;
 
-let currentProjectName = null;   // ex: "Mon Roman"
-let currentProjectPath = "";     // chemin local renvoyé par Rust
-let currentProjectId = null;     // UUID Supabase (ho_projects.id)
+let currentProjectName = null;
+let currentProjectPath = "";
+let currentProjectId = null;
+
+let currentSessionId = null;     // session row id (cloud)
+let lastSnapshot = null;         // snapshot Rust (pour finalize)
 
 let scanInterval = null;
 let scanStartTime = null;
 
 // =========================================================
-//  AUTH (lien email Supabase)
+//  CRYPTO (SHA-256 réel)
+// =========================================================
+async function sha256Hex(str) {
+  const buf = new TextEncoder().encode(str);
+  const digest = await crypto.subtle.digest("SHA-256", buf);
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// =========================================================
+//  AUTH (Deep link)
 // =========================================================
 listen("scheme-request", async (event) => {
   try {
@@ -35,31 +49,22 @@ listen("scheme-request", async (event) => {
       await checkSession();
     }
   } catch (e) {
-    console.error("scheme-request error:", e);
+    console.error("Auth error:", e);
   }
 });
 
 async function checkSession() {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) console.error("getSession error:", error);
+  const { data } = await supabase.auth.getSession();
 
   if (data?.session) {
     currentUser = data.session.user;
-
     document.getElementById("login-screen").style.display = "none";
     document.getElementById("app-screen").style.display = "block";
-
     await loadProjectList();
   } else {
     currentUser = null;
-
     document.getElementById("login-screen").style.display = "block";
     document.getElementById("app-screen").style.display = "none";
-
-    // reset state local
-    currentProjectName = null;
-    currentProjectPath = "";
-    currentProjectId = null;
   }
 }
 
@@ -69,34 +74,35 @@ async function handleLogin() {
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
-    options: {
-      emailRedirectTo: "humanorigin://login",
-      redirectTo: "humanorigin://login", // compat
-    },
+    options: { emailRedirectTo: "humanorigin://login", redirectTo: "humanorigin://login" },
   });
 
   if (error) return alert("Erreur: " + error.message);
-
-  alert("Un lien de connexion a été envoyé par email.");
+  alert("Lien envoyé par email.");
 }
 
 async function handleLogout() {
   await supabase.auth.signOut();
+  // reset state
+  currentProjectName = null;
+  currentProjectPath = "";
+  currentProjectId = null;
+  currentSessionId = null;
+  lastSnapshot = null;
   await checkSession();
 }
 
 // =========================================================
-//  PROJECT LIST (local from Rust)
+//  PROJECTS (Local + Cloud)
 // =========================================================
 async function loadProjectList() {
   try {
     const selector = document.getElementById("project-selector");
     if (!selector) return;
 
-    const projects = await invoke("get_projects"); // ["A","B",...]
+    const projects = await invoke("get_projects");
 
     selector.innerHTML = '<option value="" disabled selected>— Sélectionner —</option>';
-
     (projects || []).forEach((name) => {
       const opt = document.createElement("option");
       opt.value = name;
@@ -104,16 +110,12 @@ async function loadProjectList() {
       selector.appendChild(opt);
     });
 
-    // si un projet est déjà actif, on le reflète
     if (currentProjectName) selector.value = currentProjectName;
   } catch (e) {
-    console.error("loadProjectList error:", e);
+    console.error(e);
   }
 }
 
-// =========================================================
-//  CLOUD HELPERS
-// =========================================================
 async function ensureCloudProject(projectName) {
   if (!currentUser) throw new Error("Not authenticated");
 
@@ -130,51 +132,38 @@ async function ensureCloudProject(projectName) {
   return data.id;
 }
 
-// =========================================================
-//  PROJECT ACTIONS
-// =========================================================
 async function initializeProject() {
   const name = document.getElementById("project-name").value?.trim();
-  if (!name) return alert("Nom requis");
-  if (!currentUser) return alert("Veuillez vous connecter");
+  if (!name || !currentUser) return alert("Nom requis / Login requis");
 
   try {
-    // 1) create local
-    const path = await invoke("initialize_project", { projectName: name });
-    currentProjectPath = path;
-
-    // 2) activate local by name (Rust renvoie le path complet)
+    await invoke("initialize_project", { projectName: name });
     const activatedPath = await invoke("activate_project", { projectName: name });
+
     currentProjectPath = activatedPath;
-
-    // 3) ensure cloud project
     currentProjectId = await ensureCloudProject(name);
-
-    // 4) UI/state
     currentProjectName = name;
 
-    document.getElementById("project-section").style.display = "none";
-    document.getElementById("controls-section").style.display = "block";
-    document.getElementById("current-project-title").innerText = name;
+    // reset session context
+    currentSessionId = null;
+    lastSnapshot = null;
+    document.getElementById("finalize-btn").disabled = true;
 
+    updateUIForProject(name);
     await loadProjectList();
-    const selector = document.getElementById("project-selector");
-    if (selector) selector.value = name;
+    document.getElementById("project-selector").value = name;
   } catch (e) {
-    alert("Erreur Init: " + (e?.message || e));
+    alert("Erreur Init: " + e);
   }
 }
 
 async function switchProject(event) {
   const newName = event?.target?.value;
   if (!newName) return;
-  if (!currentUser) return alert("Veuillez vous connecter");
 
-  // si scan en cours => stop ou annule
-  const stopBtnVisible = document.getElementById("stop-btn")?.style?.display === "block";
-  if (stopBtnVisible) {
-    const ok = confirm(`Un scan est en cours. L'arrêter pour passer sur "${newName}" ?`);
-    if (!ok) {
+  // si scan en cours, stop d’abord
+  if (document.getElementById("stop-btn")?.style?.display === "block") {
+    if (!confirm("Arrêter le scan en cours ?")) {
       event.target.value = currentProjectName || "";
       return;
     }
@@ -182,34 +171,58 @@ async function switchProject(event) {
   }
 
   try {
-    // local activate
     const path = await invoke("activate_project", { projectName: newName });
     currentProjectPath = path;
-
-    // cloud project id
     currentProjectId = await ensureCloudProject(newName);
-
-    // UI
     currentProjectName = newName;
-    document.getElementById("project-section").style.display = "none";
-    document.getElementById("controls-section").style.display = "block";
-    document.getElementById("current-project-title").innerText = newName;
+
+    // reset session context
+    currentSessionId = null;
+    lastSnapshot = null;
+    document.getElementById("finalize-btn").disabled = true;
+
+    updateUIForProject(newName);
   } catch (e) {
-    alert("Erreur switch: " + (e?.message || e));
+    alert("Erreur Switch: " + e);
   }
 }
 
+function updateUIForProject(name) {
+  document.getElementById("project-section").style.display = "none";
+  document.getElementById("controls-section").style.display = "block";
+  document.getElementById("current-project-title").innerText = name;
+}
+
 // =========================================================
-//  SCAN
+//  SESSION PIPELINE (START -> INSERT, STOP -> UPDATE, FINALIZE -> INSERT CERT)
 // =========================================================
 async function startScan() {
-  if (!currentProjectName || !currentProjectPath) {
-    return alert("Veuillez sélectionner ou créer un projet.");
-  }
+  if (!currentUser) return alert("Login requis");
+  if (!currentProjectId) return alert("Sélectionnez un projet.");
 
   try {
+    // 1) Rust Start
     await invoke("start_scan");
     scanStartTime = new Date().toISOString();
+
+    // 2) Cloud INSERT Session (Started)
+    const { data, error } = await supabase
+      .from("ho_sessions")
+      .insert({
+        project_id: currentProjectId,
+        user_id: currentUser.id,
+        started_at: scanStartTime,
+        active_ms: 0,
+        idle_ms: 0,
+        events_count: 0,
+        diag: { version: "ho2.diag.v1" }
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    currentSessionId = data.id;
+    lastSnapshot = null;
 
     // UI
     document.getElementById("start-btn").style.display = "none";
@@ -217,23 +230,18 @@ async function startScan() {
     document.getElementById("finalize-btn").disabled = true;
     document.getElementById("live-dashboard").style.display = "block";
 
-    // live loop
     if (scanInterval) clearInterval(scanInterval);
     scanInterval = setInterval(async () => {
-      try {
-        const stats = await invoke("get_live_stats");
-        if (stats?.is_scanning) {
-          const min = Math.floor(stats.duration_sec / 60).toString().padStart(2, "0");
-          const sec = (stats.duration_sec % 60).toString().padStart(2, "0");
-
-          document.getElementById("timer").innerText = `${min}:${sec}`;
-          document.getElementById("keystrokes-display").innerText = String(stats.keystrokes ?? 0);
-          document.getElementById("clicks-display").innerText = String(stats.clicks ?? 0);
-        }
-      } catch (e) {
-        console.error("get_live_stats error:", e);
+      const stats = await invoke("get_live_stats");
+      if (stats?.is_scanning) {
+        const min = Math.floor(stats.duration_sec / 60).toString().padStart(2, "0");
+        const sec = (stats.duration_sec % 60).toString().padStart(2, "0");
+        document.getElementById("timer").innerText = `${min}:${sec}`;
+        document.getElementById("keystrokes-display").innerText = stats.keystrokes;
+        document.getElementById("clicks-display").innerText = stats.clicks;
       }
     }, 1000);
+
   } catch (e) {
     alert("Erreur Start: " + (e?.message || e));
   }
@@ -241,88 +249,91 @@ async function startScan() {
 
 async function stopScan() {
   if (scanInterval) clearInterval(scanInterval);
+  scanInterval = null;
+
+  if (!currentUser) return alert("Login requis");
+  if (!currentSessionId) return alert("Pas de session cloud active");
 
   try {
-    const analysis = await invoke("stop_scan");
+    // 1) Rust Stop & Snapshot
+    const snapshot = await invoke("stop_scan");
+    lastSnapshot = snapshot;
+
     const endTime = new Date().toISOString();
 
-    // INSERT ho_sessions (aligné SQL)
-    if (currentUser && currentProjectId) {
-      const { error } = await supabase.from("ho_sessions").insert({
-        project_id: currentProjectId,
-        user_id: currentUser.id,
-
-        started_at: scanStartTime,
+    // 2) Cloud UPDATE Session (Ended)
+    const { error } = await supabase
+      .from("ho_sessions")
+      .update({
         ended_at: endTime,
+        active_ms: snapshot.active_ms,
+        idle_ms: snapshot.idle_ms,
+        events_count: snapshot.events_count,
+        diag: snapshot.diag
+      })
+      .eq("id", currentSessionId);
 
-        session_index: null,
+    if (error) throw error;
 
-        wall_duration_sec: analysis.wall_duration_sec,
-        active_est_sec: analysis.active_est_sec,
-        keystrokes_count: analysis.keystrokes_count,
-        clicks_count: analysis.clicks_count,
-        total_events: analysis.total_events,
-
-        scp_score: analysis.score,
-        evidence_score: analysis.evidence_score,
-        effort_score: analysis.effort_score,
-
-        flags: analysis.flags ?? [],
-        verdict_label: analysis.verdict_label,
-      });
-
-      if (error) console.error("ho_sessions insert error:", error);
-    }
-
-    // UI reset
+    // UI Reset
     document.getElementById("start-btn").style.display = "block";
     document.getElementById("stop-btn").style.display = "none";
     document.getElementById("finalize-btn").disabled = false;
-
     document.getElementById("live-dashboard").style.display = "none";
     document.getElementById("timer").innerText = "00:00";
     document.getElementById("keystrokes-display").innerText = "0";
     document.getElementById("clicks-display").innerText = "0";
 
-    alert(
-      `Session terminée.\nVerdict: ${analysis.verdict_label}\nSCP: ${analysis.score} / 100\nPreuve: ${analysis.evidence_score} / 100`
-    );
+    alert(`Session terminée.\nSCP: ${snapshot.scp_score}/100\nPreuve: ${snapshot.evidence_score}/100`);
   } catch (e) {
     alert("Erreur Stop: " + (e?.message || e));
   }
 }
 
 async function finalizeProject() {
-  if (!currentProjectPath) return alert("Aucun projet actif.");
-  const ok = confirm("Générer le certificat final et sceller le projet ?");
-  if (!ok) return;
+  if (!currentUser) return alert("Login requis");
+  if (!currentProjectId) return alert("Pas de projet");
+  if (!currentSessionId) return alert("Aucune session récente.");
+  if (!lastSnapshot) return alert("Stoppe une session avant de certifier.");
+
+  if (!confirm("Générer le certificat final ?")) return;
 
   try {
+    // 1) Génération HTML locale
     const res = await invoke("finalize_project", { projectPath: currentProjectPath });
 
-    // UPSERT ho_certificates (aligné SQL)
-    if (currentUser && currentProjectId) {
-      const { error } = await supabase.from("ho_certificates").upsert(
-        {
-          project_id: currentProjectId,
+    // 2) Hash cryptographique réel
+    const payload = {
+      v: "cert.v1",
+      user_id: currentUser.id,
+      project_id: currentProjectId,
+      session_id: currentSessionId,
+      snapshot: lastSnapshot,
+      issued_at: new Date().toISOString()
+    };
+    const payloadHash = await sha256Hex(JSON.stringify(payload));
 
-          session_count: res.session_count,
-          total_active_seconds: res.total_active_seconds,
-          total_keystrokes: res.total_keystrokes,
+    // 3) Cloud INSERT Certificate
+    const { error } = await supabase
+      .from("ho_certificates")
+      .insert({
+        project_id: currentProjectId,
+        user_id: currentUser.id,
+        session_id: currentSessionId,
+        scp_score: res.scp_score,
+        evidence_score: res.evidence_score,
+        payload_hash: payloadHash,
+        signature: null
+      });
 
-          scp_score: res.scp_score,
-          evidence_score: res.evidence_score,
+    if (error) throw error;
 
-          signature_hash: "PENDING_SHA256",
-        },
-        { onConflict: "project_id" }
-      );
-
-      if (error) console.error("ho_certificates upsert error:", error);
-    }
-
-    alert(`Certificat généré.\nScore global: ${res.scp_score} / 100`);
+    alert("Certificat enregistré dans le Cloud ✅");
     await invoke("open_file", { path: res.html_path });
+
+    // Optionnel : “verrouiller” finalize jusqu’à nouvelle session
+    // document.getElementById("finalize-btn").disabled = true;
+
   } catch (e) {
     alert("Erreur Finalize: " + (e?.message || e));
   }
@@ -336,12 +347,13 @@ window.addEventListener("DOMContentLoaded", () => {
   document.getElementById("logout-btn").addEventListener("click", handleLogout);
 
   document.getElementById("init-btn").addEventListener("click", initializeProject);
+
   document.getElementById("start-btn").addEventListener("click", startScan);
   document.getElementById("stop-btn").addEventListener("click", stopScan);
   document.getElementById("finalize-btn").addEventListener("click", finalizeProject);
 
-  const selector = document.getElementById("project-selector");
-  if (selector) selector.addEventListener("change", switchProject);
+  const sel = document.getElementById("project-selector");
+  if (sel) sel.addEventListener("change", switchProject);
 
   checkSession();
 });
