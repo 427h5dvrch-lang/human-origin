@@ -16,11 +16,20 @@ use std::time::Duration;
 use tauri::{Manager, State};
 use uuid::Uuid;
 
+// --- SIGNATURE (Ed25519) ---
+use base64::{engine::general_purpose, Engine as _};
+use ed25519_dalek::{Signature, SigningKey, Signer};
+use rand_core::OsRng;
+
 // =============================================================
 //  CONSTANTES
 // =============================================================
 const EXTRA_CARRE_DRAIN: bool = true;
 const EXTRA_CARRE_DRAIN_MS: u64 = 40;
+
+// Stockage clé locale (simple, local-first)
+const KEY_DIR_NAME: &str = "HumanOrigin";
+const KEY_FILE_NAME: &str = "ho_ed25519.key"; // base64(32 bytes)
 
 // =============================================================
 //  STRUCTURES
@@ -116,6 +125,52 @@ struct AppState {
 }
 
 // =============================================================
+//  UTILS SIGNATURE
+// =============================================================
+fn key_storage_path() -> Result<PathBuf, String> {
+    let doc_path = dirs::document_dir().ok_or("Err Documents")?;
+    let base = doc_path.join(KEY_DIR_NAME);
+    fs::create_dir_all(&base).map_err(|e| e.to_string())?;
+    Ok(base.join(KEY_FILE_NAME))
+}
+
+fn ensure_signing_key() -> Result<SigningKey, String> {
+    let p = key_storage_path()?;
+    if p.exists() {
+        let b64 = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+        let raw = general_purpose::STANDARD
+            .decode(b64.trim())
+            .map_err(|e| format!("Key decode error: {}", e))?;
+        if raw.len() != 32 {
+            return Err("Key file invalid length".into());
+        }
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&raw);
+        return Ok(SigningKey::from_bytes(&seed));
+    }
+
+    // generate new key
+    let sk = SigningKey::generate(&mut OsRng);
+    let seed = sk.to_bytes(); // 32
+    let b64 = general_purpose::STANDARD.encode(seed);
+    fs::write(&p, b64).map_err(|e| e.to_string())?;
+    Ok(sk)
+}
+
+fn hex_to_bytes32(hex: &str) -> Result<[u8; 32], String> {
+    let s = hex.trim();
+    if s.len() != 64 {
+        return Err("payload_hash must be 64 hex chars".into());
+    }
+    let mut out = [0u8; 32];
+    for i in 0..32 {
+        let byte_str = &s[i * 2..i * 2 + 2];
+        out[i] = u8::from_str_radix(byte_str, 16).map_err(|_| "invalid hex".to_string())?;
+    }
+    Ok(out)
+}
+
+// =============================================================
 //  MOTEUR HO-2
 // =============================================================
 fn calculate_scp(start_ms: i64, end_ms: i64, keystrokes: &Vec<i64>, clicks: &Vec<i64>) -> SessionAnalysis {
@@ -150,13 +205,13 @@ fn calculate_scp(start_ms: i64, end_ms: i64, keystrokes: &Vec<i64>, clicks: &Vec
     let active_windows = histogram.iter().filter(|&&x| x > 0).count() as u32;
     let active_est_sec = std::cmp::min(wall_duration_sec, (active_windows as u64) * 30);
 
-    let mut score = 100;
     let inactivity_ratio = if num_windows > 0 {
         1.0 - (active_windows as f64 / num_windows as f64)
     } else {
         0.0
     };
 
+    let mut score = 100;
     let mut pen_inactivity = 0;
     if inactivity_ratio > 0.4 { pen_inactivity = 15; }
     if inactivity_ratio > 0.7 { pen_inactivity = 30; }
@@ -326,8 +381,10 @@ fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
     if !is_scanning || rt.start_timestamp == 0 {
         return Ok(LiveStats { is_scanning: false, duration_sec: 0, keystrokes: 0, clicks: 0 });
     }
+
     let now_ms = Utc::now().timestamp_millis();
     let duration_sec = ((now_ms - rt.start_timestamp).max(0) as u64) / 1000;
+
     Ok(LiveStats {
         is_scanning: true,
         duration_sec,
@@ -341,10 +398,13 @@ fn get_projects() -> Result<Vec<String>, String> {
     let doc_path = dirs::document_dir().ok_or("Err Documents")?;
     let path = doc_path.join("HumanOrigin").join("Projets");
     let mut projects = Vec::new();
+
     if let Ok(entries) = fs::read_dir(path) {
         for entry in entries.flatten() {
             if let Some(name) = entry.path().file_name().and_then(|n| n.to_str()) {
-                if !name.starts_with('.') { projects.push(name.to_string()); }
+                if !name.starts_with('.') {
+                    projects.push(name.to_string());
+                }
             }
         }
     }
@@ -378,18 +438,23 @@ fn initialize_project(project_name: String) -> Result<String, String> {
 fn activate_project(project_name: String, state: State<AppState>) -> Result<String, String> {
     let doc_path = dirs::document_dir().ok_or("Err Documents")?;
     let project_path = doc_path.join("HumanOrigin").join("Projets").join(&project_name);
+
     if !project_path.exists() {
         return Err(format!("Le projet '{}' n'existe pas.", project_name));
     }
+
     let mut active = state.active_project_path.lock().unwrap();
     *active = Some(project_path.clone());
+
     Ok(project_path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 fn start_scan(state: State<AppState>) -> Result<String, String> {
     let mut scanning = state.is_scanning.lock().unwrap();
-    if *scanning { return Err("Déjà en cours".into()); }
+    if *scanning {
+        return Err("Déjà en cours".into());
+    }
 
     let gen = state.scan_gen.fetch_add(1, Ordering::SeqCst) + 1;
     *scanning = true;
@@ -411,7 +476,9 @@ fn stop_scan(state: State<AppState>) -> Result<serde_json::Value, String> {
 
     {
         let mut scanning = state.is_scanning.lock().unwrap();
-        if !*scanning { return Err("Pas de session".into()); }
+        if !*scanning {
+            return Err("Pas de session".into());
+        }
         *scanning = false;
     }
 
@@ -454,7 +521,9 @@ fn stop_scan(state: State<AppState>) -> Result<serde_json::Value, String> {
             total_keystrokes: keys.len() as u64,
             backspace_count: backs.len() as u64,
         },
-        mouse_dynamics: MouseStats { total_clicks: clicks.len() as u64 },
+        mouse_dynamics: MouseStats {
+            total_clicks: clicks.len() as u64
+        },
         analysis: analysis.clone(),
     };
 
@@ -544,8 +613,28 @@ fn open_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// --- SIGNATURE COMMAND ---
+// On signe *le hash hex* (32 bytes) avec une clé locale persistante.
+#[tauri::command]
+fn sign_payload_hash(payload_hash: String) -> Result<serde_json::Value, String> {
+    let sk = ensure_signing_key()?;
+    let pk = sk.verifying_key();
+
+    let bytes = hex_to_bytes32(&payload_hash)?;
+    let sig: Signature = sk.sign(&bytes);
+
+    let pub_b64 = general_purpose::STANDARD.encode(pk.to_bytes());
+    let sig_b64 = general_purpose::STANDARD.encode(sig.to_bytes());
+
+    Ok(serde_json::json!({
+        "alg": "ed25519",
+        "public_key": pub_b64,
+        "signature": sig_b64
+    }))
+}
+
 // =============================================================
-//  MAIN (CORRECTION ICI : PLUS DE CRASH DEEP LINK)
+//  MAIN
 // =============================================================
 fn main() {
     let is_scanning = Arc::new(Mutex::new(false));
@@ -562,9 +651,10 @@ fn main() {
     let is_scanning_clone = is_scanning.clone();
     let runtime_clone = runtime.clone();
 
-    // On ignore le résultat de prepare ici pour ne pas bloquer
+    // Deep link safe en dev
     let _ = tauri_plugin_deep_link::prepare("com.humanorigin.app");
 
+    // background input listener
     thread::spawn(move || {
         let device_state = DeviceState::new();
         let mut prev_keys: Vec<Keycode> = vec![];
@@ -612,10 +702,7 @@ fn main() {
         })
         .setup(|app| {
             let handle = app.handle();
-            // ✅ CORRECTION MAJEURE : On enlève le .unwrap() ici.
-            // Si le deep link échoue (fréquent en dev), on log juste l'erreur au lieu de crasher.
             let _ = tauri_plugin_deep_link::register("humanorigin", move |request| {
-                println!("Deep Link Request: {:?}", request);
                 let _ = handle.emit_all("scheme-request", request);
             });
             Ok(())
@@ -628,7 +715,8 @@ fn main() {
             stop_scan,
             finalize_project,
             open_file,
-            get_live_stats
+            get_live_stats,
+            sign_payload_hash
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
