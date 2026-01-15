@@ -227,7 +227,31 @@
     </div>
 
     <div id="toast">Notification</div>
-
+<div id="cert-modal" class="modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2>🛡 Audit de Certification HO-3</h2>
+      <span class="close-modal" id="close-cert-modal">&times;</span>
+    </div>
+    <div class="modal-body">
+      <div id="cert-status-banner" class="status-banner pending">EN ATTENTE</div>
+      <div class="cert-grid">
+        <div class="field"><label>ID</label><span id="view-session-id" class="mono">...</span></div>
+        <div class="field"><label>Date</label><span id="view-date">...</span></div>
+        <div class="field"><label>Hash</label><div class="hash-box" id="view-hash">...</div></div>
+        <div class="field"><label>Signature</label><div class="hash-box" id="view-sig">...</div></div>
+      </div>
+      <details>
+        <summary>Voir le JSON Brut</summary>
+        <pre id="view-json-raw"></pre>
+      </details>
+      <div class="modal-actions">
+        <button id="btn-verify-integrity" class="btn-primary">🔍 Vérifier Intégrité</button>
+        <button id="btn-copy-json" class="btn-secondary">Copier</button>
+      </div>
+    </div>
+  </div>
+</div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

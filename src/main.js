@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { createClient } from "@supabase/supabase-js";
 
-// --- SUPABASE ---
+// --- SUPABASE CONFIG ---
 const supabaseUrl = "https://bhlisgvozsgqxugrfsiu.supabase.co";
 const supabaseAnonKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobGlzZ3ZvenNncXh1Z3Jmc2l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNTI5NDEsImV4cCI6MjA4MzcyODk0MX0.L43rUuDFtg-QH7lVCFTFkJzMTjNUX7BWVXqmVMvIwZ0";
@@ -16,8 +16,8 @@ let currentProjectName = null;
 let currentProjectPath = "";
 let currentProjectId = null;
 
-let currentSessionId = null; // cloud session row id
-let lastSnapshot = null;     // rust snapshot for finalize
+let currentSessionId = null; // ID session Cloud
+let lastSnapshot = null;     // Snapshot Rust pour finalize
 
 let scanInterval = null;
 let scanStartTime = null;
@@ -54,7 +54,7 @@ function resetLiveUI() {
 }
 
 // =========================================================
-//  CRYPTO (SHA-256 réel, payload_hash)
+//  CRYPTO UTILS (SHA-256)
 // =========================================================
 async function sha256Hex(str) {
   const buf = new TextEncoder().encode(str);
@@ -63,7 +63,7 @@ async function sha256Hex(str) {
 }
 
 // =========================================================
-//  OFFLINE QUEUE (Hardening)
+//  OFFLINE QUEUE (Système de résilience)
 // =========================================================
 const QUEUE_KEY = "ho_pending_ops_v1";
 
@@ -81,6 +81,15 @@ function enqueue(op) {
   const q = loadQueue();
   q.push({ ...op, ts: Date.now() });
   saveQueue(q);
+}
+
+async function withRetry(fn, tries = 2) {
+  let lastErr = null;
+  for (let i = 0; i <= tries; i++) {
+    try { return await fn(); }
+    catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 350 * (i + 1))); }
+  }
+  throw lastErr;
 }
 
 async function flushQueue() {
@@ -101,9 +110,6 @@ async function flushQueue() {
           .from("ho_sessions")
           .update(op.payload.update)
           .eq("id", op.payload.id);
-        if (error) throw error;
-      } else if (op.type === "cert_insert") {
-        const { error } = await supabase.from("ho_certificates").insert(op.payload);
         if (error) throw error;
       } else if (op.type === "project_upsert") {
         const { error } = await supabase
@@ -126,18 +132,8 @@ async function flushQueue() {
   }
 }
 
-// retry wrapper (simple)
-async function withRetry(fn, tries = 2) {
-  let lastErr = null;
-  for (let i = 0; i <= tries; i++) {
-    try { return await fn(); }
-    catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 350 * (i + 1))); }
-  }
-  throw lastErr;
-}
-
 // =========================================================
-//  AUTH (Deep link)
+//  AUTH (Login & Deep Link)
 // =========================================================
 listen("scheme-request", async (event) => {
   try {
@@ -190,25 +186,28 @@ async function handleLogin() {
 }
 
 async function handleLogout() {
-  await supabase.auth.signOut();
+  // --- NETTOYAGE MÉMOIRE TAMPON ---
+  localStorage.clear();
+  console.log("Mémoire locale nettoyée.");
+  // --------------------------------
 
-  // reset state
+  await supabase.auth.signOut();
   currentProjectName = null;
   currentProjectPath = "";
   currentProjectId = null;
   currentSessionId = null;
   lastSnapshot = null;
   resetLiveUI();
-
   setProjectTitle(null);
   $("controls-section").style.display = "none";
   $("project-section").style.display = "block";
-
-  await checkSession();
+  
+  // Recharger pour être propre
+  window.location.reload();
 }
 
 // =========================================================
-//  PROJECTS (Local + Cloud)
+//  PROJECTS MANAGEMENT
 // =========================================================
 async function loadProjectList() {
   try {
@@ -231,7 +230,6 @@ async function loadProjectList() {
 
 async function ensureCloudProject(projectName) {
   if (!currentUser) throw new Error("Not authenticated");
-
   const payload = { user_id: currentUser.id, name: projectName };
 
   try {
@@ -245,7 +243,6 @@ async function ensureCloudProject(projectName) {
     if (error) throw error;
     return data.id;
   } catch (e) {
-    // offline queue
     enqueue({ type: "project_upsert", payload });
     throw e;
   }
@@ -262,7 +259,6 @@ async function initializeProject() {
     currentProjectPath = activatedPath;
     currentProjectId = await ensureCloudProject(name);
     currentProjectName = name;
-
     currentSessionId = null;
     lastSnapshot = null;
     $("finalize-btn").disabled = true;
@@ -270,7 +266,6 @@ async function initializeProject() {
     updateUIForProject(name);
     await loadProjectList();
     $("project-selector").value = name;
-
     await refreshHistory();
     toast("Projet prêt ✅");
   } catch (e) {
@@ -283,7 +278,6 @@ async function switchProject(event) {
   const newName = event?.target?.value;
   if (!newName) return;
 
-  // si scan en cours, stop d’abord
   if ($("stop-btn")?.style?.display === "block") {
     if (!confirm("Arrêter le scan en cours ?")) {
       event.target.value = currentProjectName || "";
@@ -295,10 +289,8 @@ async function switchProject(event) {
   try {
     const path = await invoke("activate_project", { projectName: newName });
     currentProjectPath = path;
-
     currentProjectId = await ensureCloudProject(newName);
     currentProjectName = newName;
-
     currentSessionId = null;
     lastSnapshot = null;
     $("finalize-btn").disabled = true;
@@ -319,7 +311,7 @@ function updateUIForProject(name) {
 }
 
 // =========================================================
-//  SESSION PIPELINE (START -> INSERT, STOP -> UPDATE, FINALIZE -> INSERT CERT)
+//  SESSION PIPELINE (SCAN)
 // =========================================================
 async function startScan() {
   if (!currentUser) return alert("Login requis");
@@ -347,8 +339,6 @@ async function startScan() {
       currentSessionId = data.id;
       setOnlineBadge(true);
     } catch (e) {
-      // offline: create a local placeholder id to update later is hard;
-      // we enforce: if insert fails, we keep a "local session" and queue only finalize after insert works.
       currentSessionId = null;
       enqueue({ type: "session_insert", payload });
       setOnlineBadge(false);
@@ -356,8 +346,6 @@ async function startScan() {
     }
 
     lastSnapshot = null;
-
-    // UI
     $("start-btn").style.display = "none";
     $("stop-btn").style.display = "block";
     $("finalize-btn").disabled = true;
@@ -374,7 +362,6 @@ async function startScan() {
         $("clicks-display").innerText = String(stats.clicks);
       }
     }, 1000);
-
     toast("Scan démarré");
   } catch (e) {
     console.error(e);
@@ -385,16 +372,13 @@ async function startScan() {
 async function stopScan() {
   if (scanInterval) clearInterval(scanInterval);
   scanInterval = null;
-
   if (!currentUser) return alert("Login requis");
 
   try {
     const snapshot = await invoke("stop_scan");
     lastSnapshot = snapshot;
-
     const endTime = new Date().toISOString();
 
-    // Update cloud only if we have a real session id
     if (currentSessionId) {
       const update = {
         ended_at: endTime,
@@ -403,7 +387,6 @@ async function stopScan() {
         events_count: snapshot.events_count,
         diag: snapshot.diag
       };
-
       try {
         const { error } = await withRetry(async () =>
           await supabase.from("ho_sessions").update(update).eq("id", currentSessionId)
@@ -416,12 +399,10 @@ async function stopScan() {
         toast("Update session en queue");
       }
     } else {
-      // Insert failed at start => we can't reliably update; force flush before finalize
-      toast("⚠️ Session non créée côté cloud. Sync requis avant certificat.");
+      toast("⚠️ Sync requis avant certificat.");
       setOnlineBadge(false);
     }
 
-    // UI Reset
     $("start-btn").style.display = "block";
     $("stop-btn").style.display = "none";
     $("finalize-btn").disabled = false;
@@ -432,7 +413,6 @@ async function stopScan() {
     $("last-evidence").innerText = String(snapshot.evidence_score);
 
     await refreshHistory();
-
     alert(`Session terminée.\nSCP: ${snapshot.scp_score}/100\nPreuve: ${snapshot.evidence_score}/100`);
   } catch (e) {
     console.error(e);
@@ -440,87 +420,115 @@ async function stopScan() {
   }
 }
 
+// =========================================================
+//  CERTIFICATION HO-3 (Authority)
+// =========================================================
 async function finalizeProject() {
   if (!currentUser) return alert("Login requis");
   if (!currentProjectId) return alert("Pas de projet");
   if (!lastSnapshot) return alert("Stoppe une session avant de certifier.");
 
-  // On exige que la session existe côté cloud (sinon chaîne cassée)
   if (!currentSessionId) {
     await flushQueue();
     if (!currentSessionId) {
-      return alert("Impossible de certifier: session cloud non créée. Réessaie après sync.");
+      return alert("Mode Offline : Impossible de contacter l'Autorité (Edge Function).\nReconnectez-vous.");
     }
   }
 
-  if (!confirm("Générer le certificat final ?")) return;
+  if (!confirm("Générer le certificat final (Signature Autorité) ?")) return;
 
   try {
-    // 1) Génération HTML locale
+    toast("Génération & Signature locale...");
+
+    // 1) Rust finalize (HTML)
     const res = await invoke("finalize_project", { projectPath: currentProjectPath });
 
-    // 2) Payload -> hash (SHA256 hex)
-    const payload = {
-      v: "cert.v1",
-      user_id: currentUser.id,
-      project_id: currentProjectId,
-      session_id: currentSessionId,
-      snapshot: lastSnapshot,
-      issued_at: new Date().toISOString()
+    // 2) Payload Canonique (HO-3 Spec)
+    const cert_unsigned = {
+        protocol: "ho-cert-v1",
+        meta: {
+            project_id: currentProjectId,
+            session_id: currentSessionId,
+            user_id: currentUser.id,
+            issued_at: new Date().toISOString()
+        },
+        scores: {
+            scp: res.scp_score,
+            evidence: res.evidence_score
+        }
     };
-    const payloadHash = await sha256Hex(JSON.stringify(payload));
 
-    // 3) Signature Ed25519 côté Rust (clé locale persistante)
+    // 3) Hash & Sign Local
+    const certString = JSON.stringify(cert_unsigned);
+    const payloadHash = await sha256Hex(certString);
     const sigObj = await invoke("sign_payload_hash", { payloadHash });
 
-    // 4) Cloud INSERT Certificate
-    const certPayload = {
-      project_id: currentProjectId,
-      user_id: currentUser.id,
-      session_id: currentSessionId,
-      scp_score: res.scp_score,
-      evidence_score: res.evidence_score,
-      payload_hash: payloadHash,
-      signature: JSON.stringify(sigObj) // <- on stocke JSON ici
-    };
+    toast("Envoi au Notaire (Supabase)...");
 
-    try {
-      const { error } = await withRetry(async () =>
-        await supabase.from("ho_certificates").insert(certPayload)
-      );
-      if (error) throw error;
-      setOnlineBadge(true);
-      toast("Certificat cloud ✅");
-    } catch (e) {
-      enqueue({ type: "cert_insert", payload: certPayload });
-      setOnlineBadge(false);
-      toast("Certificat en queue (offline)");
+    // 4) Appel Edge Function (HO-3)
+    const { data, error } = await supabase.functions.invoke('sign-cert', {
+        body: {
+            cert_unsigned: cert_unsigned,
+            device_signature: JSON.stringify(sigObj),
+            payload_hash: payloadHash
+        }
+    });
+
+    if (error) {
+        console.error("Authority Error:", error);
+        throw new Error("L'Autorité a rejeté la certification (ou erreur réseau).");
     }
+
+    setOnlineBadge(true);
+    toast("Certifié par l'Autorité ✅");
 
     await refreshHistory();
     await invoke("open_file", { path: res.html_path });
 
   } catch (e) {
     console.error(e);
-    alert("Erreur Finalize: " + (e?.message || e));
+    alert("Erreur Certification HO-3 : " + (e?.message || e));
   }
 }
 
 // =========================================================
-//  HISTORY UI (Sessions + Certificates)
+//  HISTORY & AUDIT VIEWER (HO-3 UI)
 // =========================================================
 function fmtDate(iso) {
   if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString("fr-FR");
-  } catch { return iso; }
+  try { return new Date(iso).toLocaleString("fr-FR"); } catch { return iso; }
+}
+
+let currentCertData = null;
+
+async function openCertViewer(certId) {
+  toast("Chargement de la preuve...");
+  const { data } = await supabase.from("ho_certificates").select("*").eq("id", certId).single();
+  
+  if(!data) return toast("Certificat introuvable");
+  currentCertData = data;
+  
+  $("view-session-id").innerText = data.session_id;
+  $("view-date").innerText = new Date(data.issued_at).toLocaleString();
+  $("view-hash").innerText = data.payload_hash || "N/A";
+  
+  // Affichage Signature Tronquée
+  const sigText = data.signature || data.authority_signature || "Non signé";
+  $("view-sig").innerText = sigText.length > 40 ? sigText.substring(0,40) + "..." : sigText;
+  
+  // Affichage JSON complet
+  const displayJson = data.cert_json || data;
+  $("view-json-raw").innerText = JSON.stringify(displayJson, null, 2);
+  
+  $("cert-status-banner").className = "status-banner pending";
+  $("cert-status-banner").innerText = "EN ATTENTE DE VÉRIFICATION";
+  $("cert-modal").style.display = "flex";
 }
 
 async function refreshHistory() {
   if (!currentUser || !currentProjectId) return;
 
-  // sessions
+  // SESSIONS
   try {
     const { data: sessions, error } = await supabase
       .from("ho_sessions")
@@ -530,7 +538,6 @@ async function refreshHistory() {
       .limit(20);
 
     if (error) throw error;
-
     const tbody = $("sessions-tbody");
     tbody.innerHTML = "";
     (sessions || []).forEach((s) => {
@@ -545,32 +552,28 @@ async function refreshHistory() {
       `;
       tbody.appendChild(tr);
     });
-    setOnlineBadge(loadQueue().length === 0);
-  } catch (e) {
-    console.error(e);
-    setOnlineBadge(false);
-  }
+  } catch (e) { console.error(e); }
 
-  // certs
+  // CERTIFICATS
   try {
     const { data: certs, error } = await supabase
       .from("ho_certificates")
-      .select("id, issued_at, session_id, scp_score, evidence_score, payload_hash, signature")
+      .select("*")
       .eq("project_id", currentProjectId)
       .order("issued_at", { ascending: false })
       .limit(20);
 
     if (error) throw error;
-
     const tbody = $("certs-tbody");
     tbody.innerHTML = "";
     (certs || []).forEach((c) => {
       const tr = document.createElement("tr");
-      let sig = "—";
-      try {
-        const o = JSON.parse(c.signature || "{}");
-        sig = o?.alg ? `${o.alg} ✅` : "—";
-      } catch {}
+      tr.style.cursor = "pointer"; // Indique cliquable
+      tr.onclick = () => openCertViewer(c.id); // Ouverture MODAL
+
+      let sigStatus = "—";
+      if (c.signature || c.authority_signature) sigStatus = "✅ HO-3";
+      
       tr.innerHTML = `
         <td class="mono">${String(c.id).slice(0, 8)}…</td>
         <td>${fmtDate(c.issued_at)}</td>
@@ -578,7 +581,7 @@ async function refreshHistory() {
         <td>${c.scp_score ?? "—"}</td>
         <td>${c.evidence_score ?? "—"}</td>
         <td class="mono">${String(c.payload_hash || "").slice(0, 10)}…</td>
-        <td>${sig}</td>
+        <td>${sigStatus}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -595,27 +598,50 @@ async function refreshHistory() {
 //  INIT
 // =========================================================
 window.addEventListener("DOMContentLoaded", () => {
+  // Listeners principaux
   $("login-btn").addEventListener("click", handleLogin);
   $("logout-btn").addEventListener("click", handleLogout);
-
   $("init-btn").addEventListener("click", initializeProject);
-
   $("start-btn").addEventListener("click", startScan);
   $("stop-btn").addEventListener("click", stopScan);
   $("finalize-btn").addEventListener("click", finalizeProject);
-
+  
+  // Sync
   $("sync-btn").addEventListener("click", async () => {
     await flushQueue();
     await refreshHistory();
   });
 
+  // Sélecteur projet
   const sel = $("project-selector");
   if (sel) sel.addEventListener("change", switchProject);
 
+  // Modal Audit Listeners
+  $("close-cert-modal").onclick = () => $("cert-modal").style.display = "none";
+  
+  $("btn-verify-integrity").onclick = () => {
+     // Vérification UI
+     const data = currentCertData;
+     if(data && (data.authority_signature || (data.signature && data.signature.includes("HO-3")))) {
+         $("cert-status-banner").className = "status-banner valid";
+         $("cert-status-banner").innerText = "✅ VALIDE : SIGNÉ PAR AUTORITÉ";
+         toast("Intégrité confirmée");
+     } else {
+         $("cert-status-banner").className = "status-banner invalid";
+         $("cert-status-banner").innerText = "⚠️ SIGNATURE MANQUANTE";
+     }
+  };
+
+  $("btn-copy-json").onclick = () => {
+      navigator.clipboard.writeText($("view-json-raw").innerText);
+      alert("JSON copié dans le presse-papier !");
+  };
+
+  // Init UI State
   $("finalize-btn").disabled = true;
   $("controls-section").style.display = "none";
   $("project-section").style.display = "block";
 
-  saveQueue(loadQueue()); // init badges + count
+  saveQueue(loadQueue());
   checkSession();
 });
