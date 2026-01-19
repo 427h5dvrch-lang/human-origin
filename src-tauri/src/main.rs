@@ -21,6 +21,10 @@ use base64::{engine::general_purpose, Engine as _};
 use ed25519_dalek::{Signature, SigningKey, Signer};
 use rand_core::OsRng;
 
+// --- HO-4: DRAFTS MODULE ---
+mod drafts;
+use drafts::{delete_draft, list_drafts, load_draft};
+
 // =============================================================
 //  CONSTANTES
 // =============================================================
@@ -115,6 +119,9 @@ struct RuntimeBuffers {
     start_timestamp: i64,
     start_rfc3339: String,
     active_gen: u64,
+
+    // ✅ HO-4: session_id "cloud" fourni par JS au start_scan
+    current_session_id: Option<String>,
 }
 
 struct AppState {
@@ -173,15 +180,18 @@ fn hex_to_bytes32(hex: &str) -> Result<[u8; 32], String> {
 // =============================================================
 //  MOTEUR HO-2
 // =============================================================
-fn calculate_scp(start_ms: i64, end_ms: i64, keystrokes: &Vec<i64>, clicks: &Vec<i64>) -> SessionAnalysis {
+fn calculate_scp(
+    start_ms: i64,
+    end_ms: i64,
+    keystrokes: &Vec<i64>,
+    clicks: &Vec<i64>,
+) -> SessionAnalysis {
     let wall_duration_sec = std::cmp::max(1, (end_ms - start_ms) / 1000) as u64;
     let window_size = 30u64;
     let num_windows = (wall_duration_sec / window_size) + 1;
 
     let mut histogram = vec![0u32; num_windows as usize];
     let mut total_events: u32 = 0;
-    let keystrokes_count = keystrokes.len() as u32;
-    let clicks_count = clicks.len() as u32;
 
     for k in keystrokes {
         if *k >= start_ms && *k <= end_ms {
@@ -213,8 +223,12 @@ fn calculate_scp(start_ms: i64, end_ms: i64, keystrokes: &Vec<i64>, clicks: &Vec
 
     let mut score = 100;
     let mut pen_inactivity = 0;
-    if inactivity_ratio > 0.4 { pen_inactivity = 15; }
-    if inactivity_ratio > 0.7 { pen_inactivity = 30; }
+    if inactivity_ratio > 0.4 {
+        pen_inactivity = 15;
+    }
+    if inactivity_ratio > 0.7 {
+        pen_inactivity = 30;
+    }
 
     let mut pen_burst = 0;
     if num_windows >= 6 && total_events > 50 {
@@ -223,16 +237,24 @@ fn calculate_scp(start_ms: i64, end_ms: i64, keystrokes: &Vec<i64>, clicks: &Vec
         let top_10_percent_count = (num_windows as f64 * 0.1).ceil() as usize;
         let events_in_top: u32 = sorted_hist.iter().take(top_10_percent_count).sum();
         let burst_ratio = events_in_top as f64 / total_events as f64;
-        if burst_ratio > 0.6 { pen_burst = 20; }
-        if burst_ratio > 0.85 { pen_burst = 40; }
+        if burst_ratio > 0.6 {
+            pen_burst = 20;
+        }
+        if burst_ratio > 0.85 {
+            pen_burst = 40;
+        }
     }
 
     let max_events = *histogram.iter().max().unwrap_or(&0);
     let mut pen_density = 0;
-    if max_events > 300 { pen_density = 25; }
+    if max_events > 300 {
+        pen_density = 25;
+    }
 
     score = score - pen_inactivity - pen_burst - pen_density;
-    if score < 0 { score = 0; }
+    if score < 0 {
+        score = 0;
+    }
 
     let (mut verdict_label, mut verdict_color) = if score >= 80 {
         ("COHÉRENT".to_string(), "#10b981".to_string())
@@ -257,12 +279,19 @@ fn calculate_scp(start_ms: i64, end_ms: i64, keystrokes: &Vec<i64>, clicks: &Vec
         flags.push("LOW_ACTIVE_WINDOWS".into());
         evidence_score -= 40;
     }
-    if evidence_score < 0 { evidence_score = 0; }
+    if evidence_score < 0 {
+        evidence_score = 0;
+    }
 
-    let evidence_label = if evidence_score >= 70 { "FORT" }
-    else if evidence_score >= 40 { "MOYEN" }
-    else if evidence_score >= 15 { "FAIBLE" }
-    else { "NON_CONCLUANT" };
+    let evidence_label = if evidence_score >= 70 {
+        "FORT"
+    } else if evidence_score >= 40 {
+        "MOYEN"
+    } else if evidence_score >= 15 {
+        "FAIBLE"
+    } else {
+        "NON_CONCLUANT"
+    };
 
     if evidence_label == "NON_CONCLUANT" {
         verdict_label = "NON CONCLUANT".into();
@@ -271,14 +300,29 @@ fn calculate_scp(start_ms: i64, end_ms: i64, keystrokes: &Vec<i64>, clicks: &Vec
 
     let active_minutes = (active_est_sec as f64) / 60.0;
     let total_actions = total_events as f64;
-    let effort_score = if active_minutes > 0.0 { total_actions / active_minutes } else { 0.0 };
+    let effort_score = if active_minutes > 0.0 {
+        total_actions / active_minutes
+    } else {
+        0.0
+    };
 
     SessionAnalysis {
-        score, verdict_label, verdict_color,
-        inactivity_penalty: pen_inactivity, burst_penalty: pen_burst, density_penalty: pen_density,
-        activity_histogram: histogram, evidence_score, evidence_label: evidence_label.to_string(), flags,
-        total_events, keystrokes_count, clicks_count,
-        wall_duration_sec, active_est_sec, effort_score,
+        score,
+        verdict_label,
+        verdict_color,
+        inactivity_penalty: pen_inactivity,
+        burst_penalty: pen_burst,
+        density_penalty: pen_density,
+        activity_histogram: histogram,
+        evidence_score,
+        evidence_label: evidence_label.to_string(),
+        flags,
+        total_events,
+        keystrokes_count: keystrokes.len() as u32,
+        clicks_count: clicks.len() as u32,
+        wall_duration_sec,
+        active_est_sec,
+        effort_score,
     }
 }
 
@@ -301,7 +345,11 @@ fn generate_html_certificate(metadata: &ProjectMetadata, proofs: &Vec<BiometricP
         let mut bars_html = String::new();
         let max_val = *p.analysis.activity_histogram.iter().max().unwrap_or(&1);
         for val in &p.analysis.activity_histogram {
-            let height = if max_val > 0 { (*val as f64 / max_val as f64) * 100.0 } else { 0.0 };
+            let height = if max_val > 0 {
+                (*val as f64 / max_val as f64) * 100.0
+            } else {
+                0.0
+            };
             let color = if *val > 300 { "#ef4444" } else { "#ddd" };
             bars_html.push_str(&format!(
                 "<div class='bar' style='height:{}%; background:{}'></div>",
@@ -333,8 +381,16 @@ fn generate_html_certificate(metadata: &ProjectMetadata, proofs: &Vec<BiometricP
         ));
     }
 
-    let avg_scp = if !proofs.is_empty() { weighted_scp / proofs.len() as i32 } else { 0 };
-    let avg_evidence = if !proofs.is_empty() { weighted_evidence / proofs.len() as i32 } else { 0 };
+    let avg_scp = if !proofs.is_empty() {
+        weighted_scp / proofs.len() as i32
+    } else {
+        0
+    };
+    let avg_evidence = if !proofs.is_empty() {
+        weighted_evidence / proofs.len() as i32
+    } else {
+        0
+    };
 
     let global_color = if avg_evidence < 30 {
         "#6b7280"
@@ -379,7 +435,12 @@ fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
     let rt = state.runtime.lock().unwrap();
 
     if !is_scanning || rt.start_timestamp == 0 {
-        return Ok(LiveStats { is_scanning: false, duration_sec: 0, keystrokes: 0, clicks: 0 });
+        return Ok(LiveStats {
+            is_scanning: false,
+            duration_sec: 0,
+            keystrokes: 0,
+            clicks: 0,
+        });
     }
 
     let now_ms = Utc::now().timestamp_millis();
@@ -414,7 +475,10 @@ fn get_projects() -> Result<Vec<String>, String> {
 #[tauri::command]
 fn initialize_project(project_name: String) -> Result<String, String> {
     let doc_path = dirs::document_dir().ok_or("Err Documents")?;
-    let project_path = doc_path.join("HumanOrigin").join("Projets").join(&project_name);
+    let project_path = doc_path
+        .join("HumanOrigin")
+        .join("Projets")
+        .join(&project_name);
     fs::create_dir_all(project_path.join("certificats")).map_err(|e| e.to_string())?;
 
     let metadata = ProjectMetadata {
@@ -428,8 +492,9 @@ fn initialize_project(project_name: String) -> Result<String, String> {
 
     fs::write(
         project_path.join("project.json"),
-        serde_json::to_string_pretty(&metadata).unwrap()
-    ).map_err(|e| e.to_string())?;
+        serde_json::to_string_pretty(&metadata).unwrap(),
+    )
+    .map_err(|e| e.to_string())?;
 
     Ok(project_path.to_string_lossy().to_string())
 }
@@ -437,7 +502,10 @@ fn initialize_project(project_name: String) -> Result<String, String> {
 #[tauri::command]
 fn activate_project(project_name: String, state: State<AppState>) -> Result<String, String> {
     let doc_path = dirs::document_dir().ok_or("Err Documents")?;
-    let project_path = doc_path.join("HumanOrigin").join("Projets").join(&project_name);
+    let project_path = doc_path
+        .join("HumanOrigin")
+        .join("Projets")
+        .join(&project_name);
 
     if !project_path.exists() {
         return Err(format!("Le projet '{}' n'existe pas.", project_name));
@@ -449,8 +517,9 @@ fn activate_project(project_name: String, state: State<AppState>) -> Result<Stri
     Ok(project_path.to_string_lossy().to_string())
 }
 
+/// ✅ start_scan reçoit maintenant le session_id cloud (ho_sessions.id)
 #[tauri::command]
-fn start_scan(state: State<AppState>) -> Result<String, String> {
+fn start_scan(state: State<AppState>, session_id: String) -> Result<String, String> {
     let mut scanning = state.is_scanning.lock().unwrap();
     if *scanning {
         return Err("Déjà en cours".into());
@@ -467,11 +536,19 @@ fn start_scan(state: State<AppState>) -> Result<String, String> {
     rt.start_rfc3339 = Utc::now().to_rfc3339();
     rt.active_gen = gen;
 
+    // ✅ stocker le session_id pour stop_scan + draft
+    rt.current_session_id = Some(session_id);
+
     Ok("Scan Démarré".into())
 }
 
+// -------------------------------------------------------------
+// STOP SCAN (HO-4: SAVE DRAFT + session_id cloud)
+// -------------------------------------------------------------
 #[tauri::command]
-fn stop_scan(state: State<AppState>) -> Result<serde_json::Value, String> {
+fn stop_scan(app: tauri::AppHandle, state: State<AppState>) -> Result<serde_json::Value, String> {
+    println!("🛑 DEBUG: stop_scan appelé !"); // <--- LOG 1
+
     state.scan_gen.fetch_add(1, Ordering::SeqCst);
 
     {
@@ -486,16 +563,24 @@ fn stop_scan(state: State<AppState>) -> Result<serde_json::Value, String> {
         thread::sleep(Duration::from_millis(EXTRA_CARRE_DRAIN_MS));
     }
 
-    let path_buf = state.active_project_path.lock().unwrap().clone().ok_or("Pas de projet actif")?;
+    let path_buf = state
+        .active_project_path
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or("Pas de projet actif")?;
 
-    let (start_ms, start_rfc3339, keys, backs, clicks) = {
+    let (start_ms, start_rfc3339, keys, backs, clicks, session_id) = {
         let rt = state.runtime.lock().unwrap();
         (
             rt.start_timestamp,
             rt.start_rfc3339.clone(),
             rt.keystroke_timestamps.clone(),
             rt.backspace_timestamps.clone(),
-            rt.click_timestamps.clone()
+            rt.click_timestamps.clone(),
+            rt.current_session_id
+                .clone()
+                .ok_or("session_id manquant (start_scan)".to_string())?,
         )
     };
 
@@ -512,7 +597,7 @@ fn stop_scan(state: State<AppState>) -> Result<serde_json::Value, String> {
     metadata.last_activity_utc = Utc::now().to_rfc3339();
 
     let proof = BiometricProof {
-        session_id: Uuid::new_v4().to_string(),
+        session_id: session_id.clone(),
         timestamp_start: start_rfc3339,
         timestamp_end: Utc::now().to_rfc3339(),
         project_name: metadata.project_name.clone(),
@@ -522,22 +607,44 @@ fn stop_scan(state: State<AppState>) -> Result<serde_json::Value, String> {
             backspace_count: backs.len() as u64,
         },
         mouse_dynamics: MouseStats {
-            total_clicks: clicks.len() as u64
+            total_clicks: clicks.len() as u64,
         },
         analysis: analysis.clone(),
     };
 
     fs::write(
-        path_buf.join("certificats").join(format!("session_{}.json", metadata.sessions_count)),
-        serde_json::to_string_pretty(&proof).unwrap()
-    ).map_err(|e| e.to_string())?;
+        path_buf
+            .join("certificats")
+            .join(format!("session_{}.json", metadata.sessions_count)),
+        serde_json::to_string_pretty(&proof).unwrap(),
+    )
+    .map_err(|e| e.to_string())?;
 
-    fs::write(
-        json_path,
-        serde_json::to_string_pretty(&metadata).unwrap()
-    ).map_err(|e| e.to_string())?;
+    fs::write(json_path, serde_json::to_string_pretty(&metadata).unwrap())
+        .map_err(|e| e.to_string())?;
 
-    // ----- Snapshot Cloud V2
+    // --- HO-4: DRAFT AUTO-SAVE (DEBUG VERSION) ---
+    println!("🔍 DEBUG: Tentative de sauvegarde du draft..."); // <--- LOG 2
+    let app_dir_opt = app.path_resolver().app_data_dir();
+    println!("🔍 DEBUG: Chemin AppData: {:?}", app_dir_opt); // <--- LOG 3
+
+    if let Some(app_dir) = app_dir_opt {
+        let proof_json = serde_json::to_string(&proof).unwrap_or_default();
+        if let Err(e) = drafts::save_draft(&app_dir, &proof.session_id, &proof_json) {
+            println!("⚠️ ERREUR sauvegarde draft: {}", e);
+        } else {
+            println!("✅ DRAFT SAUVEGARDÉ SUR DISQUE: {}", proof.session_id);
+        }
+    } else {
+        println!("❌ ERREUR CRITIQUE: Tauri ne trouve pas le dossier AppData !");
+    }
+    // ---------------------------------------------
+
+    {
+        let mut rt = state.runtime.lock().unwrap();
+        rt.current_session_id = None;
+    }
+
     let active_ms: u64 = analysis.active_est_sec.saturating_mul(1000);
     let total_duration_ms: u64 = (end_ms - start_ms).max(0) as u64;
     let idle_ms: u64 = total_duration_ms.saturating_sub(active_ms);
@@ -549,6 +656,7 @@ fn stop_scan(state: State<AppState>) -> Result<serde_json::Value, String> {
     });
 
     Ok(serde_json::json!({
+        "session_id": session_id,
         "active_ms": active_ms,
         "idle_ms": idle_ms,
         "events_count": analysis.total_events as i64,
@@ -609,12 +717,14 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
 #[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
-    Command::new("open").arg(path).spawn().map_err(|e| e.to_string())?;
+    Command::new("open")
+        .arg(path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 // --- SIGNATURE COMMAND ---
-// On signe *le hash hex* (32 bytes) avec une clé locale persistante.
 #[tauri::command]
 fn sign_payload_hash(payload_hash: String) -> Result<serde_json::Value, String> {
     let sk = ensure_signing_key()?;
@@ -633,6 +743,25 @@ fn sign_payload_hash(payload_hash: String) -> Result<serde_json::Value, String> 
     }))
 }
 
+// --- HO-4 COMMANDS (DRAFTS) ---
+#[tauri::command]
+fn list_local_drafts(app: tauri::AppHandle) -> Result<Vec<drafts::DraftInfo>, String> {
+    let dir = app.path_resolver().app_data_dir().unwrap();
+    list_drafts(&dir)
+}
+
+#[tauri::command]
+fn load_local_draft(app: tauri::AppHandle, session_id: String) -> Result<String, String> {
+    let dir = app.path_resolver().app_data_dir().unwrap();
+    load_draft(&dir, &session_id)
+}
+
+#[tauri::command]
+fn delete_local_draft(app: tauri::AppHandle, session_id: String) -> Result<(), String> {
+    let dir = app.path_resolver().app_data_dir().unwrap();
+    delete_draft(&dir, &session_id)
+}
+
 // =============================================================
 //  MAIN
 // =============================================================
@@ -646,6 +775,7 @@ fn main() {
         start_timestamp: 0,
         start_rfc3339: String::new(),
         active_gen: 0,
+        current_session_id: None, // ✅
     }));
 
     let is_scanning_clone = is_scanning.clone();
@@ -663,7 +793,12 @@ fn main() {
         loop {
             thread::sleep(Duration::from_millis(20));
 
-            { let scanning = is_scanning_clone.lock().unwrap(); if !*scanning { continue; } }
+            {
+                let scanning = is_scanning_clone.lock().unwrap();
+                if !*scanning {
+                    continue;
+                }
+            }
 
             let keys = device_state.get_keys();
             let mouse = device_state.get_mouse();
@@ -716,7 +851,10 @@ fn main() {
             finalize_project,
             open_file,
             get_live_stats,
-            sign_payload_hash
+            sign_payload_hash,
+            list_local_drafts,
+            load_local_draft,
+            delete_local_draft
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
