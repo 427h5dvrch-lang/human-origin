@@ -1,464 +1,607 @@
+// /src/main.js — VERSION BULLETPROOF v2.3
+// (Imports en premier ✅, deep-link robuste, UI non bloquante, drafts + viewer + download OK)
+
 import { invoke, convertFileSrc } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { createClient } from "@supabase/supabase-js";
-import { writeTextFile, BaseDirectory } from "@tauri-apps/api/fs";
+import { save } from "@tauri-apps/api/dialog";
+import { writeTextFile } from "@tauri-apps/api/fs";
+// import { appWindow } from "@tauri-apps/api/window"; // optionnel (non utilisé)
 
-// -------------------- SUPABASE --------------------
+console.log("HumanOrigin main.js loaded ✅");
+
+// =========================================================
+// CONFIG
+// =========================================================
+const DEBUG = true;
+
 const supabaseUrl = "https://bhlisgvozsgqxugrfsiu.supabase.co";
-const supabaseAnonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXHVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobGlzZ3ZvenNncXh1Z3Jmc2l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNTI5NDEsImV4cCI6MjA4MzcyODk0MX0.L43rUuDFtg-QH7lVCFTFkJzMTjNUX7BWVXqmVMvIwZ0";
+const supabaseAnonKey =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobGlzZ3ZvenNncXh1Z3Jmc2l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNTI5NDEsImV4cCI6MjA4MzcyODk0MX0.L43rUuDFtg-QH7lVCFTFkJzMTjNUX7BWVXqmVMvIwZ0";
+
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// -------------------- STATE --------------------
+// =========================================================
+// STATE
+// =========================================================
 let currentUser = null;
-let currentProjectName = null;
+
 let currentProjectId = null;
-let currentProjectPath = "";
+let currentProjectName = null;
+let currentProjectPath = null;
+
 let currentSessionId = null;
+let restoredDraftSessionId = null;
+
 let lastSnapshot = null;
-
 let scanInterval = null;
-let isExpert = false;
 
-// MODE SIMPLE pointers
-let lastCertifiedSessionCertPath = null; // html_path local (session)
-let lastMasterHtmlString = null;         // master HTML string (in-app viewer)
-let lastMasterFilename = null;           // export name
+let isScanningUI = false;
+let draftsCache = [];
 
-// -------------------- HELPERS --------------------
+let pasteStats = { paste_events: 0, pasted_chars: 0, max_paste_chars: 0 };
+
+// =========================================================
+// GLOBAL SAFETY LOGS
+// =========================================================
+window.onerror = (msg, src, line, col, err) => {
+  console.log("JS ERROR:", msg, "line", line, "col", col, err);
+};
+
+window.addEventListener("unhandledrejection", (e) => {
+  console.log("PROMISE REJECT:", e?.reason);
+});
+
+// =========================================================
+// UI HELPERS
+// =========================================================
 const $ = (id) => document.getElementById(id);
+
+function dbg(msg, extra) {
+  if (!DEBUG) return;
+  console.log("[DBG]", msg, extra ?? "");
+  const t = $("toast");
+  if (t) {
+    t.innerText = "[DBG] " + msg;
+    t.style.display = "block";
+    setTimeout(() => (t.style.display = "none"), 900);
+  }
+}
 
 function toast(msg) {
   const el = $("toast");
   if (!el) return;
-  el.innerText = msg;
+  el.innerText = msg ?? "";
   el.style.display = "block";
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => (el.style.display = "none"), 3500);
+  setTimeout(() => (el.style.display = "none"), 2500);
 }
 
-function setCloudBadge(ok, extra = "") {
-  const b = $("cloud-badge");
-  if (!b) return;
-  b.className = "badge " + (ok ? "ok" : "warn");
-  b.innerText = ok ? `CLOUD: OK${extra ? " • " + extra : ""}` : `CLOUD: ERROR${extra ? " • " + extra : ""}`;
+const safeText = (id, text) => {
+  const el = $(id);
+  if (el) el.innerText = text ?? "";
+};
+
+const on = (id, fn) => {
+  const el = $(id);
+  if (el) el.onclick = fn;
+};
+
+const esc = (s) =>
+  String(s ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+
+function resetPasteStats() {
+  pasteStats = { paste_events: 0, pasted_chars: 0, max_paste_chars: 0 };
 }
 
-function showLogin() {
-  $("login-screen").classList.remove("hidden");
-  $("app-screen").classList.add("hidden");
+// Debug clics (capture = même si overlay bloque)
+if (DEBUG) {
+  document.addEventListener(
+    "click",
+    (e) => {
+      const el = e.target;
+      dbg(`CLICK -> ${el?.tagName || "?"}#${el?.id || ""}.${String(el?.className || "")}`);
+    },
+    true
+  );
 }
 
-function showApp() {
-  $("login-screen").classList.add("hidden");
-  $("app-screen").classList.remove("hidden");
-}
+// =========================================================
+// SCREEN ROUTER
+// =========================================================
+function showScreen(screenName) {
+  const loginScreen = $("login-screen");
+  const appScreen = $("app-screen");
+  const projectSec = $("project-section");
+  const controlsSec = $("controls-section");
 
-function setMode(expert) {
-  isExpert = !!expert;
-  $("expert-history").classList.toggle("hidden", !isExpert);
-  $("expert-actions").classList.toggle("hidden", !isExpert);
+  if (loginScreen) loginScreen.style.display = "none";
+  if (appScreen) appScreen.style.display = "none";
+  if (projectSec) projectSec.style.display = "none";
+  if (controlsSec) controlsSec.classList.add("hidden");
 
-  // Simple sections are always visible, but you can hide subtitle if you want
-  // Keep them visible: simpler mental model.
-}
+  switch (screenName) {
+    case "LOGIN":
+      if (loginScreen) loginScreen.style.display = "block";
+      break;
 
-function resetLiveUI() {
-  $("timer").innerText = "00:00";
-  $("keystrokes-display").innerText = "0";
-  $("clicks-display").innerText = "0";
-}
+    case "PROJECT_SELECT":
+      if (appScreen) appScreen.style.display = "flex";
+      if (projectSec) projectSec.style.display = "block";
+      safeText("current-project-title", "—");
+      break;
 
-function fmtDate(iso) {
-  try { return new Date(iso).toLocaleString("fr-FR"); } catch { return "—"; }
-}
-
-function shortHash(s, n = 10) {
-  if (!s) return "—";
-  return s.length <= n ? s : s.slice(0, n) + "…";
-}
-
-function sourceBadge(authoritySignature) {
-  if (!authoritySignature) return "⚠️ LOCAL";
-  return authoritySignature.includes("auth") ? "✅ AUTH" : "⚠️ LOCAL";
-}
-
-// -------------------- CRYPTO --------------------
-async function sha256Hex(str) {
-  const buf = new TextEncoder().encode(str);
-  const digest = await crypto.subtle.digest("SHA-256", buf);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-function canonicalStringify(value) {
-  if (value === null || value === undefined) return JSON.stringify(value);
-  if (typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return "[" + value.map(canonicalStringify).join(",") + "]";
-  const keys = Object.keys(value).sort();
-  const parts = keys.map((k) => JSON.stringify(k) + ":" + canonicalStringify(value[k]));
-  return "{" + parts.join(",") + "}";
-}
-
-// -------------------- DB HELPER --------------------
-async function dbOrThrow(where, promise) {
-  const { data, error } = await promise;
-  if (error) {
-    console.error(`[DB ERROR] ${where}`, error);
-    throw error;
+    case "DASHBOARD":
+      if (appScreen) appScreen.style.display = "flex";
+      if (controlsSec) controlsSec.classList.remove("hidden");
+      safeText("current-project-title", currentProjectName || "Projet");
+      break;
   }
-  return data;
+
+  // ne doit JAMAIS casser l'UI
+  checkForDrafts(false).catch((e) => console.log("checkForDrafts failed", e));
 }
 
-// -------------------- AUTH (Deep Link) --------------------
-listen("scheme-request", async (event) => {
+// =========================================================
+// AUTH
+// =========================================================
+async function checkSession() {
   try {
-    const url = String(event.payload || "");
-    const fragment = url.split("#")[1];
-    if (!fragment) return;
-    const params = new URLSearchParams(fragment);
-    const access_token = params.get("access_token");
-    const refresh_token = params.get("refresh_token");
+    const { data } = await supabase.auth.getSession();
+    if (!data?.session) showScreen("LOGIN");
+  } catch (e) {
+    console.log("checkSession failed", e);
+    showScreen("LOGIN");
+  }
+}
+
+// Logout "autoritaire" : UI d’abord, serveur ensuite
+async function handleLogout() {
+  if (isScanningUI) {
+    const ok = confirm("Un scan est en cours. Se déconnecter l'arrêtera. Continuer ?");
+    if (!ok) return;
+    await stopScan().catch(() => {});
+  }
+
+  // UI reset immédiat
+  currentUser = null;
+  currentProjectId = null;
+  currentProjectName = null;
+  currentProjectPath = null;
+  currentSessionId = null;
+  restoredDraftSessionId = null;
+  lastSnapshot = null;
+  draftsCache = [];
+
+  showScreen("LOGIN");
+
+  // best effort serveur
+  try {
+    await supabase.auth.signOut();
+  } catch (e) {
+    console.warn("signOut error (ignored, local logout OK)", e);
+  }
+}
+
+// =========================================================
+// DEEP LINK HANDLING (robuste)
+// =========================================================
+function parseUrlParamsFromFragmentOrQuery(urlStr) {
+  try {
+    const u = new URL(urlStr);
+    // fragment (#a=b&c=d) — cas Supabase tokens
+    const frag = (u.hash || "").replace(/^#/, "");
+    if (frag) return new URLSearchParams(frag);
+
+    // query (?code=...) — parfois code flow
+    const q = u.search || "";
+    if (q) return new URLSearchParams(q.replace(/^\?/, ""));
+
+    return new URLSearchParams();
+  } catch {
+    // fallback si URL() échoue (string brute)
+    const parts = String(urlStr || "").split("#");
+    if (parts[1]) return new URLSearchParams(parts[1]);
+    const parts2 = String(urlStr || "").split("?");
+    if (parts2[1]) return new URLSearchParams(parts2[1]);
+    return new URLSearchParams();
+  }
+}
+
+async function handleIncomingDeepLink(urlStr) {
+  dbg("DEEP LINK reçu", urlStr);
+
+  const p = parseUrlParamsFromFragmentOrQuery(urlStr);
+
+  const access_token = p.get("access_token");
+  const refresh_token = p.get("refresh_token");
+  const code = p.get("code");
+
+  try {
     if (access_token && refresh_token) {
       await supabase.auth.setSession({ access_token, refresh_token });
-      await checkSession();
-      toast("Connexion réussie ✅");
+      toast("Connexion OK ✅");
+      return;
     }
+
+    // Certains flows envoient ?code=...
+    if (code && typeof supabase.auth.exchangeCodeForSession === "function") {
+      const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (error) throw error;
+      toast("Connexion OK ✅");
+      return;
+    }
+
+    // Si TEST sans tokens, on log juste
+    toast("Deep link reçu (pas de tokens)");
   } catch (e) {
-    console.error("scheme-request error", e);
-  }
-});
-
-async function checkSession() {
-  const { data } = await supabase.auth.getSession();
-  if (data?.session) {
-    currentUser = data.session.user;
-    $("user-email-display").innerText = currentUser.email || "—";
-    showApp();
-    await loadProjectList();
-    setTimeout(checkForDrafts, 800);
-    setCloudBadge(true);
-  } else {
-    currentUser = null;
-    $("user-email-display").innerText = "—";
-    showLogin();
-    setCloudBadge(false, "non connecté");
+    console.warn("Deep link auth error:", e);
+    alert("Erreur deep link auth : " + (e?.message || e));
   }
 }
 
-async function handleLogin() {
-  const email = $("email")?.value?.trim();
-  if (!email) return alert("Email requis");
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: "humanorigin://login" },
-  });
-  if (error) return alert("Erreur: " + error.message);
-  toast("Lien envoyé. Vérifiez vos emails.");
+async function setupDeepLinkListeners() {
+  // On écoute plusieurs noms car selon versions/plugins ça change
+  const handler = async (ev) => {
+    const payload = ev?.payload;
+
+    // payload peut être string, object, array
+    if (Array.isArray(payload) && payload.length) {
+      await handleIncomingDeepLink(String(payload[0]));
+      return;
+    }
+    if (typeof payload === "string") {
+      await handleIncomingDeepLink(payload);
+      return;
+    }
+    if (payload && typeof payload === "object") {
+      // ex: { url: "..."} ou { urls: [...] }
+      const u = payload.url || (Array.isArray(payload.urls) ? payload.urls[0] : null);
+      if (u) {
+        await handleIncomingDeepLink(String(u));
+        return;
+      }
+    }
+
+    dbg("Deep link event payload inconnu", payload);
+  };
+
+  // Ces 2-là couvrent la plupart des setups Tauri v1 + plugin deep-link
+  await listen("scheme-request", handler).catch(() => {});
+  await listen("scheme-request-received", handler).catch(() => {});
+  await listen("deep-link://open-url", handler).catch(() => {});
+  await listen("deep-link:open-url", handler).catch(() => {});
+
+  dbg("Deep link listeners READY");
 }
 
-async function handleLogout() {
-  await supabase.auth.signOut();
-  window.location.reload();
-}
-
-// -------------------- PROJECTS --------------------
+// =========================================================
+// PROJECTS (LOCAL + CLOUD) — UI non bloquante
+// =========================================================
 async function loadProjectList() {
-  const sel = $("project-selector");
-  const projects = await invoke("get_projects");
-  sel.innerHTML = '<option value="" disabled selected>— Vos projets —</option>';
-  (projects || []).forEach((n) => {
-    const opt = document.createElement("option");
-    opt.value = n;
-    opt.innerText = n;
-    sel.appendChild(opt);
-  });
+  try {
+    const projects = await invoke("get_projects");
+    const sel = $("project-selector");
+    if (!sel) return;
+
+    sel.innerHTML = '<option value="" disabled selected>Choisir un projet...</option>';
+    (projects || []).forEach((p) => {
+      const opt = document.createElement("option");
+      opt.value = p;
+      opt.innerText = p;
+      sel.appendChild(opt);
+    });
+  } catch (e) {
+    console.error("Load Projects Error", e);
+  }
 }
 
-async function ensureCloudProject(name) {
-  if (!currentUser) throw new Error("Not logged in");
-
-  const payload = { user_id: currentUser.id, name, updated_at: new Date().toISOString() };
-
+async function ensureProjectIdByName(name) {
   try {
-    const row = await dbOrThrow(
-      "upsert project",
-      supabase.from("ho_projects").upsert(payload, { onConflict: "user_id,name" }).select("id").single()
-    );
-    return row.id;
-  } catch (e) {
-    const { data } = await supabase
+    if (!currentUser?.id) return null;
+
+    const { data, error } = await supabase
+      .from("ho_projects")
+      .upsert(
+        { user_id: currentUser.id, name, updated_at: new Date().toISOString() },
+        { onConflict: "user_id,name" }
+      )
+      .select("id")
+      .single();
+
+    if (!error && data?.id) return data.id;
+
+    const { data: r } = await supabase
       .from("ho_projects")
       .select("id")
-      .eq("user_id", currentUser.id)
       .eq("name", name)
+      .eq("user_id", currentUser.id)
       .single();
-    return data?.id || null;
+
+    return r?.id || null;
+  } catch (e) {
+    console.warn("ensureProjectIdByName failed", e);
+    return null;
   }
 }
 
-async function initializeProject() {
-  if (!currentUser) return alert("Connectez-vous d'abord");
-  const name = ($("project-name")?.value || "").trim() || $("project-selector")?.value;
-  if (!name) return alert("Nom de projet requis");
+async function initProject() {
+  const nameInp = $("project-name");
+  const sel = $("project-selector");
+  const name = (nameInp?.value || "").trim() || (sel?.value || "");
+  if (!name) return alert("Veuillez entrer ou choisir un nom de projet.");
+
+  const btn = $("init-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "Chargement…";
+  }
 
   try {
-    currentProjectPath = await invoke("initialize_project", { projectName: name });
+    // 1) LOCAL d'abord (critique)
+    await invoke("initialize_project", { projectName: name });
     currentProjectPath = await invoke("activate_project", { projectName: name });
-    currentProjectId = await ensureCloudProject(name);
     currentProjectName = name;
 
-    $("current-project-title").innerText = name;
-    $("project-section").classList.add("hidden");
-    $("controls-section").classList.remove("hidden");
+    // UI immédiate
+    showScreen("DASHBOARD");
+    toast("Projet chargé : " + name);
 
-    $("session-hint").innerText = "Prêt. Démarrez une session ou consultez les certificats.";
-
-    await refreshAll();
-    toast("Projet chargé ✅");
+    // 2) CLOUD ensuite (ne doit pas bloquer)
+    ensureProjectIdByName(name)
+      .then((id) => {
+        currentProjectId = id;
+        return refreshHistory();
+      })
+      .then(() => checkForDrafts(true))
+      .catch((e) => console.warn("Cloud sync warning", e));
   } catch (e) {
-    console.error(e);
-    alert("Erreur projet: " + (e?.message || e));
+    alert("Erreur chargement projet : " + e);
+    showScreen("PROJECT_SELECT");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerText = "Charger";
+    }
   }
 }
 
-// -------------------- POINT 1/2/3 : MODE SIMPLE/EXPERT + Viewer in-app + Bibliothèque --------------------
-function openViewerWithSrc(title, srcUrl, openExternalPath = null) {
-  $("viewer-title").innerText = title || "Certificat";
-  const frame = $("viewer-frame");
-  frame.removeAttribute("srcdoc");
-  frame.src = srcUrl || "about:blank";
+async function quickActivateProjectByName(name) {
+  try {
+    await invoke("initialize_project", { projectName: name });
+    currentProjectPath = await invoke("activate_project", { projectName: name });
+    currentProjectName = name;
 
-  $("viewer-open-external-btn").onclick = async () => {
-    if (!openExternalPath) return toast("Aucun fichier à ouvrir.");
-    try {
-      await invoke("open_file", { path: openExternalPath });
-    } catch (e) {
-      alert("Impossible d'ouvrir: " + e);
-    }
-  };
+    showScreen("DASHBOARD");
+    toast("Projet chargé : " + name);
 
-  $("viewer-modal").style.display = "flex";
+    ensureProjectIdByName(name)
+      .then((id) => {
+        currentProjectId = id;
+        return refreshHistory();
+      })
+      .then(() => checkForDrafts(true))
+      .catch((e) => console.warn("Cloud sync warning", e));
+  } catch (e) {
+    alert("Erreur activation projet : " + e);
+  }
 }
 
-function openViewerWithHtml(title, htmlString) {
-  $("viewer-title").innerText = title || "Certificat";
-  const frame = $("viewer-frame");
-  frame.src = "about:blank";
-  frame.srcdoc = htmlString || "<html><body>Vide</body></html>";
+async function changeProject() {
+  if (isScanningUI) {
+    const ok = confirm("Un scan est en cours. L'arrêter pour changer de projet ?");
+    if (!ok) return;
+    await stopScan().catch(() => {});
+  }
 
-  $("viewer-open-external-btn").onclick = async () => {
-    // Export then open external
-    try {
-      const filename = lastMasterFilename || `HUMANORIGIN_MASTER_${Date.now()}.html`;
-      await writeTextFile(filename, htmlString, { dir: BaseDirectory.Download });
-      toast("Exporté dans Téléchargements ✅");
-    } catch (e) {
-      alert("Erreur export: " + e);
-    }
-  };
+  currentProjectId = null;
+  currentProjectName = null;
+  currentProjectPath = null;
+  currentSessionId = null;
+  restoredDraftSessionId = null;
+  lastSnapshot = null;
 
-  $("viewer-modal").style.display = "flex";
+  const tbody = $("certs-tbody");
+  if (tbody) tbody.innerHTML = "";
+
+  showScreen("PROJECT_SELECT");
+
+  refreshHistory().catch(() => {});
+  checkForDrafts(true).catch(() => {});
 }
 
-// -------------------- POINT 6 : AUTH vs LOCAL clair --------------------
-function setFinalizeEnabled(enabled) {
-  $("finalize-btn").disabled = !enabled;
-}
-
-function setSimpleButtonsState() {
-  $("open-last-session-cert-btn").disabled = !lastCertifiedSessionCertPath;
-  $("open-project-master-btn").disabled = !lastMasterHtmlString;
-}
-
-// -------------------- SCAN FLOW --------------------
-let scanStartTime = 0;
-
+// =========================================================
+// SCAN
+// =========================================================
 async function startScan() {
-  if (!currentUser) return toast("Connectez-vous d'abord");
-  if (!currentProjectId) return alert("Projet non chargé");
+  // Local obligatoire
+  if (!currentProjectName || !currentProjectPath) {
+    return alert("Aucun projet local actif. Choisissez/Créez un projet d'abord.");
+  }
+  // Cloud recommandé (mais on tente rattrapage)
+  if (!currentProjectId) {
+    currentProjectId = await ensureProjectIdByName(currentProjectName);
+    if (!currentProjectId) {
+      const ok = confirm("Cloud indisponible (ID projet introuvable). Continuer en local ?");
+      if (!ok) return;
+    }
+  }
+
+  currentSessionId = crypto.randomUUID();
+  restoredDraftSessionId = null;
+  lastSnapshot = null;
+  resetPasteStats();
 
   try {
-    currentSessionId = crypto.randomUUID();
+    // Cloud start best effort
+    if (currentProjectId && currentUser?.id) {
+      supabase
+        .from("ho_sessions")
+        .insert({
+          id: currentSessionId,
+          user_id: currentUser.id,
+          project_id: currentProjectId,
+          started_at: new Date().toISOString(),
+          status: "RUNNING",
+        })
+        .then(({ error }) => error && console.warn("Cloud start error", error));
+    }
 
-    await dbOrThrow(
-      "insert session RUNNING",
-      supabase.from("ho_sessions").insert({
-        id: currentSessionId,
-        user_id: currentUser.id,
-        project_id: currentProjectId,
-        started_at: new Date().toISOString(),
-        status: "RUNNING",
-      })
-    );
-
+    // Local start critique
     await invoke("start_scan", { sessionId: currentSessionId });
 
-    scanStartTime = Date.now();
-    resetLiveUI();
+    isScanningUI = true;
+    updateDashboardUI("SCANNING");
 
-    $("start-btn").classList.add("hidden");
-    $("stop-btn").classList.remove("hidden");
-    setFinalizeEnabled(false);
-    $("live-dashboard").style.display = "block";
-
-    if (scanInterval) clearInterval(scanInterval);
     scanInterval = setInterval(async () => {
-      const s = await invoke("get_live_stats");
-      if (s?.is_scanning) {
-        const min = Math.floor(s.duration_sec / 60).toString().padStart(2, "0");
-        const sec = (s.duration_sec % 60).toString().padStart(2, "0");
-        $("timer").innerText = `${min}:${sec}`;
-        $("keystrokes-display").innerText = String(s.keystrokes ?? 0);
-        $("clicks-display").innerText = String(s.clicks ?? 0);
-      }
+      try {
+        const s = await invoke("get_live_stats");
+        if (s?.is_scanning) {
+          safeText("timer", s.duration_sec + "s");
+          safeText("keystrokes-display", String(s.keystrokes));
+          safeText("clicks-display", String(s.clicks));
+        }
+      } catch {}
     }, 1000);
 
-    toast("Session démarrée ✅");
+    toast("Session démarrée");
   } catch (e) {
-    console.error(e);
-    alert("Erreur start: " + (e?.message || e));
+    isScanningUI = false;
+    updateDashboardUI("READY");
+    alert("Impossible de démarrer le scan local : " + e);
   }
 }
 
 async function stopScan() {
+  isScanningUI = false;
   if (scanInterval) clearInterval(scanInterval);
 
   try {
-    const snap = await invoke("stop_scan");
+    const snap = await invoke("stop_scan", { paste: pasteStats });
     lastSnapshot = snap;
 
-    await supabase
-      .from("ho_sessions")
-      .update({
-        ended_at: new Date().toISOString(),
-        status: "STOPPED",
-        active_ms: snap.active_ms || 0,
-        events_count: snap.events_count || 0,
-        scp_score: snap.scp_score || 0,
-        evidence_score: snap.evidence_score || 0,
-        diag: snap.diag || {},
-      })
-      .eq("id", currentSessionId);
+    updateDashboardUI("STOPPED");
+    toast("Scan arrêté. Brouillon enregistré.");
 
-    $("start-btn").classList.remove("hidden");
-    $("stop-btn").classList.add("hidden");
-    $("live-dashboard").style.display = "none";
-    setFinalizeEnabled(true);
+    if (snap?.html_path && lastSnapshot) lastSnapshot.session_html_path = snap.html_path;
 
-    toast("Session arrêtée. Vous pouvez certifier ✅");
-    await refreshAll();
+    // Cloud stop best effort
+    if (currentProjectId) {
+      supabase
+        .from("ho_sessions")
+        .update({
+          ended_at: new Date().toISOString(),
+          status: "STOPPED",
+          active_ms: snap?.active_ms || 0,
+          events_count: snap?.events_count || 0,
+          scp_score: snap?.scp_score || 0,
+          evidence_score: snap?.evidence_score || 0,
+          diag: snap?.diag || {},
+        })
+        .eq("id", currentSessionId)
+        .then(({ error }) => error && console.warn("Cloud stop sync failed", error));
+    }
+
+    await checkForDrafts(true);
   } catch (e) {
-    console.error(e);
-    alert("Erreur stop: " + (e?.message || e));
+    updateDashboardUI("READY");
+    alert("Erreur arrêt scan: " + e);
+  } finally {
+    resetPasteStats();
   }
 }
 
-// -------------------- POINT 4 : Chain-of-custody (prev hash) --------------------
-async function getPrevCertifiedSessionHash() {
-  // on prend la dernière session CERTIFIED (par date)
-  const { data } = await supabase
-    .from("ho_sessions")
-    .select("id, started_at, cert_id")
-    .eq("project_id", currentProjectId)
-    .eq("status", "CERTIFIED")
-    .order("started_at", { ascending: false })
-    .limit(1);
+function updateDashboardUI(state) {
+  const startBtn = $("start-btn");
+  const stopBtn = $("stop-btn");
+  const finBtn = $("finalize-btn");
+  const live = $("live-dashboard");
 
-  const prev = data?.[0];
-  if (!prev?.cert_id) return null;
+  if (startBtn) startBtn.classList.add("hidden");
+  if (stopBtn) stopBtn.classList.add("hidden");
+  if (finBtn) finBtn.disabled = true;
+  if (live) live.style.display = "none";
 
-  const { data: cert } = await supabase
-    .from("ho_certificates")
-    .select("payload_hash")
-    .eq("id", prev.cert_id)
-    .single();
-
-  return cert?.payload_hash || null;
+  if (state === "READY") {
+    if (startBtn) startBtn.classList.remove("hidden");
+    safeText("timer", "00:00");
+    safeText("keystrokes-display", "0");
+    safeText("clicks-display", "0");
+  } else if (state === "SCANNING") {
+    if (stopBtn) stopBtn.classList.remove("hidden");
+    if (live) live.style.display = "block";
+  } else if (state === "STOPPED") {
+    if (startBtn) startBtn.classList.remove("hidden");
+    if (finBtn) finBtn.disabled = false;
+  }
 }
 
-// -------------------- FINALIZE SESSION (AUTH -> fallback LOCAL) --------------------
-async function finalizeProject() {
-  if (!currentUser) return alert("Connectez-vous d'abord");
-  if (!currentProjectId) return alert("Projet non chargé");
-  if (!currentSessionId) return toast("Aucune session active");
-  if (!lastSnapshot) return toast("Aucune preuve à certifier");
+// =========================================================
+// CERTIFICATION (SESSION)
+// =========================================================
+async function finalizeSession() {
+  if (!currentSessionId) return alert("Aucune session à finaliser.");
+
+  // Cloud requis pour certifier (sinon pas de cert/DB)
+  if (!currentProjectId) {
+    currentProjectId = await ensureProjectIdByName(currentProjectName);
+    if (!currentProjectId) return alert("Impossible de certifier : pas de connexion Cloud.");
+  }
+
+  const btn = $("finalize-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.innerText = "Signature…";
+  }
 
   try {
-    const prevHash = await getPrevCertifiedSessionHash(); // chain-of-custody
+    const scp = lastSnapshot?.scp_score ?? lastSnapshot?.diag?.analysis?.score ?? 0;
 
-    const certUnsigned = {
+    const certData = {
       protocol: "ho3.cert.v1",
       meta: {
-        user_id: currentUser.id,
-        project_id: currentProjectId,
-        session_id: currentSessionId,
-        created_at: new Date().toISOString(),
-        client: "tauri",
-        prev_session_hash: prevHash, // ✅ chain
+        user: currentUser.id,
+        project: currentProjectId,
+        session: currentSessionId,
+        date: new Date().toISOString(),
       },
-      scores: {
-        scp: lastSnapshot?.scp_score ?? 0,
-        evidence: lastSnapshot?.evidence_score ?? 0,
-      },
-      diag: lastSnapshot?.diag ?? null,
+      scores: { scp },
     };
 
-    const canonical = canonicalStringify(certUnsigned);
-    const payloadHash = await sha256Hex(canonical);
-    const deviceSig = await invoke("sign_payload_hash", { payloadHash });
-    const deviceSigObj = {
-      alg: "ed25519",
-      public_key: deviceSig.public_key,
-      signature: deviceSig.signature,
-      key_id: "device-key-v1",
-    };
+    const payloadStr = JSON.stringify(certData);
+    const payloadHash = await sha256Hex(payloadStr);
+    const devSig = await invoke("sign_payload_hash", { payloadHash });
 
-    toast("Signature Cloud en cours...");
-    setCloudBadge(true, "signature…");
-
-    // AUTH call
     const { data, error } = await supabase.functions.invoke("sign-cert", {
       body: {
-        cert_unsigned: certUnsigned,
+        cert_unsigned: certData,
         payload_hash: payloadHash,
-        device_signature: JSON.stringify(deviceSigObj),
+        device_signature: JSON.stringify(devSig),
       },
     });
 
     let certId = null;
-    let authoritySig = null;
 
     if (!error && data?.cert_id) {
       certId = data.cert_id;
-      authoritySig = data.authority_signature || "auth-v1";
-      toast("Certifié par Autorité ✅");
-      setCloudBadge(true, "AUTH");
     } else {
-      // ✅ Point 6 : rendre l’échec explicite
-      console.warn("AUTH failed => LOCAL fallback", error);
-      setCloudBadge(false, error?.message || "AUTH failed");
-
       certId = crypto.randomUUID();
-      authoritySig = "local-bypass-mode";
-
-      await dbOrThrow(
-        "insert LOCAL cert",
-        supabase.from("ho_certificates").insert({
-          id: certId,
-          user_id: currentUser.id,
-          project_id: currentProjectId,
-          session_id: currentSessionId,
-          issued_at: new Date().toISOString(),
-          payload_hash: payloadHash,
-          device_signature: deviceSigObj,
-          authority_signature: authoritySig,
-          cert_json: certUnsigned,
-        })
-      );
-
-      toast("Certifié LOCAL (autorité indisponible)");
+      await supabase.from("ho_certificates").insert({
+        id: certId,
+        user_id: currentUser.id,
+        project_id: currentProjectId,
+        session_id: currentSessionId,
+        issued_at: new Date().toISOString(),
+        payload_hash: payloadHash,
+        authority_signature: "local-bypass",
+        cert_json: certData,
+      });
     }
 
-    // Update session status CERTIFIED in all cases
     await supabase
       .from("ho_sessions")
       .update({
@@ -468,497 +611,646 @@ async function finalizeProject() {
       })
       .eq("id", currentSessionId);
 
-    // Generate local HTML session certificate (Rust)
+    const sidToDelete = restoredDraftSessionId || currentSessionId;
     try {
-      const res = await invoke("finalize_project", { projectPath: currentProjectPath });
-      if (res?.html_path) {
-        lastCertifiedSessionCertPath = res.html_path;
-      }
-    } catch (e) {
-      console.warn("finalize_project (html) failed", e);
+      await invoke("delete_local_draft", { sessionId: sidToDelete });
+    } catch {}
+
+    restoredDraftSessionId = null;
+
+    toast("Session certifiée ✅");
+    await refreshHistory();
+    await checkForDrafts(true);
+  } catch (e) {
+    alert("Erreur certification : " + e);
+  } finally {
+    if (btn) {
+      btn.innerText = "Finaliser la session";
+      btn.disabled = false;
+    }
+  }
+}
+
+// =========================================================
+// HISTORY (CLOUD)
+// =========================================================
+async function refreshHistory() {
+  const tbody = $("certs-tbody");
+  if (!tbody) return;
+
+  // MODE 1 : post-login / choix projet
+  if (!currentProjectId) {
+    if (!currentUser?.id) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="3" style="color: rgba(11,18,32,0.55); padding: 14px 0;">
+            Connectez-vous pour voir l’historique.
+          </td>
+        </tr>`;
+      return;
     }
 
-    // UI reset
-    setFinalizeEnabled(false);
-    lastSnapshot = null;
-    currentSessionId = null;
+    const { data: projects, error: pErr } = await supabase
+      .from("ho_projects")
+      .select("id,name,updated_at")
+      .eq("user_id", currentUser.id)
+      .order("updated_at", { ascending: false })
+      .limit(12);
 
-    await refreshAll();
-    toast("OK ✅");
-  } catch (e) {
-    console.error(e);
-    alert("Erreur certification: " + (e?.message || e));
-  } finally {
-    setSimpleButtonsState();
-  }
-}
-
-// -------------------- POINT 3/4 : Master certificate (projet) + hash agrégé + chain --------------------
-async function buildMasterCertificateData() {
-  // Sessions certifiées, chronologiques
-  const sessions = await dbOrThrow(
-    "fetch certified sessions",
-    supabase
-      .from("ho_sessions")
-      .select("id, started_at, active_ms, events_count, cert_id")
-      .eq("project_id", currentProjectId)
-      .eq("status", "CERTIFIED")
-      .order("started_at", { ascending: true })
-  );
-
-  if (!sessions || sessions.length === 0) return null;
-
-  // Load certs referenced by sessions
-  const certIds = sessions.map((s) => s.cert_id).filter(Boolean);
-  const certs = certIds.length
-    ? await dbOrThrow(
-        "fetch cert rows",
-        supabase
-          .from("ho_certificates")
-          .select("id, payload_hash, authority_signature, cert_json, issued_at")
-          .in("id", certIds)
-      )
-    : [];
-
-  const certById = new Map((certs || []).map((c) => [c.id, c]));
-
-  // Totals + chain
-  let totalActiveMs = 0;
-  let totalEvents = 0;
-
-  const chainRows = sessions.map((s, idx) => {
-    totalActiveMs += s.active_ms || 0;
-    totalEvents += s.events_count || 0;
-
-    const cert = certById.get(s.cert_id) || null;
-    const payloadHash = cert?.payload_hash || "";
-    const authSig = cert?.authority_signature || "local-bypass-mode";
-    const prevHash = cert?.cert_json?.meta?.prev_session_hash || null;
-
-    return {
-      index: idx + 1,
-      session_id: s.id,
-      started_at: s.started_at,
-      active_ms: s.active_ms || 0,
-      events_count: s.events_count || 0,
-      payload_hash: payloadHash,
-      authority_signature: authSig,
-      prev_session_hash: prevHash,
-    };
-  });
-
-  // Master hash: concat of payload_hash in order + each prev hash string (to bind chain)
-  const chainMaterial = chainRows
-    .map((r) => `${r.payload_hash}|${r.prev_session_hash || "GENESIS"}`)
-    .join("\n");
-
-  const masterHash = await sha256Hex(chainMaterial);
-
-  // Determine MASTER source: AUTH only if all rows are AUTH
-  const isAuth = chainRows.length > 0 && chainRows.every((r) => String(r.authority_signature || "").includes("auth"));
-  const source = isAuth ? "AUTH" : "LOCAL";
-
-  return {
-    project_name: currentProjectName,
-    user_email: currentUser?.email || "",
-    created_at: new Date().toISOString(),
-    sessions_count: chainRows.length,
-    total_active_ms: totalActiveMs,
-    total_events: totalEvents,
-    master_hash: masterHash,
-    source,
-    chain: chainRows,
-  };
-}
-
-function masterHtmlFromData(m) {
-  const totalHours = (m.total_active_ms / 1000 / 3600).toFixed(1);
-  const created = fmtDate(m.created_at);
-
-  const badgeClass = m.source === "AUTH" ? "ok" : "warn";
-  const badgeText = m.source === "AUTH" ? "AUTH" : "LOCAL";
-
-  const rows = m.chain
-    .map((r) => {
-      const activeSec = Math.round((r.active_ms || 0) / 1000);
-      return `
+    if (pErr) {
+      tbody.innerHTML = `
         <tr>
-          <td>#${r.index}</td>
-          <td class="mono">${r.session_id.slice(0, 8)}…</td>
-          <td>${fmtDate(r.started_at)}</td>
-          <td>${activeSec}s</td>
-          <td class="mono">${shortHash(r.payload_hash, 14)}</td>
-          <td>${String(r.authority_signature || "").includes("auth") ? "✅ AUTH" : "⚠️ LOCAL"}</td>
-        </tr>
-      `;
-    })
-    .join("");
+          <td colspan="3" style="color:#b91c1c; padding: 14px 0;">
+            Erreur chargement projets : ${esc(pErr.message)}
+          </td>
+        </tr>`;
+      return;
+    }
 
-  return `
-<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>HumanOrigin — Certificat final</title>
-<style>
-  :root{ --bg:#f5f5f7; --card:#fff; --text:#1d1d1f; --muted:#86868b; --border:#d2d2d7; --ok:#2e7d32; --warn:#e65100; }
-  *{ box-sizing:border-box; }
-  body{ margin:0; background:var(--bg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; color:var(--text); }
-  .wrap{ max-width:980px; margin:0 auto; padding:28px 18px; }
-  .card{ background:var(--card); border:1px solid rgba(0,0,0,0.04); border-radius:16px; box-shadow:0 2px 14px rgba(0,0,0,0.06); padding:18px; }
-  .muted{ color:var(--muted); font-size:12px; }
-  h1{ margin:6px 0 0 0; font-size:20px; }
-  .grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
-  .kpi{ padding:12px; border-radius:12px; border:1px solid var(--border); }
-  .kpi b{ display:block; font-size:18px; margin-top:4px; }
-  .mono{ font-family: ui-monospace, Menlo, Monaco, Consolas, "Courier New", monospace; }
-  table{ width:100%; border-collapse:collapse; margin-top:14px; font-size:13px; }
-  th{ text-align:left; color:var(--muted); border-bottom:1px solid var(--border); padding:8px 0; }
-  td{ padding:10px 0; border-bottom:1px solid #eee; }
-  tr:last-child td{ border-bottom:none; }
-  .badge{ display:inline-block; padding:4px 10px; border-radius:999px; font-weight:700; font-size:12px; }
-  .badge.ok{ background:#e8f5e9; color:var(--ok); }
-  .badge.warn{ background:#fff3e0; color:var(--warn); }
-</style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="muted">HUMANORIGIN // CERTIFICAT FINAL (PROJET)</div>
-      <h1>${escapeHtml(m.project_name || "Projet")}</h1>
-      <div class="muted">Auteur: ${escapeHtml(m.user_email || "—")} • Date: ${escapeHtml(created)}</div>
+    if (!projects?.length) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="3" style="color: rgba(11,18,32,0.55); padding: 14px 0;">
+            Aucun projet pour le moment. Créez-en un pour démarrer.
+          </td>
+        </tr>`;
+      return;
+    }
 
-      <div class="grid">
-        <div class="kpi"><div class="muted">Sessions certifiées</div><b>${m.sessions_count}</b></div>
-        <div class="kpi"><div class="muted">Temps actif total</div><b>${totalHours} h</b></div>
-        <div class="kpi"><div class="muted">Actions</div><b>${m.total_events}</b></div>
-        <div class="kpi"><div class="muted">MASTER HASH</div><b class="mono" style="font-size:12px; line-height:1.25;">${m.master_hash}</b></div>
-      </div>
+    const { data: certSessions, error: sErr } = await supabase
+      .from("ho_sessions")
+      .select("project_id, certified_at")
+      .eq("user_id", currentUser.id)
+      .eq("status", "CERTIFIED")
+      .order("certified_at", { ascending: false })
+      .limit(500);
 
-      <div style="margin-top:14px;">
-        <span class="badge ${badgeClass}">${badgeText}</span>
-        <span class="muted">Ce document agrège cryptographiquement les sessions certifiées du projet.</span>
-      </div>
+    if (sErr) console.warn("refreshHistory stats error:", sErr);
 
-      <div class="muted" style="margin-top:14px;">Chaîne de sessions</div>
-      <table>
-        <thead><tr><th>#</th><th>Session</th><th>Début</th><th>Actif</th><th>Activ.Hash</th><th>Source</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+    const stats = new Map(); // pid -> {count,last}
+    (certSessions || []).forEach((s) => {
+      const pid = s.project_id;
+      const t = s.certified_at;
+      if (!pid) return;
+      const prev = stats.get(pid) || { count: 0, last: null };
+      prev.count += 1;
+      if (!prev.last && t) prev.last = t;
+      stats.set(pid, prev);
+    });
 
-      <div class="muted" style="margin-top:10px;">
-        Vérification V1 : hash maître = SHA-256(concat(hash_session | prev_hash)).
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-  `.trim();
-}
+    tbody.innerHTML = projects
+      .map((p) => {
+        const st = stats.get(p.id) || { count: 0, last: null };
+        const lastTxt = st.last ? new Date(st.last).toLocaleString() : "—";
+        const countTxt = `${st.count} certif`;
+        const name = esc(p.name);
 
-function escapeHtml(s) {
-  return String(s || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+        return `<tr data-proj="${encodeURIComponent(p.name)}" style="cursor:pointer;">
+          <td>${esc(lastTxt)}</td>
+          <td><span style="color:${st.count ? "#10b981" : "rgba(11,18,32,0.55)"};font-weight:800;">${esc(
+            countTxt
+          )}</span></td>
+          <td style="font-weight:900;">${name}</td>
+        </tr>`;
+      })
+      .join("");
 
-async function buildAndCacheMaster() {
-  const m = await buildMasterCertificateData();
-  if (!m) {
-    lastMasterHtmlString = null;
-    lastMasterFilename = null;
-    setSimpleButtonsState();
-    return null;
+    tbody.querySelectorAll("tr[data-proj]").forEach((tr) => {
+      tr.onclick = async () => {
+        const name = decodeURIComponent(tr.getAttribute("data-proj") || "");
+        if (!name) return;
+        await quickActivateProjectByName(name);
+      };
+    });
+
+    return;
   }
-  lastMasterHtmlString = masterHtmlFromData(m);
-  lastMasterFilename = `HUMANORIGIN_MASTER_${safeName(currentProjectName)}_${new Date().toISOString().slice(0,10)}.html`;
-  setSimpleButtonsState();
-  return m;
-}
 
-function safeName(name) {
-  return String(name || "projet").replaceAll(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 40);
-}
-
-// -------------------- POINT 5 : Verifier (intégrité) --------------------
-async function verifyProjectIntegrity() {
-  if (!currentProjectId) return;
-  toast("Vérification en cours…");
-
-  const m = await buildMasterCertificateData();
-  if (!m) return alert("Aucune session certifiée à vérifier.");
-
-  // 1) Vérif : chaque cert_json recalcule son payload_hash
-  const certIds = m.chain.map((r) => r.session_id);
-  // We already have hashes in chain, but we need cert_json rows:
-  const sessions = await supabase
+  // MODE 2 : projet actif (dashboard)
+  const { count } = await supabase
     .from("ho_sessions")
-    .select("id, cert_id")
+    .select("*", { count: "exact", head: true })
     .eq("project_id", currentProjectId)
     .eq("status", "CERTIFIED");
 
-  const certIdList = (sessions.data || []).map((s) => s.cert_id).filter(Boolean);
-  const certRows = certIdList.length
-    ? await supabase.from("ho_certificates").select("id, payload_hash, cert_json").in("id", certIdList)
-    : { data: [] };
+  const closeBtn = $("close-project-btn");
+  if (closeBtn) closeBtn.style.display = count > 0 ? "block" : "none";
 
-  const byId = new Map((certRows.data || []).map((c) => [c.id, c]));
-  for (const s of (sessions.data || [])) {
-    const c = byId.get(s.cert_id);
-    if (!c?.cert_json || !c?.payload_hash) {
-      return alert(`❌ Vérif KO : certificat manquant pour session ${s.id}`);
-    }
-    const canonical = canonicalStringify(c.cert_json);
-    const recomputed = await sha256Hex(canonical);
-    if (recomputed !== c.payload_hash) {
-      return alert(`❌ Vérif KO : hash mismatch sur cert ${c.id}\nDB: ${c.payload_hash}\nRE: ${recomputed}`);
-    }
-  }
-
-  // 2) Vérif : master hash recomputed from chain data
-  const chainMaterial = m.chain
-    .map((r) => `${r.payload_hash}|${r.prev_session_hash || "GENESIS"}`)
-    .join("\n");
-  const recomputedMaster = await sha256Hex(chainMaterial);
-  if (recomputedMaster !== m.master_hash) {
-    return alert(`❌ Vérif KO : master hash mismatch\nDB: ${m.master_hash}\nRE: ${recomputedMaster}`);
-  }
-
-  alert("✅ Vérification OK : hashes + chaîne cohérents.");
-}
-
-// -------------------- HISTORY / REFRESH --------------------
-async function refreshHistorySimple() {
-  // Show only: last session certified + project master availability
-  const tbody = $("simple-history-tbody");
-  tbody.innerHTML = "";
-
-  // last certified cert
-  const { data: lastCert } = await supabase
-    .from("ho_certificates")
-    .select("id, issued_at, payload_hash, authority_signature, cert_json")
+  const { data: sessions, error: sessErr } = await supabase
+    .from("ho_sessions")
+    .select("id, certified_at, cert_id, scp_score")
     .eq("project_id", currentProjectId)
-    .order("issued_at", { ascending: false })
-    .limit(1);
-
-  const c = lastCert?.[0];
-  if (c) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${fmtDate(c.issued_at)}</td>
-      <td class="mono">${shortHash(c.payload_hash, 16)}</td>
-      <td>${sourceBadge(c.authority_signature)}</td>
-    `;
-    tbody.appendChild(tr);
-  } else {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="3" class="muted">Aucun certificat pour l’instant.</td>`;
-    tbody.appendChild(tr);
-  }
-}
-
-async function refreshHistoryExpert() {
-  // Certs
-  const { data: certs } = await supabase
-    .from("ho_certificates")
-    .select("id, issued_at, payload_hash, authority_signature, cert_json")
-    .eq("project_id", currentProjectId)
-    .order("issued_at", { ascending: false })
+    .eq("status", "CERTIFIED")
+    .order("certified_at", { ascending: false })
     .limit(10);
 
-  $("certs-tbody").innerHTML = (certs || [])
-    .map((c) => {
-      const type = c?.cert_json?.protocol === "ho3.cert.v1" ? "SESSION" : (c?.cert_json?.protocol || "—");
-      return `
-        <tr data-cert-id="${c.id}" style="cursor:pointer;">
-          <td>${fmtDate(c.issued_at)}</td>
-          <td class="mono">${shortHash(c.payload_hash, 18)}</td>
-          <td>${sourceBadge(c.authority_signature)}</td>
-          <td>${escapeHtml(type)}</td>
-        </tr>
-      `;
+  if (sessErr) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="3" style="color:#b91c1c; padding: 14px 0;">
+          Erreur historique : ${esc(sessErr.message)}
+        </td>
+      </tr>`;
+    return;
+  }
+
+  if (!sessions?.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="3" style="color: rgba(11,18,32,0.55); padding: 14px 0;">
+          Aucune session certifiée pour ce projet.
+        </td>
+      </tr>`;
+    return;
+  }
+
+  const certIds = sessions.map((s) => s.cert_id).filter(Boolean);
+  const hashById = new Map();
+
+  if (certIds.length) {
+    const { data: certs, error: cErr } = await supabase
+      .from("ho_certificates")
+      .select("id,payload_hash")
+      .in("id", certIds);
+
+    if (!cErr && certs?.length) {
+      certs.forEach((c) => {
+        if (c?.id) hashById.set(c.id, c.payload_hash || "");
+      });
+    }
+  }
+
+  tbody.innerHTML = sessions
+    .map((s) => {
+      const time = s.certified_at ? new Date(s.certified_at).toLocaleTimeString() : "—";
+      const scp = typeof s.scp_score === "number" ? Math.round(s.scp_score) : null;
+
+      const hash = s.cert_id ? hashById.get(s.cert_id) || "" : "";
+      const proof = hash
+        ? `${hash.substring(0, 8)}...`
+        : s.cert_id
+        ? `${String(s.cert_id).substring(0, 8)}...`
+        : "—";
+
+      const proofTxt = scp !== null ? `SCP ${scp} • ${proof}` : proof;
+
+      return `<tr>
+        <td>${esc(time)}</td>
+        <td><span style="color:#10b981;font-weight:700;">OK</span></td>
+        <td style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px;">${esc(
+          proofTxt
+        )}</td>
+      </tr>`;
     })
     .join("");
+}
 
-  // Click to view JSON (expert)
-  [...$("certs-tbody").querySelectorAll("tr[data-cert-id]")].forEach((tr) => {
-    tr.onclick = async () => {
-      const id = tr.getAttribute("data-cert-id");
-      const { data } = await supabase.from("ho_certificates").select("*").eq("id", id).single();
-      if (!data) return;
-      // Expert viewing: show JSON in viewer as HTML block (simple)
-      const html = `
-        <html><body style="font-family: -apple-system, sans-serif; padding: 18px;">
-          <h3>Certificat (JSON)</h3>
-          <div style="margin:10px 0; font-size:13px; color:#666;">${fmtDate(data.issued_at)} • ${sourceBadge(data.authority_signature)} • ${data.id}</div>
-          <pre style="background:#f5f5f7; padding:12px; border-radius:12px; overflow:auto;">${escapeHtml(JSON.stringify(data.cert_json || {}, null, 2))}</pre>
-        </body></html>
-      `;
-      openViewerWithHtml("Détails techniques (JSON)", html);
+// =========================================================
+// FINAL PROJECT CERTIFICATE + VIEWER OVERLAY
+// =========================================================
+async function exportFinalProjectCertificate() {
+  if (!currentProjectPath) return;
+
+  toast("Génération du certificat projet…");
+
+  try {
+    const res = await invoke("finalize_project", { projectPath: currentProjectPath });
+    if (res?.html_path) openCertViewer(res.html_path);
+  } catch (e) {
+    alert("Erreur génération : " + e);
+  }
+}
+
+let currentCertHtmlPath = null;
+let currentCertAssetUrl = null;
+
+async function openCertViewer(htmlPath) {
+  const overlay = $("viewer-overlay");
+  const iframe = $("viewer-iframe");
+  const errDiv = $("viewer-error");
+
+  if (!overlay || !iframe) return;
+
+  currentCertHtmlPath = htmlPath;
+  currentCertAssetUrl = convertFileSrc(htmlPath);
+
+  iframe.src = "about:blank";
+  iframe.onload = null;
+
+  if (errDiv) {
+    errDiv.style.display = "none";
+    errDiv.innerText = "";
+  }
+
+  overlay.style.display = "flex";
+
+  const onKey = (e) => {
+    if (e.key === "Escape") closeViewer();
+  };
+
+  const closeViewer = () => {
+    overlay.style.display = "none";
+    iframe.src = "about:blank";
+    window.removeEventListener("keydown", onKey);
+    overlay.onclick = null;
+    currentCertHtmlPath = null;
+    currentCertAssetUrl = null;
+  };
+
+  const closeBtn = $("viewer-close");
+  if (closeBtn) closeBtn.onclick = closeViewer;
+
+  overlay.onclick = (e) => {
+    if (e.target === overlay) closeViewer();
+  };
+  window.addEventListener("keydown", onKey);
+
+  const openBtn = $("viewer-open-external");
+  if (openBtn) openBtn.onclick = () => invoke("open_file", { path: htmlPath });
+
+  const reloadBtn = $("viewer-reload");
+  if (reloadBtn)
+    reloadBtn.onclick = () => {
+      iframe.src = "about:blank";
+      setTimeout(() => {
+        iframe.src = `${currentCertAssetUrl}?t=${Date.now()}`;
+      }, 30);
     };
+
+  const dlBtn = $("viewer-download");
+  if (dlBtn)
+    dlBtn.onclick = async () => {
+      try {
+        const htmlContent = await invoke("read_text_file", { path: htmlPath });
+        const defaultName = `HumanOrigin-certificat-${new Date().toISOString().slice(0, 10)}.html`;
+
+        const outPath = await save({
+          defaultPath: defaultName,
+          filters: [{ name: "HTML", extensions: ["html"] }],
+        });
+
+        if (!outPath) return;
+        await writeTextFile(outPath, htmlContent);
+        toast("Certificat téléchargé ✅");
+      } catch (e) {
+        alert("Erreur téléchargement : " + e);
+      }
+    };
+
+  iframe.src = currentCertAssetUrl;
+
+  setTimeout(() => {
+    if (errDiv && overlay.style.display === "flex") {
+      errDiv.style.display = "block";
+      errDiv.innerText =
+        "Si l’aperçu interne reste blanc :\n" +
+        "• Cliquez « Recharger »\n" +
+        "• ou « Ouvrir dans navigateur »\n";
+    }
+  }, 900);
+}
+
+// =========================================================
+// DRAFTS (BANNER + MODAL LIST)
+// =========================================================
+function ensureDraftModal() {
+  let modal = document.getElementById("draft-modal");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.id = "draft-modal";
+
+  modal.innerHTML = `
+    <div id="draft-modal-card">
+      <div class="draft-toprow">
+        <div>
+          <h2>Sessions non certifiées</h2>
+          <div id="draft-modal-sub">Restaurer ou supprimer un brouillon</div>
+        </div>
+        <button id="draft-modal-x" class="draft-x" aria-label="Fermer">✕</button>
+      </div>
+
+      <div class="draft-controls">
+        <input id="draft-modal-filter" placeholder="Filtrer par projet…" />
+        <button id="draft-modal-refresh" class="btn btn-ghost btn-mini">Rafraîchir</button>
+      </div>
+
+      <div id="draft-modal-list" class="draft-list"></div>
+
+      <div class="draft-bottom">
+        <button id="draft-modal-ok" class="btn btn-primary">OK</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const close = () => (modal.style.display = "none");
+
+  const xBtn = document.getElementById("draft-modal-x");
+  if (xBtn) xBtn.onclick = close;
+
+  const okBtn = document.getElementById("draft-modal-ok");
+  if (okBtn) okBtn.onclick = close;
+
+  modal.onclick = (e) => {
+    if (e.target === modal) close();
+  };
+
+  const refBtn = document.getElementById("draft-modal-refresh");
+  if (refBtn)
+    refBtn.onclick = async () => {
+      await checkForDrafts(true);
+      renderDraftModalList();
+    };
+
+  const fil = document.getElementById("draft-modal-filter");
+  if (fil) fil.oninput = () => renderDraftModalList();
+
+  return modal;
+}
+
+function openDraftModal() {
+  const modal = ensureDraftModal();
+  modal.style.display = "flex";
+  renderDraftModalList();
+}
+
+function renderDraftModalList() {
+  const list = document.getElementById("draft-modal-list");
+  const filter = (document.getElementById("draft-modal-filter")?.value || "")
+    .trim()
+    .toLowerCase();
+
+  if (!list) return;
+
+  let items = draftsCache || [];
+  if (filter) {
+    items = items.filter((d) => String(d.project_name || "").toLowerCase().includes(filter));
+  }
+
+  items = items.slice().sort((a, b) => {
+    const pa = String(a.project_name || "");
+    const pb = String(b.project_name || "");
+    const c = pa.localeCompare(pb);
+    if (c !== 0) return c;
+    const ta = a.created_at_utc ? new Date(a.created_at_utc).getTime() : 0;
+    const tb = b.created_at_utc ? new Date(b.created_at_utc).getTime() : 0;
+    return tb - ta;
   });
 
-  // Sessions
-  const { data: sessions } = await supabase
-    .from("ho_sessions")
-    .select("id, started_at, status, events_count")
-    .eq("project_id", currentProjectId)
-    .order("started_at", { ascending: false })
-    .limit(10);
+  if (!items.length) {
+    list.innerHTML = `<div style="padding:14px; color:rgba(11,18,32,.65); font-weight:800;">Aucun brouillon.</div>`;
+    return;
+  }
 
-  $("sessions-tbody").innerHTML = (sessions || [])
-    .map((s) => {
+  list.innerHTML = items
+    .map((d) => {
+      const proj = d.project_name || "—";
+      const when = d.created_at_utc ? new Date(d.created_at_utc).toLocaleString() : "—";
+      const size = d.size_bytes ? `${Math.round(d.size_bytes / 1024)} KB` : "";
+      const sid = d.session_id || "";
+      const sidShort = sid ? sid.slice(0, 6) + "…" + sid.slice(-4) : "—";
+      const line = `${when}${size ? "  •  " + size : ""}  •  Session ${sidShort}`;
+
       return `
-        <tr>
-          <td>${fmtDate(s.started_at)}</td>
-          <td>${escapeHtml(s.status || "—")}</td>
-          <td style="text-align:right;">${Number(s.events_count || 0)}</td>
-        </tr>
+        <div class="draft-item">
+          <div class="draft-meta">
+            <div class="draft-title">${esc(proj)}</div>
+            <div class="draft-subline">${esc(line)}</div>
+            <div class="draft-mono">${esc(sid)}</div>
+          </div>
+
+          <div class="draft-btns">
+            <button class="btn btn-primary btn-mini" data-act="restore" data-sid="${esc(sid)}">Restaurer</button>
+            <button class="btn btn-ghost btn-mini" data-act="delete" data-sid="${esc(sid)}">Supprimer</button>
+          </div>
+        </div>
       `;
     })
     .join("");
+
+  list.querySelectorAll("button[data-act]").forEach((btn) => {
+    btn.onclick = async () => {
+      const sid = btn.getAttribute("data-sid");
+      const act = btn.getAttribute("data-act");
+      if (!sid) return;
+
+      if (act === "restore") {
+        await recoverDraft(sid);
+        const modal = document.getElementById("draft-modal");
+        if (modal) modal.style.display = "none";
+        return;
+      }
+
+      if (act === "delete") {
+        const ok = confirm("Supprimer ce brouillon ? (Action irréversible)");
+        if (!ok) return;
+        try {
+          await invoke("delete_local_draft", { sessionId: sid });
+        } catch (e) {
+          alert("Erreur suppression : " + e);
+        }
+        await checkForDrafts(true);
+        renderDraftModalList();
+      }
+    };
+  });
 }
 
-async function refreshAll() {
-  if (!currentProjectId) return;
-
-  $("history-subtitle").innerText = currentProjectName ? `Projet: ${currentProjectName}` : "—";
-
-  // Build master cache (mode simple button + in-app view)
-  await buildAndCacheMaster();
-
-  // Simple history always refreshed
-  await refreshHistorySimple();
-
-  // Expert if toggled
-  if (isExpert) await refreshHistoryExpert();
-
-  // Update simple buttons and optionally session cert availability
-  setSimpleButtonsState();
-}
-
-// -------------------- EXPORT MASTER (Expert) --------------------
-async function exportMasterHtml() {
-  if (!lastMasterHtmlString) {
-    await buildAndCacheMaster();
-    if (!lastMasterHtmlString) return alert("Aucune session certifiée à exporter.");
-  }
+async function checkForDrafts(forceRefresh = false) {
   try {
-    const filename = lastMasterFilename || `HUMANORIGIN_MASTER_${Date.now()}.html`;
-    await writeTextFile(filename, lastMasterHtmlString, { dir: BaseDirectory.Download });
-    toast("Exporté dans Téléchargements ✅");
-  } catch (e) {
-    alert("Erreur export: " + e);
-  }
-}
-
-// -------------------- OPEN SESSION CERT (Simple) --------------------
-async function openLastSessionCert() {
-  if (!lastCertifiedSessionCertPath) return toast("Pas de certificat session local.");
-  // Use convertFileSrc for local path
-  const url = convertFileSrc(lastCertifiedSessionCertPath);
-  openViewerWithSrc("Certificat de session", url, lastCertifiedSessionCertPath);
-}
-
-// -------------------- OPEN MASTER (Simple) --------------------
-async function openProjectMaster() {
-  if (!lastMasterHtmlString) {
-    await buildAndCacheMaster();
-    if (!lastMasterHtmlString) return alert("Aucune session certifiée pour ce projet.");
-  }
-  openViewerWithHtml("Certificat final (projet)", lastMasterHtmlString);
-}
-
-// -------------------- DRAFT RECOVERY --------------------
-async function checkForDrafts() {
-  try {
-    const drafts = await invoke("list_local_drafts");
-    const banner = $("draft-banner");
-    if (!banner) return;
-
-    if (drafts && drafts.length > 0) {
-      banner.style.display = "flex";
-      $("btn-recover-draft").onclick = () => recoverDraft(drafts[0].session_id);
-    } else {
-      banner.style.display = "none";
+    if (!draftsCache.length || forceRefresh) {
+      draftsCache = await invoke("list_local_drafts");
+      if (!Array.isArray(draftsCache)) draftsCache = [];
     }
-  } catch (e) {
-    console.warn("checkForDrafts error", e);
-  }
-}
 
-async function recoverDraft(sessionId) {
-  if (!currentUser) return alert("Login requis");
-  try {
-    toast("Récupération…");
-    const jsonStr = await invoke("load_local_draft", { sessionId });
-    const proof = JSON.parse(jsonStr);
+    const banner = $("draft-banner");
+    const txt = $("draft-banner-text");
+    const btnRecover = $("btn-recover-draft");
 
-    currentSessionId = proof.session_id;
+    if (!banner || !txt || !btnRecover) return;
 
-    // lastSnapshot minimal
-    lastSnapshot = {
-      session_id: proof.session_id,
-      scp_score: proof.analysis?.score ?? 0,
-      evidence_score: proof.analysis?.evidence_score ?? 0,
-      diag: { version: "ho2.diag.v1", analysis: proof.analysis || {} },
-      active_ms: (proof.analysis?.active_est_sec || 0) * 1000,
-      events_count: proof.keystrokes?.length || 0,
+    if (!draftsCache.length) {
+      banner.style.display = "none";
+      return;
+    }
+
+    let candidates = draftsCache;
+    if (currentProjectName) {
+      const same = draftsCache.filter((d) => (d.project_name || "") === currentProjectName);
+      if (same.length) candidates = same;
+    }
+
+    const d0 = candidates[0];
+    const total = draftsCache.length;
+
+    banner.style.display = "flex";
+    txt.innerText = `⚠️ ${total} session${total > 1 ? "s" : ""} non certifiée${
+      total > 1 ? "s" : ""
+    } • Dernière : ${d0.project_name || "—"}`;
+
+    btnRecover.onclick = async () => {
+      if (!currentProjectName && d0.project_name) {
+        await quickActivateProjectByName(d0.project_name);
+      }
+      await recoverDraft(d0.session_id);
     };
 
-    // UI
-    $("start-btn").classList.remove("hidden");
-    $("stop-btn").classList.add("hidden");
-    $("live-dashboard").style.display = "none";
-    setFinalizeEnabled(true);
+    const actionsWrap = btnRecover.parentElement || banner;
 
-    $("draft-banner").style.display = "none";
-    await invoke("delete_local_draft", { sessionId: proof.session_id });
-
-    toast("Récupération OK. Certifiez la session.");
+    let btnAll = document.getElementById("btn-drafts-all");
+    if (!btnAll) {
+      btnAll = document.createElement("button");
+      btnAll.id = "btn-drafts-all";
+      btnAll.type = "button";
+      btnAll.innerText = "Voir tout";
+      btnAll.className = "btn btn-ghost btn-mini";
+      actionsWrap.appendChild(btnAll);
+    }
+    btnAll.onclick = () => openDraftModal();
   } catch (e) {
-    alert("Erreur récupération: " + (e?.message || e));
+    console.warn("checkForDrafts", e);
   }
 }
 
-// -------------------- BOOT --------------------
-window.addEventListener("DOMContentLoaded", async () => {
-  // Bind UI
-  $("login-btn").onclick = handleLogin;
-  $("logout-btn").onclick = handleLogout;
+async function recoverDraft(sid) {
+  try {
+    const json = await invoke("load_local_draft", { sessionId: sid });
+    const p = JSON.parse(json);
 
-  $("refresh-projects-btn").onclick = loadProjectList;
-  $("init-btn").onclick = initializeProject;
+    const projName = p.project_name || currentProjectName || null;
+    if (projName && projName !== currentProjectName) {
+      await quickActivateProjectByName(projName);
+    }
 
-  $("start-btn").onclick = startScan;
-  $("stop-btn").onclick = stopScan;
-  $("finalize-btn").onclick = finalizeProject;
-  $("sync-btn").onclick = refreshAll;
+    restoredDraftSessionId = sid;
+    currentSessionId = p.session_id || sid;
 
-  $("open-last-session-cert-btn").onclick = openLastSessionCert;
-  $("open-project-master-btn").onclick = openProjectMaster;
+    lastSnapshot = {
+      scp_score: p.analysis?.score || 0,
+      active_ms: (p.analysis?.active_est_sec || 0) * 1000,
+      diag: { analysis: p.analysis || {}, paste: p.paste_stats || {} },
+      session_html_path: null,
+    };
 
-  $("export-project-master-btn").onclick = exportMasterHtml;
-  $("verify-project-btn").onclick = verifyProjectIntegrity;
+    if (currentProjectName) currentProjectId = await ensureProjectIdByName(currentProjectName);
 
-  $("viewer-close-btn").onclick = () => ($("viewer-modal").style.display = "none");
-  $("viewer-modal").onclick = (e) => {
-    if (e.target === $("viewer-modal")) $("viewer-modal").style.display = "none";
-  };
+    if (currentProjectId) {
+      const startedAt = p.timestamp_start || new Date().toISOString();
+      const endedAt = p.timestamp_end || new Date().toISOString();
+      const scp = p.analysis?.score || 0;
 
-  $("expert-toggle").onchange = async (e) => {
-    setMode(e.target.checked);
-    if (isExpert && currentProjectId) await refreshHistoryExpert();
-  };
+      try {
+        await supabase.from("ho_sessions").upsert(
+          {
+            id: currentSessionId,
+            user_id: currentUser.id,
+            project_id: currentProjectId,
+            started_at: startedAt,
+            ended_at: endedAt,
+            status: "STOPPED",
+            scp_score: scp,
+            active_ms: (p.analysis?.active_est_sec || 0) * 1000,
+            events_count: p.analysis?.total_events || 0,
+            diag: { analysis: p.analysis || {}, paste: p.paste_stats || {} },
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "id" }
+        );
+      } catch (e) {
+        console.warn("Upsert ho_sessions failed (still OK locally)", e);
+      }
+    }
 
-  // Start in simple mode
-  setMode(false);
-  resetLiveUI();
-  setSimpleButtonsState();
+    const banner = $("draft-banner");
+    if (banner) banner.style.display = "none";
 
-  await checkSession();
+    showScreen("DASHBOARD");
+    updateDashboardUI("STOPPED");
+    toast("Brouillon restauré. Vous pouvez finaliser.");
+  } catch (e) {
+    alert("Erreur restauration : " + e);
+  }
+}
+
+// =========================================================
+// UTILS
+// =========================================================
+async function sha256Hex(str) {
+  const buf = new TextEncoder().encode(str);
+  const digest = await crypto.subtle.digest("SHA-256", buf);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// =========================================================
+// BOOT
+// =========================================================
+window.addEventListener("DOMContentLoaded", () => {
+  dbg("DOM READY ✅");
+
+  // Marqueur visuel (safe)
+  try {
+    document.documentElement.style.outline = "6px solid rgba(255,0,0,.35)";
+  } catch {}
+
+  setupDeepLinkListeners().catch((e) => console.warn("setupDeepLinkListeners failed", e));
+
+  on("login-btn", async () => {
+    const email = $("email")?.value?.trim();
+    if (!email) return;
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: "humanorigin://login" },
+    });
+
+    if (error) alert(error.message);
+    else toast("Lien envoyé ✅");
+  });
+
+  on("logout-btn", handleLogout);
+  on("change-project-btn", changeProject);
+  on("init-btn", initProject);
+  on("start-btn", startScan);
+  on("stop-btn", stopScan);
+  on("finalize-btn", finalizeSession);
+  on("sync-btn", () => refreshHistory().catch(() => {}));
+  on("close-project-btn", exportFinalProjectCertificate);
+
+  window.addEventListener("paste", (e) => {
+    if (!isScanningUI) return;
+    try {
+      const txt = (e.clipboardData || window.clipboardData).getData("text") || "";
+      pasteStats.paste_events += 1;
+      pasteStats.pasted_chars += txt.length;
+      pasteStats.max_paste_chars = Math.max(pasteStats.max_paste_chars, txt.length);
+    } catch {}
+  });
+
+  supabase.auth.onAuthStateChange(async (_event, session) => {
+    if (!session) {
+      currentUser = null;
+      currentProjectId = null;
+      currentProjectName = null;
+      currentProjectPath = null;
+      currentSessionId = null;
+      restoredDraftSessionId = null;
+      lastSnapshot = null;
+      draftsCache = [];
+      showScreen("LOGIN");
+      return;
+    }
+
+    currentUser = session.user;
+    safeText("user-email-display", currentUser.email);
+
+    await loadProjectList();
+    showScreen("PROJECT_SELECT");
+
+    refreshHistory().catch(() => {});
+    checkForDrafts(true).catch(() => {});
+  });
+
+  checkSession();
 });

@@ -1,35 +1,35 @@
 [package]
 name = "human-origin"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "HumanOrigin Core V1"
+authors = ["Philippe"]
 edition = "2021"
 
 [build-dependencies]
 tauri-build = { version = "1", features = [] }
 
 [dependencies]
-# --- LE CŒUR TAURI ---
-tauri = { version = "1", features = [ "fs-all", "protocol-all", "http-all", "path-all", "dialog-all", "shell-open"] }
+# --- TAURI ---
+tauri = { version = "1", features = [ "window-all", "fs-all", "protocol-all", "http-all", "path-all", "dialog-all", "shell-open" ] }
 tauri-plugin-deep-link = "0.1"
 
-# --- DONNÉES & TEMPS (Doublons supprimés) ---
+# --- DATA ---
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
-# --- SYSTÈME (Clavier/Souris/Dossiers) ---
+# --- SYSTEM (keyboard/mouse + dirs) ---
 device_query = "0.2"
 dirs = "5.0"
 
-# --- SÉCURITÉ & CRYPTO (Signature + Drafts HO-4) ---
-aes-gcm = "0.10"
-keyring = "2"
-rand = "0.8"
-base64 = "0.22" # Version unique pour tout le monde
+# --- CRYPTO (device signature + drafts encryption) ---
+base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 rand_core = { version = "0.6", features = ["std"] }
+
+aes-gcm = "0.10"
+keyring = "2"
 
 [features]
 default = ["custom-protocol"]

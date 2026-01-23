@@ -4,22 +4,30 @@
     "beforeBuildCommand": "npm run build",
     "devPath": "http://localhost:1420",
     "distDir": "../dist",
-    "withGlobalTauri": true
+    "withGlobalTauri": false
   },
   "package": {
     "productName": "HumanOrigin",
     "version": "0.1.0"
   },
   "tauri": {
+    "windows": [
+      {
+        "title": "HumanOrigin",
+        "width": 900,
+        "height": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": true,
+        "center": true,
+        "focus": true
+      }
+    ],
     "allowlist": {
       "all": false,
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "dialog": {
-        "all": true
-      },
+      "window": { "all": true },
+      "shell": { "all": false, "open": true },
+      "dialog": { "all": true },
       "http": {
         "all": true,
         "request": true,
@@ -27,68 +35,36 @@
       },
       "fs": {
         "all": true,
-        "scope": [
-          "$APP/*",
-          "$DOCUMENT/*",
-          "$RESOURCE/*",
-          "$TEMP/*",
-          "$DOWNLOAD/*"
-        ]
+        "scope": ["$APP/**", "$DOCUMENT/**", "$RESOURCE/**", "$TEMP/**", "$DOWNLOAD/**"]
       },
-      "path": {
-        "all": true
-      },
-      "protocol": {
-        "all": true
-      }
+      "path": { "all": true },
+      "protocol": { "all": true }
     },
     "bundle": {
       "active": true,
       "category": "DeveloperTool",
-      "copyright": "",
-      "deb": {
-        "depends": []
-      },
-      "externalBin": [],
+      "targets": "all",
+      "identifier": "com.humanorigin.app",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
-        "icons/128x128@2x.png",
+        "icons/128x128.png",
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "com.humanorigin.app",
-      "longDescription": "",
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
         "frameworks": [],
         "providerShortName": null,
         "signingIdentity": null
-      },
-      "resources": [],
-      "shortDescription": "",
-      "targets": "all",
-      "windows": {
-        "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampUrl": ""
       }
     },
     "security": {
-      "csp": null
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: filesystem: ws: wss: https: http:; img-src 'self' data: blob: asset: https: http:; style-src 'self' 'unsafe-inline' data: blob: asset: https: http:; font-src 'self' data: blob: asset: https: http:; frame-src 'self' data: blob: asset:;"
     },
     "updater": {
       "active": false
-    },
-    "windows": [
-      {
-        "fullscreen": false,
-        "height": 720,
-        "resizable": true,
-        "title": "HumanOrigin",
-        "width": 1000
-      }
-    ]
+    }
   }
 }

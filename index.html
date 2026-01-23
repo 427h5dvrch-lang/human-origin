@@ -4,277 +4,718 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HumanOrigin</title>
+
     <style>
-      :root{
-        --bg:#f5f5f7; --card:#fff; --text:#1d1d1f; --muted:#86868b;
-        --border:#d2d2d7; --accent:#0071e3; --danger:#ff3b30; --ok:#2e7d32; --warn:#e65100;
-      }
-      *{ box-sizing:border-box; }
-      html,body{ margin:0; padding:0; width:100%; height:100%; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
-      header{
-        background:var(--card); border-bottom:1px solid var(--border);
-        padding:14px 18px; display:flex; justify-content:space-between; align-items:center; flex-shrink:0;
-      }
-      h1{ margin:0; font-size:16px; font-weight:700; }
-      .muted{ color:var(--muted); font-size:12px; }
-      .badge{ font-size:11px; padding:4px 8px; border-radius:999px; border:1px solid var(--border); }
-      .badge.ok{ background:#e8f5e9; border-color:#c8e6c9; color:var(--ok); }
-      .badge.warn{ background:#fff3e0; border-color:#ffe0b2; color:var(--warn); }
+      :root {
+        --bg: #f5f6fb;
+        --text: #0b1220;
+        --muted: rgba(11, 18, 32, 0.55);
+        --border: rgba(15, 23, 42, 0.1);
 
-      main{
-        height:calc(100vh - 54px);
-        overflow:auto;
-        padding:18px;
-        max-width:1100px;
-        margin:0 auto;
-        display:flex;
-        flex-direction:column;
-        gap:14px;
-      }
-      .card{
-        background:var(--card);
-        border-radius:14px;
-        padding:16px;
-        box-shadow:0 2px 12px rgba(0,0,0,0.06);
-        border:1px solid rgba(0,0,0,0.03);
-      }
-      .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-      input,select{
-        padding:10px; border-radius:10px; border:1px solid var(--border);
-        font-size:14px; min-width:220px;
-      }
-      button{
-        padding:10px 14px; border-radius:10px; border:none;
-        font-size:14px; font-weight:600; cursor:pointer;
-        transition:transform .08s ease, opacity .15s ease;
-      }
-      button:active{ transform:scale(.98); }
-      button[disabled]{ opacity:.5; cursor:not-allowed; }
+        --night: #0b1b33;
+        --night2: #102a52;
 
-      .btn-black{ background:#111; color:#fff; }
-      .btn-blue{ background:var(--accent); color:#fff; }
-      .btn-grey{ background:#e5e5ea; color:#111; }
-      .btn-red{ background:var(--danger); color:#fff; }
-
-      .hidden{ display:none !important; }
-
-      /* Login */
-      #login-screen{ height:calc(100vh - 54px); display:flex; justify-content:center; align-items:center; padding:18px; }
-      #login-card{ width:360px; }
-      #login-card h2{ margin:0 0 6px 0; font-size:18px; }
-      #login-card p{ margin:0 0 12px 0; color:var(--muted); font-size:13px; line-height:1.35; }
-
-      /* Draft banner */
-      #draft-banner{
-        background:#fff8e1; border:1px solid #ffe082; color:#f57f17;
-        padding:10px 12px; border-radius:12px;
-        display:none; align-items:center; justify-content:space-between; gap:10px;
+        --card: rgba(255, 255, 255, 0.78);
+        --card2: rgba(255, 255, 255, 0.92);
+        --shadow: 0 28px 70px rgba(12, 24, 46, 0.18);
       }
 
-      /* Simple vs Expert */
-      #mode-pill{
-        display:flex; align-items:center; gap:8px;
+      * {
+        box-sizing: border-box;
       }
-      #expert-toggle{ transform:scale(1.1); }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
 
-      /* Live dashboard */
-      #live-dashboard{
-        background:#0b0b0c; color:#fff; border-radius:14px; padding:18px;
-        display:none;
+      /* =========================
+         LOGIN — OVAL / GLASS
+         ========================= */
+      #login-screen {
+        position: fixed;
+        inset: 0;
+        display: block;
+        -webkit-app-region: no-drag;
       }
-      #timer{ font-size:44px; font-weight:800; font-variant-numeric:tabular-nums; }
-      #live-stats{ color:#cfcfcf; margin-top:6px; font-size:14px; }
+      .login-bg {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(900px 600px at 65% 35%, rgba(56, 132, 255, 0.35), transparent 60%),
+          radial-gradient(700px 500px at 35% 60%, rgba(10, 26, 60, 0.25), transparent 65%),
+          linear-gradient(135deg, #f7f8ff 0%, #ffffff 45%, #f7faff 100%);
+        filter: saturate(1.05);
+      }
+      .login-shell {
+        position: relative;
+        z-index: 1;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 30px 12px;
+      }
+      .login-oval {
+        width: 520px;
+        max-width: 92vw;
+        border-radius: 999px;
+        padding: 34px 30px;
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(14, 29, 58, 0.12);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, 0.45) inset;
+        position: relative;
+        overflow: hidden;
+      }
+      .login-oval::before {
+        content: "";
+        position: absolute;
+        inset: -3px;
+        border-radius: 999px;
+        padding: 3px;
+        background: linear-gradient(
+          155deg,
+          rgba(56, 132, 255, 0),
+          rgba(56, 132, 255, 0.75),
+          rgba(56, 132, 255, 0)
+        );
+        -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        opacity: 0.9;
+        pointer-events: none;
+      }
+      .login-brand {
+        text-align: center;
+        margin-bottom: 18px;
+      }
+      .login-brand .ho {
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+        color: var(--night);
+      }
+      .login-brand .title {
+        margin-top: 10px;
+        font-size: 30px;
+        font-weight: 950;
+        letter-spacing: -0.03em;
+        color: var(--night);
+      }
+      .login-brand .sub {
+        margin-top: 10px;
+        font-size: 14px;
+        color: rgba(11, 27, 51, 0.65);
+      }
+      .login-field {
+        margin-top: 18px;
+        display: grid;
+        gap: 12px;
+      }
+      .login-input {
+        width: 100%;
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(14, 29, 58, 0.14);
+        background: rgba(255, 255, 255, 0.8);
+        outline: none;
+        -webkit-app-region: no-drag;
+      }
+      .login-btn {
+        width: 100%;
+        padding: 14px;
+        border-radius: 12px;
+        border: none;
+        cursor: pointer;
+        font-weight: 900;
+        background: linear-gradient(180deg, var(--night2) 0%, #071429 100%);
+        color: #fff;
+        box-shadow: 0 14px 26px rgba(8, 20, 41, 0.22);
+        -webkit-app-region: no-drag;
+      }
+      .login-foot {
+        margin-top: 14px;
+        text-align: center;
+        font-size: 12px;
+        color: rgba(11, 27, 51, 0.55);
+        line-height: 1.35;
+      }
 
-      /* Tables */
-      table{ width:100%; border-collapse:collapse; font-size:13px; }
-      th{ text-align:left; color:var(--muted); border-bottom:1px solid var(--border); padding:8px 0; }
-      td{ padding:10px 0; border-bottom:1px solid #eee; vertical-align:top; }
-      tr:last-child td{ border-bottom:none; }
-      .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      /* =========================
+         APP — GLASS PANEL (cohérent avec ta ref)
+         ========================= */
+      #app-screen {
+        display: none;
+        min-height: 100vh;
+        padding: 26px 18px;
+      }
+      .app-bg {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(1200px 700px at 30% 25%, rgba(56, 132, 255, 0.18), transparent 55%),
+          radial-gradient(900px 600px at 70% 55%, rgba(20, 40, 90, 0.1), transparent 60%),
+          linear-gradient(135deg, #f7f8ff 0%, #ffffff 45%, #f7faff 100%);
+        filter: saturate(1.05);
+      }
+      .app-shell {
+        position: relative;
+        z-index: 1;
+        max-width: 980px;
+        margin: 0 auto;
+      }
+      .app-panel {
+        border-radius: 28px;
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.6);
+        border: 1px solid rgba(14, 29, 58, 0.1);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+        overflow: hidden;
+      }
 
-      /* Viewer modal */
-      #viewer-modal{
-        position:fixed; inset:0; background:rgba(0,0,0,0.45);
-        display:none; justify-content:center; align-items:center; z-index:2000;
+      .app-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 6px 16px;
       }
-      #viewer-box{
-        width:min(980px, 92vw);
-        height:min(720px, 86vh);
-        background:#fff; border-radius:16px; overflow:hidden;
-        box-shadow:0 12px 60px rgba(0,0,0,0.35);
-        display:flex; flex-direction:column;
+      .app-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
-      #viewer-top{
-        padding:10px 12px; border-bottom:1px solid var(--border);
-        display:flex; justify-content:space-between; align-items:center;
+      .app-email {
+        font-size: 12px;
+        color: var(--muted);
+        max-width: 260px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
-      #viewer-title{ font-weight:700; font-size:14px; }
-      #viewer-actions{ display:flex; gap:8px; align-items:center; }
-      #viewer-frame{ flex:1; width:100%; border:0; }
 
-      /* Toast */
-      #toast{
-        position:fixed; bottom:18px; right:18px;
-        background:#111; color:#fff; padding:10px 14px;
-        border-radius:12px; font-size:13px; display:none; z-index:3000;
+      .btn {
+        border: none;
+        border-radius: 12px;
+        padding: 10px 14px;
+        font-weight: 850;
+        cursor: pointer;
+      }
+      .btn-mini {
+        padding: 8px 12px;
+        font-size: 12px;
+        border-radius: 12px;
+      }
+      .btn-ghost {
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid rgba(14, 29, 58, 0.12);
+        color: var(--night);
+      }
+     .btn-primary{
+  background: linear-gradient(180deg, #102a52 0%, #071429 100%);
+  color:#fff;
+  border: 1px solid rgba(56,132,255,0.22);
+  box-shadow:
+    0 14px 26px rgba(8,20,41,0.22),
+    0 0 0 1px rgba(255,255,255,0.10) inset,
+    0 10px 30px rgba(56,132,255,0.18);
+}
+.btn-primary:hover{
+  filter: brightness(1.03);
+}
+.btn-primary:active{
+  transform: translateY(1px);
+}
+
+      .btn-danger {
+        background: #ff3b30;
+        color: #fff;
+      }
+
+      .card {
+        background: var(--card2);
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 18px;
+        padding: 16px;
+        box-shadow: 0 10px 25px rgba(12, 24, 46, 0.08);
+        margin-top: 14px;
+      }
+      .card h3 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: -0.01em;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin-top: 10px;
+      }
+
+      input,
+      select {
+        padding: 10px 12px;
+        flex: 1;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        border-radius: 12px;
+        outline: none;
+        background: rgba(255, 255, 255, 0.8);
+      }
+      input:focus,
+      select:focus {
+        border-color: rgba(56, 132, 255, 0.45);
+        box-shadow: 0 0 0 3px rgba(56, 132, 255, 0.14);
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      #live-dashboard {
+        background: linear-gradient(180deg, #0b1b33 0%, #071429 100%);
+        color: #fff;
+        padding: 16px;
+        border-radius: 18px;
+        text-align: center;
+        display: none;
+        margin-top: 14px;
+        box-shadow: 0 18px 40px rgba(8, 20, 41, 0.25);
+      }
+      .timer {
+        font-size: 44px;
+        font-weight: 950;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+        font-size: 13px;
+      }
+      th {
+        text-align: left;
+        color: rgba(11, 18, 32, 0.55);
+        border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+        padding-bottom: 8px;
+      }
+      td {
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+      }
+
+      #draft-banner {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        border: 1px solid rgba(56, 132, 255, 0.25);
+        background: rgba(56, 132, 255, 0.1);
+        color: var(--night);
+        margin-top: 6px;
+      }
+
+      #toast {
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(10, 14, 20, 0.92);
+        color: #fff;
+        padding: 10px 16px;
+        border-radius: 999px;
+        display: none;
+        z-index: 9999;
+        font-size: 13px;
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+      }
+
+      /* VIEWER OVERLAY */
+      #viewer-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(7, 14, 26, 0.55);
+        display: none;
+        z-index: 10000;
+        padding: 20px;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+      #viewer-modal {
+        background: rgba(255, 255, 255, 0.92);
+        border-radius: 18px;
+        max-width: 1100px;
+        height: calc(100vh - 40px);
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.25);
+        border: 1px solid rgba(15, 23, 42, 0.1);
+      }
+      #viewer-topbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+      }
+      #viewer-title {
+        font-weight: 900;
+        color: var(--night);
+      }
+      #viewer-actions {
+        display: flex;
+        gap: 10px;
+      }
+      #viewer-error {
+        display: none;
+        padding: 10px 14px;
+        border-bottom: 1px solid rgba(185, 28, 28, 0.2);
+        background: rgba(255, 59, 48, 0.08);
+        color: #b91c1c;
+        font-family: ui-monospace, Menlo, monospace;
+        white-space: pre-wrap;
+      }
+      #viewer-iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+        display: block;
+      }
+
+      /* =========================================================
+         DRAFT MODAL — GLASS / BLEU NUIT (pour "Voir tout")
+         ========================================================= */
+      #draft-modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        padding: 18px;
+        background: rgba(10, 18, 35, 0.45);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+      }
+
+      #draft-modal-card {
+        width: min(860px, calc(100vw - 32px));
+        max-height: min(78vh, 760px);
+        border-radius: 26px;
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.62);
+        border: 1px solid rgba(14, 29, 58, 0.12);
+        backdrop-filter: blur(18px);
+        -webkit-backdrop-filter: blur(18px);
+        box-shadow: var(--shadow), 0 0 0 1px rgba(255, 255, 255, 0.35) inset;
+        overflow: hidden;
+      }
+
+      #draft-modal-card h2 {
+        margin: 0;
+        font-weight: 950;
+        letter-spacing: -0.02em;
+        color: var(--night);
+        font-size: 22px;
+      }
+
+      #draft-modal-sub {
+        margin-top: 6px;
+        font-size: 13px;
+        color: rgba(11, 18, 32, 0.6);
+      }
+
+      .draft-toprow {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .draft-x {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+        border: 1px solid rgba(14, 29, 58, 0.12);
+        background: rgba(255, 255, 255, 0.7);
+        color: rgba(11, 18, 32, 0.7);
+        font-weight: 900;
+        cursor: pointer;
+      }
+
+      .draft-controls {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        margin: 12px 0 14px;
+      }
+
+      #draft-modal-filter {
+        flex: 1;
+        padding: 10px 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: rgba(255, 255, 255, 0.8);
+        outline: none;
+      }
+      #draft-modal-filter:focus {
+        border-color: rgba(56, 132, 255, 0.45);
+        box-shadow: 0 0 0 3px rgba(56, 132, 255, 0.14);
+      }
+
+      .draft-list {
+        overflow: auto;
+        border-radius: 18px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: rgba(255, 255, 255, 0.72);
+        max-height: min(52vh, 460px); 
+      }
+
+      .draft-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 14px 14px;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+      }
+      .draft-item:last-child {
+        border-bottom: 0;
+      }
+
+      .draft-meta {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .draft-title {
+        font-weight: 950;
+        font-size: 14px;
+        color: var(--night);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .draft-subline {
+        font-size: 12px;
+        color: rgba(11, 18, 32, 0.55);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .draft-mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        color: rgba(11, 18, 32, 0.45);
+      }
+
+      .draft-btns {
+        display: flex;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+
+      .btn-soft {
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(14, 29, 58, 0.12);
+        color: var(--night);
+      }
+      .btn-soft:hover {
+        filter: brightness(1.02);
+      }
+
+      .btn-outline-danger {
+        background: rgba(255, 255, 255, 0.72);
+        border: 1px solid rgba(255, 59, 48, 0.22);
+        color: #b91c1c;
+      }
+
+      .draft-bottom {
+        display: flex;
+        justify-content: center;
+        gap: 12px;
+        padding: 14px 0 2px;
       }
     </style>
   </head>
 
   <body>
-    <header>
-      <div class="row" style="gap:12px;">
-        <h1>HumanOrigin</h1>
-        <span class="badge" id="cloud-badge">CLOUD: …</span>
-      </div>
-
-      <div class="row" style="justify-content:flex-end;">
-        <div id="mode-pill" class="muted">
-          <label class="row" style="gap:6px; margin:0;">
-            <input id="expert-toggle" type="checkbox" />
-            Mode expert
-          </label>
-        </div>
-        <span class="muted" id="user-email-display">—</span>
-        <button id="logout-btn" class="btn-grey" style="padding:7px 10px; font-size:12px;">Sortir</button>
-      </div>
-    </header>
-
     <!-- LOGIN -->
     <div id="login-screen">
-      <div id="login-card" class="card">
-        <h2>Connexion</h2>
-        <p>Entrez votre email pour recevoir un lien de connexion.</p>
-        <input id="email" type="email" placeholder="auteur@exemple.com" />
-        <button id="login-btn" class="btn-black" style="width:100%; margin-top:10px;">Recevoir le lien de connexion</button>
-        <div class="muted" style="margin-top:10px;">
-          Astuce : le lien s’ouvre et connecte automatiquement HumanOrigin.
+      <div class="login-bg"></div>
+      <div class="login-shell">
+        <div class="login-oval">
+          <div class="login-brand">
+            <div class="ho">HumanOrigin</div>
+            <div class="title">Connexion</div>
+            <div class="sub">Adresse email</div>
+          </div>
+
+          <div class="login-field">
+            <input
+              class="login-input"
+              type="email"
+              id="email"
+              placeholder="auteur@exemple.com"
+              autocomplete="email"
+            />
+            <button id="login-btn" class="login-btn">Continuer</button>
+          </div>
+
+          <div class="login-foot">
+            Aucun mot de passe.<br />
+            Nous mesurons l’effort, pas le contenu.
+          </div>
         </div>
       </div>
     </div>
 
     <!-- APP -->
-    <main id="app-screen" class="hidden">
-      <div id="draft-banner" class="card">
-        <div>⚠️ Une session interrompue a été trouvée.</div>
-        <button id="btn-recover-draft" class="btn-black" style="padding:8px 10px; font-size:12px;">Restaurer</button>
-      </div>
+    <div id="app-screen">
+      <div class="app-bg"></div>
+      <div class="app-shell">
+        <div class="app-panel">
+          <!-- TOP BAR -->
+          <div class="app-topbar">
+            <div>
+              <div style="font-size: 12px; color: var(--muted);">Projet</div>
+              <div
+                id="current-project-title"
+                style="
+                  font-weight: 950;
+                  font-size: 22px;
+                  letter-spacing: -0.02em;
+                  color: var(--night);
+                "
+              >
+                —
+              </div>
+            </div>
 
-      <!-- Project selection -->
-      <div class="card" id="project-section">
-        <div class="row" style="justify-content:space-between; align-items:flex-end;">
-          <div>
-            <div class="muted">Projet</div>
-            <div style="font-size:18px; font-weight:800;" id="current-project-title">Aucun projet</div>
+            <div class="app-actions">
+              <span id="user-email-display" class="app-email"></span>
+              <button id="change-project-btn" class="btn btn-ghost btn-mini">Projet</button>
+              <button id="logout-btn" class="btn btn-primary btn-mini">Se déconnecter</button>
+            </div>
           </div>
-          <button id="refresh-projects-btn" class="btn-grey" style="padding:7px 10px; font-size:12px;">↻ Recharger la liste</button>
-        </div>
 
-        <div class="row" style="margin-top:12px;">
-          <select id="project-selector"></select>
-          <input id="project-name" type="text" placeholder="Ou créer un projet…" />
-          <button id="init-btn" class="btn-black">Charger / Créer</button>
-        </div>
-      </div>
-
-      <!-- Controls -->
-      <div class="card hidden" id="controls-section">
-        <div class="row" style="justify-content:space-between;">
-          <div>
-            <div style="font-size:16px; font-weight:800;">Session de travail</div>
-            <div class="muted" id="session-hint">—</div>
+          <!-- Draft banner -->
+          <div id="draft-banner">
+            <div>
+              <strong id="draft-banner-text">⚠️ Session interrompue détectée</strong>
+              <div style="font-size: 12px; margin-top: 2px; color: rgba(11, 18, 32, 0.55);">
+                Vous pouvez la restaurer et la certifier.
+              </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <button id="btn-recover-draft" class="btn btn-primary btn-mini">Restaurer</button>
+              <!-- Le bouton "Voir tout" est injecté en JS (btn-drafts-all) -->
+            </div>
           </div>
-          <button id="sync-btn" class="btn-grey" style="padding:7px 10px; font-size:12px;">🔄 Rafraîchir</button>
-        </div>
 
-        <div class="row" style="margin-top:10px;">
-          <button id="start-btn" class="btn-black" style="flex:1;">▶︎ Démarrer session</button>
-          <button id="stop-btn" class="btn-red hidden" style="flex:1;">⏹ Arrêter</button>
-          <button id="finalize-btn" class="btn-blue" style="flex:1;" disabled>✅ Certifier</button>
-        </div>
-
-        <div id="live-dashboard" style="margin-top:12px;">
-          <div class="muted" style="text-transform:uppercase; letter-spacing:.08em;">Monitoring actif</div>
-          <div id="timer">00:00</div>
-          <div id="live-stats">Frappes: <span id="keystrokes-display">0</span> • Clics: <span id="clicks-display">0</span></div>
-        </div>
-
-        <!-- MODE SIMPLE: 2 boutons -->
-        <div id="simple-actions" style="margin-top:12px;">
-          <div class="row">
-            <button id="open-last-session-cert-btn" class="btn-grey" style="flex:1;" disabled>Ouvrir le certificat de la dernière session</button>
-            <button id="open-project-master-btn" class="btn-grey" style="flex:1;" disabled>Ouvrir le certificat final (projet)</button>
+          <!-- Project select -->
+          <div class="card" id="project-section">
+            <h3>📂 Charger un projet</h3>
+            <div class="row">
+              <select id="project-selector"></select>
+              <input type="text" id="project-name" placeholder="Ou créer nouveau..." />
+              <button id="init-btn" class="btn btn-primary">Charger</button>
+            </div>
           </div>
-          <div class="muted" style="margin-top:8px;">
-            En mode simple, vous ne voyez que les preuves utiles. Le reste est disponible en mode expert.
+
+          <!-- Controls -->
+          <div id="controls-section" class="card hidden">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h3>⏱️ Session</h3>
+              <button id="sync-btn" class="btn btn-ghost btn-mini">Rafraîchir</button>
+            </div>
+
+            <div class="row">
+              <button id="start-btn" class="btn btn-primary" style="flex: 1;">Démarrer</button>
+              <button id="stop-btn" class="btn btn-danger hidden" style="flex: 1;">Arrêter</button>
+              <button id="finalize-btn" class="btn btn-ghost" disabled style="flex: 1;">Certifier</button>
+            </div>
+
+            <div id="live-dashboard">
+              <div
+                style="
+                  font-size: 12px;
+                  text-transform: uppercase;
+                  letter-spacing: 1px;
+                  color: rgba(255, 255, 255, 0.7);
+                "
+              >
+                Monitoring actif
+              </div>
+              <div class="timer" id="timer">00:00</div>
+              <div style="margin-top: 10px; font-size: 14px; color: rgba(255, 255, 255, 0.8);">
+                Frappes: <span id="keystrokes-display">0</span> • Clics:
+                <span id="clicks-display">0</span>
+              </div>
+            </div>
+
+            <button
+              id="close-project-btn"
+              class="btn btn-primary"
+              style="display: none; width: 100%; margin-top: 14px;"
+            >
+              Certificat final du projet
+            </button>
           </div>
-        </div>
 
-        <!-- Export / Verify (EXPERT) -->
-        <div id="expert-actions" class="hidden" style="margin-top:12px;">
-          <div class="row">
-            <button id="export-project-master-btn" class="btn-blue" style="flex:1;">Exporter le certificat final (HTML)</button>
-            <button id="verify-project-btn" class="btn-grey" style="flex:1;">Vérifier le projet (intégrité)</button>
-          </div>
-          <div class="muted" style="margin-top:8px;">
-            Vérification V1 : recalcule les hashes depuis les JSON stockés, et vérifie la chaîne.
-          </div>
-        </div>
-      </div>
+          <!-- History -->
+          <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <h3>📜 Historique</h3>
+            </div>
 
-      <!-- History -->
-      <div class="card" id="history-card">
-        <div class="row" style="justify-content:space-between;">
-          <div style="font-size:16px; font-weight:800;">Historique & preuves</div>
-          <span class="muted" id="history-subtitle">—</span>
-        </div>
-
-        <!-- MODE SIMPLE -->
-        <div id="simple-history" style="margin-top:10px;">
-          <table>
-            <thead>
-              <tr><th>Date</th><th>Preuve</th><th>Source</th></tr>
-            </thead>
-            <tbody id="simple-history-tbody"></tbody>
-          </table>
-        </div>
-
-        <!-- MODE EXPERT -->
-        <div id="expert-history" class="hidden" style="margin-top:10px;">
-          <div class="muted" style="margin-bottom:6px;">Certificats (10 derniers)</div>
-          <table>
-            <thead>
-              <tr><th>Date</th><th>Hash</th><th>Source</th><th>Type</th></tr>
-            </thead>
-            <tbody id="certs-tbody"></tbody>
-          </table>
-
-          <div class="muted" style="margin-top:16px; margin-bottom:6px;">Sessions (10 dernières)</div>
-          <table>
-            <thead>
-              <tr><th>Début</th><th>Statut</th><th>Actions</th></tr>
-            </thead>
-            <tbody id="sessions-tbody"></tbody>
-          </table>
-        </div>
-      </div>
-    </main>
-
-    <!-- Viewer modal -->
-    <div id="viewer-modal">
-      <div id="viewer-box">
-        <div id="viewer-top">
-          <div id="viewer-title">Certificat</div>
-          <div id="viewer-actions">
-            <button id="viewer-open-external-btn" class="btn-grey" style="padding:7px 10px; font-size:12px;">Ouvrir dans le navigateur</button>
-            <button id="viewer-close-btn" class="btn-black" style="padding:7px 10px; font-size:12px;">Fermer</button>
+            <div style="overflow-x: auto; margin-top: 8px;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Heure</th>
+                    <th>Statut</th>
+                    <th>Preuve</th>
+                  </tr>
+                </thead>
+                <tbody id="certs-tbody"></tbody>
+              </table>
+            </div>
           </div>
         </div>
-        <iframe id="viewer-frame" title="Certificat"></iframe>
       </div>
     </div>
 
-    <div id="toast"></div>
+    <!-- VIEWER OVERLAY -->
+    <div id="viewer-overlay">
+      <div id="viewer-modal">
+        <div id="viewer-topbar">
+          <div id="viewer-title">Certificat final</div>
+        <div id="viewer-actions">
+  <button id="viewer-open-external" class="btn btn-ghost btn-mini">Ouvrir dans navigateur</button>
+  <button id="viewer-reload" class="btn btn-ghost btn-mini">Recharger</button>
+  <button id="viewer-download" class="btn btn-primary btn-mini">Télécharger</button>
+  <button id="viewer-close" class="btn btn-primary btn-mini">Fermer</button>
+</div>
+        </div>
+        <div id="viewer-error"></div>
+        <iframe id="viewer-iframe"></iframe>
+      </div>
+    </div>
+
+    <div id="toast">Notification</div>
 
     <script type="module" src="/src/main.js"></script>
   </body>
