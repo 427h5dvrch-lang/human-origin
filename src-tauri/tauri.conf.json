@@ -63,8 +63,12 @@
     "security": {
       "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: filesystem: ws: wss: https: http:; img-src 'self' data: blob: asset: https: http:; style-src 'self' 'unsafe-inline' data: blob: asset: https: http:; font-src 'self' data: blob: asset: https: http:; frame-src 'self' data: blob: asset:;"
     },
-    "updater": {
-      "active": false
+   "updater": {
+      "active": true,
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwQkM3NzU4ODEwODVCNTMKUldSVFd3aUJXSGU4d0c4YlR3R01BdU5uUnoyREh6REZsdkVOK05nZHUvL2NuTXUxSWJxcnJBMC8K% ",
+      "endpoints": [
+        "https://github.com/TON_PSEUDO_GITHUB/human-origin/releases/latest/download/latest.json"
+      ]
     }
-  }
 }

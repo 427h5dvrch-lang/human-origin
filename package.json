@@ -7,7 +7,10 @@
     "dev": "vite --port 1420 --strictPort",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "bump": "node bump_version.mjs",
+    "bump:git": "node bump_version.mjs --git --tag",
+    "bump:git:cargo": "node bump_version.mjs --git --tag --cargo"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.3",
