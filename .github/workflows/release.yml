@@ -7,6 +7,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch: # <--- C'est ça qui ajoute le bouton manuel !
 
 jobs:
   publish-tauri:
@@ -39,21 +40,17 @@ jobs:
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
-          # Clés Tauri
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          
-          # Clés Apple
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__ 
-          releaseName: "HumanOrigin v__VERSION__"
-          releaseBody: "Mise à jour automatique."
+          tagName: v${{ github.run_number }} # On utilise un numéro automatique pour le test manuel
+          releaseName: "Test Manuel v${{ github.run_number }}"
+          releaseBody: "Test manuel du workflow."
           releaseDraft: true
-          prerelease: false
+          prerelease: true
