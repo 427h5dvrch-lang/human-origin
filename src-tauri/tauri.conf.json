@@ -25,20 +25,39 @@
     ],
     "allowlist": {
       "all": false,
-      "window": { "all": true },
-      "shell": { "all": false, "open": true },
-      "dialog": { "all": true },
+      "window": {
+        "all": true
+      },
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "dialog": {
+        "all": true
+      },
       "http": {
         "all": true,
         "request": true,
-        "scope": ["https://*.supabase.co/*"]
+        "scope": [
+          "https://*.supabase.co/*"
+        ]
       },
       "fs": {
         "all": true,
-        "scope": ["$APP/**", "$DOCUMENT/**", "$RESOURCE/**", "$TEMP/**", "$DOWNLOAD/**"]
+        "scope": [
+          "$APP/**",
+          "$DOCUMENT/**",
+          "$RESOURCE/**",
+          "$TEMP/**",
+          "$DOWNLOAD/**"
+        ]
       },
-      "path": { "all": true },
-      "protocol": { "all": true }
+      "path": {
+        "all": true
+      },
+      "protocol": {
+        "all": true
+      }
     },
     "bundle": {
       "active": true,
@@ -63,12 +82,13 @@
     "security": {
       "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: asset: filesystem: ws: wss: https: http:; img-src 'self' data: blob: asset: https: http:; style-src 'self' 'unsafe-inline' data: blob: asset: https: http:; font-src 'self' data: blob: asset: https: http:; frame-src 'self' data: blob: asset:;"
     },
-   "updater": {
+    "updater": {
       "active": true,
       "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwQkM3NzU4ODEwODVCNTMKUldSVFd3aUJXSGU4d0c4YlR3R01BdU5uUnoyREh6REZsdkVOK05nZHUvL2NuTXUxSWJxcnJBMC8K% ",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwQkM3NzU4ODEwODVCNTMKUldSVFd3aUJXSGU4d0c4YlR3R01BdU5uUnoyREh6REZsdkVOK05nZHUvL2NuTXUxSWJxcnJBMC8K",
       "endpoints": [
-        "https://github.com/TON_PSEUDO_GITHUB/human-origin/releases/latest/download/latest.json"
+        "https://github.com/427h5dvrch-lang/human-origin/releases/latest/download/latest.json"
       ]
     }
+  }
 }
