@@ -1,6 +1,6 @@
 [package]
 name = "human-origin"
-version = "0.1.6"
+version = "0.1.7"
 description = "HumanOrigin Core V1"
 authors = ["Philippe"]
 edition = "2021"
