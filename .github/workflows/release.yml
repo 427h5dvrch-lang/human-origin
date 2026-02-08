@@ -37,24 +37,21 @@ jobs:
       - name: Install dependencies (NPM)
         run: npm install
 
+      # On utilise une version plus récente et précise de l'action Tauri pour éviter les blocages Apple
       - name: Build and Release
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v0.5.15
         env:
-          # Clés Tauri
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          
-          # Clés Apple
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           
-          # 🛑 MODIFICATION ICI : On force l'email en dur pour être sûr (avec le point)
+          # On garde l'email en dur car on sait que ça marche
           APPLE_ID: "dazeas.philippe@gmail.com"
           
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }} 
-          
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v${{ github.run_number }}
