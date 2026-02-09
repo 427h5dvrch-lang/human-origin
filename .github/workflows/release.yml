@@ -1,6 +1,8 @@
 name: Release HumanOrigin
+
 permissions:
   contents: write
+
 on:
   push:
     tags:
@@ -9,45 +11,51 @@ on:
 
 jobs:
   publish-tauri:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # ON REMET WINDOWS ET MAC !
+        platform: [macos-latest, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-      - uses: dtolnay/rust-toolchain@stable
-      - run: npm install
 
-      # ÉTAPE 1 : On construit l'app SANS LES IDENTIFIANTS APPLE
-      # Si tu vois "Notarizing" dans les logs ici, c'est que ce fichier n'est pas pris en compte !
-      - name: Build App (NO NOTARIZATION)
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies (Ubuntu only)
+        if: matrix.platform == 'ubuntu-20.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install dependencies (NPM)
+        run: npm install
+
+      # 🚀 CONSTRUCTION ET RELEASE (SANS NOTARISATION APPLE)
+      - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
+          # Clés pour signer (OBLIGATOIRE pour que l'app marche)
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # PAS D'APPLE ID ICI = PAS DE NOTARISATION AUTOMATIQUE
+          
+          # ⚠️ ON A SUPPRIMÉ APPLE_ID et APPLE_PASSWORD ICI
+          # Cela empêche Tauri de contacter Apple et d'attendre indéfiniment.
+          
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v${{ github.run_number }}
           releaseName: "HumanOrigin v${{ github.run_number }}"
+          releaseBody: "Release (Signed but not Notarized due to Apple Server Timeout)."
           releaseDraft: true
           prerelease: true
-
-      # ÉTAPE 2 : On compresse l'app pour Apple
-      - name: 📦 Zip Application
-        run: |
-          cd src-tauri/target/release/bundle/macos
-          /usr/bin/ditto -c -k --keepParent HumanOrigin.app HumanOrigin.zip
-
-      # ÉTAPE 3 : On envoie nous-mêmes (C'est ici qu'on verra la vraie erreur)
-      - name: 🍎 Manual Notarization
-        run: |
-          echo "Lancement manuel de la notarisation..."
-          xcrun notarytool submit src-tauri/target/release/bundle/macos/HumanOrigin.zip --apple-id "dazeas.philippe@gmail.com" --password "${{ secrets.APPLE_PASSWORD }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --wait
-        env:
-          APPLE_ID: "dazeas.philippe@gmail.com"
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
