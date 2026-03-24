@@ -287,6 +287,72 @@ open_first_html = f"""<!doctype html>
       font-size: 17px;
       line-height: 1.65;
     }}
+    .status-strip {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+      margin-bottom: 4px;
+    }}
+    .status-card {{
+      padding: 18px 18px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.78);
+      box-shadow: 0 10px 28px rgba(17,24,39,0.04);
+    }}
+    .status-card.good {{
+      background: linear-gradient(180deg, rgba(236,253,245,0.96), rgba(220,252,231,0.88));
+      border-color: rgba(22,101,52,0.18);
+    }}
+    .status-card.warn {{
+      background: linear-gradient(180deg, rgba(255,251,235,0.96), rgba(254,243,199,0.90));
+      border-color: rgba(146,64,14,0.18);
+    }}
+    .status-card.bad {{
+      background: linear-gradient(180deg, rgba(254,242,242,0.96), rgba(254,226,226,0.90));
+      border-color: rgba(153,27,27,0.16);
+    }}
+    .status-top {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }}
+    .status-kicker {{
+      font-size: 11px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 800;
+    }}
+    .status-pill {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 30px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      background: rgba(255,255,255,0.76);
+      border: 1px solid rgba(17,24,39,0.08);
+    }}
+    .status-value {{
+      font-size: 20px;
+      line-height: 1.15;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 8px;
+    }}
+    .status-copy {{
+      color: var(--muted);
+      line-height: 1.55;
+      font-size: 14px;
+    }}
     .hero-grid {{
       display: grid;
       grid-template-columns: 1.35fr 0.9fr;
@@ -445,7 +511,7 @@ open_first_html = f"""<!doctype html>
     html[data-lang="fr"] [data-lang-inline="fr"] {{ display: inline; }}
     [data-lang-inline] {{ display: none; }}
     @media (max-width: 900px) {{
-      .hero-grid, .grid, .meta {{ grid-template-columns: 1fr; }}
+      .status-strip, .hero-grid, .grid, .meta {{ grid-template-columns: 1fr; }}
       .hero {{ padding: 24px; }}
     }}
   </style>
@@ -479,6 +545,65 @@ open_first_html = f"""<!doctype html>
           Ce package est conçu pour être lisible et vérifiable par un tiers, sans contexte préalable.
           Il réunit le document public, la preuve portable de référence, la preuve de compatibilité,
           et le parcours de vérification.
+        </div>
+      </div>
+
+      <div class="status-strip">
+        <div class="status-card {'good' if verdict == 'CERTIFIED' else 'warn' if verdict == 'INCOMPLETE' else 'bad'}">
+          <div class="status-top">
+            <div class="status-kicker">
+              <span data-lang-inline="en">Verdict status</span>
+              <span data-lang-inline="fr">Statut du verdict</span>
+            </div>
+            <div class="status-pill">{esc(verdict)}</div>
+          </div>
+          <div class="status-value">
+            <span data-lang-inline="en">{'Ready for trusted circulation' if verdict == 'CERTIFIED' else 'More proof still needed' if verdict == 'INCOMPLETE' else 'Requires careful review'}</span>
+            <span data-lang-inline="fr">{'Prêt pour une circulation de confiance' if verdict == 'CERTIFIED' else 'Preuve encore insuffisante' if verdict == 'INCOMPLETE' else 'Exige une relecture attentive'}</span>
+          </div>
+          <div class="status-copy">
+            <span data-lang="en">{'The proof package is strong enough for normal public use.' if verdict == 'CERTIFIED' else 'The package is readable and verifiable, but the process verdict signals that more validated work may still be needed.' if verdict == 'INCOMPLETE' else 'The package remains readable and verifiable, but the verdict should be interpreted with caution.'}</span>
+            <span data-lang="fr">{'Le package de preuve est suffisamment solide pour un usage public normal.' if verdict == 'CERTIFIED' else 'Le package reste lisible et vérifiable, mais le verdict indique qu’un volume de travail validé supplémentaire peut encore être nécessaire.' if verdict == 'INCOMPLETE' else 'Le package reste lisible et vérifiable, mais le verdict doit être interprété avec prudence.'}</span>
+          </div>
+        </div>
+
+        <div class="status-card good">
+          <div class="status-top">
+            <div class="status-kicker">
+              <span data-lang-inline="en">Reference proof</span>
+              <span data-lang-inline="fr">Preuve de référence</span>
+            </div>
+            <div class="status-pill">HO-JSON v1</div>
+          </div>
+          <div class="status-value">
+            <span data-lang-inline="en">Portable proof available</span>
+            <span data-lang-inline="fr">Preuve portable disponible</span>
+          </div>
+          <div class="status-copy">
+            <span data-lang="en">This package includes a preferred portable proof file that can be checked independently through the public verifier.</span>
+            <span data-lang="fr">Ce package inclut un fichier de preuve portable privilégié qui peut être vérifié indépendamment via le vérificateur public.</span>
+          </div>
+        </div>
+
+        <div class="status-card {'good' if is_pdf else 'warn'}">
+          <div class="status-top">
+            <div class="status-kicker">
+              <span data-lang-inline="en">Recommended next step</span>
+              <span data-lang-inline="fr">Étape recommandée</span>
+            </div>
+            <div class="status-pill">
+              <span data-lang-inline="en">{'Public PDF' if is_pdf else 'Working source'}</span>
+              <span data-lang-inline="fr">{'PDF public' if is_pdf else 'Document de travail'}</span>
+            </div>
+          </div>
+          <div class="status-value">
+            <span data-lang-inline="en">{'Share the public version' if is_pdf else 'Keep the source, publish later'}</span>
+            <span data-lang-inline="fr">{'Partager la version publique' if is_pdf else 'Garder la source, publier plus tard'}</span>
+          </div>
+          <div class="status-copy">
+            <span data-lang="en">{'This package already includes a public-facing published PDF suitable for circulation.' if is_pdf else 'This package keeps the bound source file and proof together; publish a visibly marked PDF later if a circulation version is needed.'}</span>
+            <span data-lang="fr">{'Ce package inclut déjà un PDF publié et adapté à la circulation.' if is_pdf else 'Ce package conserve ensemble le document source lié et la preuve ; publiez plus tard un PDF visiblement marqué si une version de circulation est nécessaire.'}</span>
+          </div>
         </div>
       </div>
 
