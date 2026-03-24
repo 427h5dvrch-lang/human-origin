@@ -74,7 +74,7 @@ if is_pdf:
     publication_status = "visible_published_copy_included"
     recommended_public_workflow = "Use the included published output for public circulation."
     primary_public_file = "HumanOrigin_PUBLISHED.pdf"
-    primary_public_label = "Open the published PDF"
+    primary_public_label = "Open the public version"
 else:
     publication_status = "no_native_visible_published_copy_for_this_file_type"
     recommended_public_workflow = "Keep the bound source file as working source, use CERTIFICAT_FINAL.v1.ho.json as preferred portable proof, keep CERTIFICAT_FINAL.ho.json for compatibility, and publish a PDF later when a visibly marked public document is needed."
@@ -442,31 +442,31 @@ open_first_html = f"""<!doctype html>
         <div class="badge">Preferred proof: {esc(v1_ho_filename)}</div>
       </div>
 
-      <h1>Open this package here first.</h1>
+      <h1>Open this package first.</h1>
       <div class="lede">
-        This package is designed to be understandable by a third party without prior context.
-        It contains the document, the preferred portable proof, the legacy compatibility proof,
-        and the public verification path.
+        This package is designed to be readable and verifiable by a third party without prior context.
+        It brings together the public-facing document, the preferred portable proof, the compatibility proof,
+        and the verification path.
       </div>
 
       <div class="hero-grid">
         <div class="hero-card">
-          <div class="eyebrow">Primary action</div>
+          <div class="eyebrow">Primary file</div>
           <div class="hero-main-title">{esc(primary_public_label)}</div>
           <div class="hero-main-copy">
-            This is the best file to open first for normal public circulation of this package.
+            This is the main file to open first for normal public circulation.
           </div>
 
           <div class="actions">
             <a class="btn primary" href="{esc(primary_public_file)}">{esc(primary_public_label)}</a>
-            <a class="btn secondary" href="{esc(v1_ho_filename)}">Open preferred proof</a>
-            <a class="btn ghost" href="{esc(verifier_url)}" target="_blank" rel="noopener">Open public verifier</a>
+            <a class="btn secondary" href="{esc(v1_ho_filename)}">Open reference proof</a>
+            <a class="btn ghost" href="{esc(verifier_url)}" target="_blank" rel="noopener">Verify online</a>
           </div>
 
           <div class="proof-note">
-            <strong>Source of truth:</strong> <code>{esc(v1_ho_filename)}</code><br>
+            <strong>Reference proof:</strong> <code>{esc(v1_ho_filename)}</code><br>
             The legacy file <code>{esc(legacy_ho_filename)}</code> remains included for compatibility,
-            but the preferred portable proof format is HO-JSON v1.
+            while the preferred portable proof format is HO-JSON v1.
           </div>
         </div>
 
@@ -495,26 +495,26 @@ open_first_html = f"""<!doctype html>
 
       <div class="grid">
         <div class="card">
-          <div class="eyebrow">1 — Public document</div>
-          <h3>What to read or send</h3>
+          <div class="eyebrow">1 — Public file</div>
+          <h3>What to open or send</h3>
           <p>
-            Open <strong>{esc(primary_public_file)}</strong> for the public-facing version of this package.
-            {'This is the visibly published PDF prepared for circulation.' if is_pdf else 'This is the bound working/source document linked to the proof package.'}
+            Open <strong>{esc(primary_public_file)}</strong> as the main public-facing file in this package.
+            {'This is the visibly published PDF prepared for circulation.' if is_pdf else 'This is the bound working document linked to the proof package.'}
           </p>
         </div>
         <div class="card">
-          <div class="eyebrow">2 — Proof</div>
-          <h3>What proves the binding</h3>
+          <div class="eyebrow">2 — Reference proof</div>
+          <h3>What anchors the document</h3>
           <p>
             The preferred portable proof file is <strong>{esc(v1_ho_filename)}</strong>.
-            It binds the document through its SHA-256 and is the recommended proof file to verify.
+            It anchors the document through its SHA-256 and is the recommended proof file to verify.
           </p>
         </div>
         <div class="card">
-          <div class="eyebrow">3 — Verification</div>
-          <h3>How to verify it</h3>
+          <div class="eyebrow">3 — Verification path</div>
+          <h3>How to verify the package</h3>
           <p>
-            Open the public verifier, load <strong>{esc(v1_ho_filename)}</strong>, then optionally load the bound document to confirm the hash match.
+            Open the public verifier, load <strong>{esc(v1_ho_filename)}</strong>, then optionally load the bound document to confirm the SHA-256 match.
           </p>
         </div>
       </div>
@@ -533,17 +533,17 @@ open_first_html = f"""<!doctype html>
           <div class="meta-value"><code>{esc(document_sha256)}</code></div>
         </div>
         <div class="meta-card">
-          <div class="meta-label">Public workflow</div>
+          <div class="meta-label">Recommended public workflow</div>
           <div class="meta-value">{esc(recommended_public_workflow)}</div>
         </div>
       </div>
 
       <div class="footer-actions">
-        <a class="btn secondary" href="HumanOrigin_READ_ME_FIRST.txt">Read package guide</a>
-        <a class="btn secondary" href="HumanOrigin_VERIFY.txt">Open verification instructions</a>
+        <a class="btn secondary" href="HumanOrigin_READ_ME_FIRST.txt">Read package notes</a>
+        <a class="btn secondary" href="HumanOrigin_VERIFY.txt">Open verification guide</a>
         <a class="btn secondary" href="HumanOrigin_MANIFEST.json">Open manifest</a>
-        <a class="btn secondary" href="HumanOrigin_SHARE_CARD.html">Open share card</a>
-        <a class="btn secondary" href="{esc(legacy_ho_filename)}">Open legacy proof</a>
+        <a class="btn secondary" href="HumanOrigin_SHARE_CARD.html">Open sharing card</a>
+        <a class="btn secondary" href="{esc(legacy_ho_filename)}">Open compatibility proof</a>
       </div>
     </section>
   </div>
