@@ -182,165 +182,370 @@ open_first_html = f"""<!doctype html>
   <title>HumanOrigin — Open First</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
+    :root {{
+      --bg: #f5f1e8;
+      --panel: rgba(255,255,255,0.88);
+      --line: rgba(17,24,39,0.10);
+      --text: #111827;
+      --muted: #6b7280;
+      --soft: #f3f4f6;
+      --accent: #111827;
+      --accent-2: #d6a34f;
+      --ok: #166534;
+      --warn: #92400e;
+      --shadow: 0 18px 60px rgba(17,24,39,0.08);
+      --radius: 22px;
+    }}
+    * {{
+      box-sizing: border-box;
+    }}
     body {{
       margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f6f3ed;
-      color: #1f2937;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(214,163,79,0.10), transparent 30%),
+        radial-gradient(circle at top right, rgba(17,24,39,0.05), transparent 28%),
+        var(--bg);
     }}
     .wrap {{
-      max-width: 980px;
+      max-width: 1120px;
       margin: 0 auto;
-      padding: 40px 24px 60px;
+      padding: 40px 22px 70px;
     }}
     .hero {{
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 20px;
-      padding: 28px;
-      box-shadow: 0 8px 30px rgba(0,0,0,0.05);
-      margin-bottom: 22px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.82));
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      padding: 34px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }}
+    .topline {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }}
+    .brand {{
+      font-size: 12px;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 700;
+    }}
+    .badge {{
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      color: var(--text);
     }}
     h1 {{
-      margin: 0 0 10px 0;
-      font-size: 30px;
-      line-height: 1.1;
+      margin: 0;
+      font-size: clamp(32px, 4vw, 54px);
+      line-height: 0.98;
+      letter-spacing: -0.04em;
+      max-width: 820px;
     }}
-    .sub {{
-      color: #6b7280;
-      font-size: 15px;
-      line-height: 1.5;
+    .lede {{
+      margin-top: 16px;
+      max-width: 820px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.65;
     }}
-    .grid {{
+    .hero-grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 18px;
-      margin-top: 22px;
+      grid-template-columns: 1.35fr 0.9fr;
+      gap: 22px;
+      margin-top: 26px;
     }}
-    .card {{
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 18px;
-      padding: 20px;
-      box-shadow: 0 6px 22px rgba(0,0,0,0.04);
+    .hero-card, .card {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 28px rgba(17,24,39,0.04);
     }}
-    .label {{
+    .hero-card {{
+      padding: 22px;
+    }}
+    .eyebrow {{
       font-size: 12px;
+      letter-spacing: .12em;
       text-transform: uppercase;
-      letter-spacing: .08em;
-      color: #9ca3af;
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-weight: 700;
+    }}
+    .hero-main-title {{
+      font-size: 22px;
+      line-height: 1.2;
+      font-weight: 800;
       margin-bottom: 8px;
     }}
-    .value {{
+    .hero-main-copy {{
+      color: var(--muted);
+      line-height: 1.6;
       font-size: 15px;
-      line-height: 1.5;
-      word-break: break-word;
     }}
     .actions {{
       display: flex;
       flex-wrap: wrap;
       gap: 12px;
-      margin-top: 20px;
+      margin-top: 18px;
     }}
     .btn {{
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
       text-decoration: none;
-      border-radius: 12px;
-      padding: 12px 16px;
-      font-weight: 600;
-      border: 1px solid #d1d5db;
-      color: #111827;
-      background: #fff;
+      border-radius: 14px;
+      padding: 13px 16px;
+      min-height: 48px;
+      font-weight: 700;
+      border: 1px solid var(--line);
+      color: var(--text);
+      background: white;
     }}
     .btn.primary {{
-      background: #111827;
+      background: var(--accent);
       color: white;
-      border-color: #111827;
+      border-color: var(--accent);
+      box-shadow: 0 12px 28px rgba(17,24,39,0.18);
     }}
-    .note {{
-      margin-top: 22px;
+    .btn.secondary {{
+      background: rgba(255,255,255,0.72);
+    }}
+    .btn.ghost {{
+      background: transparent;
+    }}
+    .proof-note {{
+      margin-top: 16px;
       padding: 16px 18px;
-      background: #fff8e7;
-      border: 1px solid #f4d58d;
-      border-radius: 16px;
-      font-size: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(214,163,79,0.35);
+      background: linear-gradient(180deg, rgba(255,250,235,0.92), rgba(255,247,220,0.82));
       line-height: 1.55;
+      font-size: 14px;
     }}
-    .muted {{
-      color: #6b7280;
+    .proof-note strong {{
+      color: var(--text);
+    }}
+    .mini-list {{
+      display: grid;
+      gap: 12px;
+    }}
+    .mini-item {{
+      padding: 15px 16px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+    }}
+    .mini-title {{
+      font-size: 12px;
+      letter-spacing: .10em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+      font-weight: 700;
+    }}
+    .mini-value {{
+      font-size: 15px;
+      line-height: 1.45;
+      word-break: break-word;
+    }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 22px;
+    }}
+    .card {{
+      padding: 22px;
+    }}
+    .card h3 {{
+      margin: 0 0 10px 0;
+      font-size: 18px;
+      line-height: 1.2;
+    }}
+    .card p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      font-size: 14px;
+    }}
+    .meta {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 22px;
+    }}
+    .meta-card {{
+      padding: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: 0 10px 28px rgba(17,24,39,0.04);
+    }}
+    .meta-label {{
+      font-size: 11px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-weight: 700;
+    }}
+    .meta-value {{
+      font-size: 16px;
+      line-height: 1.55;
+      word-break: break-word;
+    }}
+    .footer-actions {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 24px;
     }}
     code {{
-      background: #f3f4f6;
-      padding: 2px 6px;
-      border-radius: 6px;
+      display: inline-block;
+      background: var(--soft);
+      border: 1px solid rgba(17,24,39,0.07);
+      border-radius: 8px;
+      padding: 2px 7px;
       font-size: 12px;
+      word-break: break-all;
+    }}
+    @media (max-width: 900px) {{
+      .hero-grid, .grid, .meta {{
+        grid-template-columns: 1fr;
+      }}
+      .hero {{
+        padding: 24px;
+      }}
     }}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="hero">
-      <div class="label">HumanOrigin package</div>
-      <h1>Open this file first</h1>
-      <div class="sub">
-        This package contains the document, the portable proof files, and the verification instructions.
-        The preferred proof file is <strong>{esc(v1_ho_filename)}</strong>.
+    <section class="hero">
+      <div class="topline">
+        <div class="brand">HumanOrigin package</div>
+        <div class="badge">Preferred proof: {esc(v1_ho_filename)}</div>
       </div>
 
-      <div class="actions">
-        <a class="btn primary" href="{esc(primary_public_file)}">{esc(primary_public_label)}</a>
-        <a class="btn" href="{esc(v1_ho_filename)}">Open preferred proof (HO-JSON v1)</a>
-        <a class="btn" href="{esc(legacy_ho_filename)}">Open legacy compatibility proof</a>
-        <a class="btn" href="{esc(verifier_url)}" target="_blank" rel="noopener">Open public verifier</a>
+      <h1>Open this package here first.</h1>
+      <div class="lede">
+        This package is designed to be understandable by a third party without prior context.
+        It contains the document, the preferred portable proof, the legacy compatibility proof,
+        and the public verification path.
       </div>
 
-      <div class="note">
-        <strong>Source of truth:</strong> <code>{esc(v1_ho_filename)}</code><br>
-        <span class="muted">The legacy <code>{esc(legacy_ho_filename)}</code> file remains included for compatibility, but the preferred portable proof is HO-JSON v1.</span>
-      </div>
-    </div>
+      <div class="hero-grid">
+        <div class="hero-card">
+          <div class="eyebrow">Primary action</div>
+          <div class="hero-main-title">{esc(primary_public_label)}</div>
+          <div class="hero-main-copy">
+            This is the best file to open first for normal public circulation of this package.
+          </div>
 
-    <div class="grid">
-      <div class="card">
-        <div class="label">Project</div>
-        <div class="value">{esc(project_title)}</div>
-      </div>
-      <div class="card">
-        <div class="label">Certificate ID</div>
-        <div class="value">{esc(certificate_id)}</div>
-      </div>
-      <div class="card">
-        <div class="label">Issued at</div>
-        <div class="value">{esc(issued_at)}</div>
-      </div>
-      <div class="card">
-        <div class="label">Verdict</div>
-        <div class="value">{esc(verdict)}</div>
-      </div>
-      <div class="card">
-        <div class="label">Bound document</div>
-        <div class="value">{esc(document_filename)}</div>
-      </div>
-      <div class="card">
-        <div class="label">Document MIME</div>
-        <div class="value">{esc(document_mime)}</div>
-      </div>
-      <div class="card">
-        <div class="label">Document SHA-256</div>
-        <div class="value"><code>{esc(document_sha256)}</code></div>
-      </div>
-      <div class="card">
-        <div class="label">Public workflow</div>
-        <div class="value">{esc(recommended_public_workflow)}</div>
-      </div>
-    </div>
+          <div class="actions">
+            <a class="btn primary" href="{esc(primary_public_file)}">{esc(primary_public_label)}</a>
+            <a class="btn secondary" href="{esc(v1_ho_filename)}">Open preferred proof</a>
+            <a class="btn ghost" href="{esc(verifier_url)}" target="_blank" rel="noopener">Open public verifier</a>
+          </div>
 
-    <div class="actions" style="margin-top:24px;">
-      <a class="btn" href="HumanOrigin_READ_ME_FIRST.txt">Open Read Me First</a>
-      <a class="btn" href="HumanOrigin_VERIFY.txt">Open verification instructions</a>
-      <a class="btn" href="HumanOrigin_MANIFEST.json">Open manifest</a>
-      <a class="btn" href="HumanOrigin_SHARE_CARD.html">Open share card</a>
-    </div>
+          <div class="proof-note">
+            <strong>Source of truth:</strong> <code>{esc(v1_ho_filename)}</code><br>
+            The legacy file <code>{esc(legacy_ho_filename)}</code> remains included for compatibility,
+            but the preferred portable proof format is HO-JSON v1.
+          </div>
+        </div>
+
+        <div class="hero-card">
+          <div class="eyebrow">At a glance</div>
+          <div class="mini-list">
+            <div class="mini-item">
+              <div class="mini-title">Project</div>
+              <div class="mini-value">{esc(project_title)}</div>
+            </div>
+            <div class="mini-item">
+              <div class="mini-title">Certificate ID</div>
+              <div class="mini-value">{esc(certificate_id)}</div>
+            </div>
+            <div class="mini-item">
+              <div class="mini-title">Issued at</div>
+              <div class="mini-value">{esc(issued_at)}</div>
+            </div>
+            <div class="mini-item">
+              <div class="mini-title">Verdict</div>
+              <div class="mini-value">{esc(verdict)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="eyebrow">1 — Public document</div>
+          <h3>What to read or send</h3>
+          <p>
+            Open <strong>{esc(primary_public_file)}</strong> for the public-facing version of this package.
+            {'This is the visibly published PDF prepared for circulation.' if is_pdf else 'This is the bound working/source document linked to the proof package.'}
+          </p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">2 — Proof</div>
+          <h3>What proves the binding</h3>
+          <p>
+            The preferred portable proof file is <strong>{esc(v1_ho_filename)}</strong>.
+            It binds the document through its SHA-256 and is the recommended proof file to verify.
+          </p>
+        </div>
+        <div class="card">
+          <div class="eyebrow">3 — Verification</div>
+          <h3>How to verify it</h3>
+          <p>
+            Open the public verifier, load <strong>{esc(v1_ho_filename)}</strong>, then optionally load the bound document to confirm the hash match.
+          </p>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div class="meta-card">
+          <div class="meta-label">Bound document</div>
+          <div class="meta-value">{esc(document_filename)}</div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-label">Document MIME</div>
+          <div class="meta-value">{esc(document_mime)}</div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-label">Document SHA-256</div>
+          <div class="meta-value"><code>{esc(document_sha256)}</code></div>
+        </div>
+        <div class="meta-card">
+          <div class="meta-label">Public workflow</div>
+          <div class="meta-value">{esc(recommended_public_workflow)}</div>
+        </div>
+      </div>
+
+      <div class="footer-actions">
+        <a class="btn secondary" href="HumanOrigin_READ_ME_FIRST.txt">Read package guide</a>
+        <a class="btn secondary" href="HumanOrigin_VERIFY.txt">Open verification instructions</a>
+        <a class="btn secondary" href="HumanOrigin_MANIFEST.json">Open manifest</a>
+        <a class="btn secondary" href="HumanOrigin_SHARE_CARD.html">Open share card</a>
+        <a class="btn secondary" href="{esc(legacy_ho_filename)}">Open legacy proof</a>
+      </div>
+    </section>
   </div>
 </body>
 </html>
