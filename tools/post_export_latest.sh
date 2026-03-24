@@ -4,11 +4,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-echo "=== CLEAN LATEST EXPORT PACKAGE ==="
+echo "=== CLEAN LATEST EXPORT PACKAGE (PRE) ==="
 python3 tools/clean_latest_export_package.py
 
 echo "=== PATCH LATEST EXPORT PACKAGE ==="
 python3 tools/patch_latest_export_package.py
+
+echo "=== CLEAN LATEST EXPORT PACKAGE (POST) ==="
+python3 tools/clean_latest_export_package.py
 
 LATEST_DIR="$(python3 -c 'from pathlib import Path; root=Path.home()/"Documents"/"HumanOrigin"/"Projects"; c=list(root.glob("*/CERTIFICAT_FINAL.v1.ho.json")); print(max(c, key=lambda p: p.stat().st_mtime).parent if c else "")')"
 
