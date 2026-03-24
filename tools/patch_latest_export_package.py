@@ -191,14 +191,10 @@ open_first_html = f"""<!doctype html>
       --soft: #f3f4f6;
       --accent: #111827;
       --accent-2: #d6a34f;
-      --ok: #166534;
-      --warn: #92400e;
       --shadow: 0 18px 60px rgba(17,24,39,0.08);
       --radius: 22px;
     }}
-    * {{
-      box-sizing: border-box;
-    }}
+    * {{ box-sizing: border-box; }}
     body {{
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
@@ -236,6 +232,12 @@ open_first_html = f"""<!doctype html>
       color: var(--muted);
       font-weight: 700;
     }}
+    .top-actions {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }}
     .badge {{
       display: inline-flex;
       align-items: center;
@@ -247,6 +249,29 @@ open_first_html = f"""<!doctype html>
       border: 1px solid var(--line);
       background: rgba(255,255,255,0.72);
       color: var(--text);
+    }}
+    .lang-switch {{
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(255,255,255,0.78);
+    }}
+    .lang-btn {{
+      appearance: none;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 12px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }}
+    .lang-btn.active {{
+      background: var(--accent);
+      color: white;
     }}
     h1 {{
       margin: 0;
@@ -274,9 +299,7 @@ open_first_html = f"""<!doctype html>
       border-radius: var(--radius);
       box-shadow: 0 10px 28px rgba(17,24,39,0.04);
     }}
-    .hero-card {{
-      padding: 22px;
-    }}
+    .hero-card {{ padding: 22px; }}
     .eyebrow {{
       font-size: 12px;
       letter-spacing: .12em;
@@ -322,12 +345,8 @@ open_first_html = f"""<!doctype html>
       border-color: var(--accent);
       box-shadow: 0 12px 28px rgba(17,24,39,0.18);
     }}
-    .btn.secondary {{
-      background: rgba(255,255,255,0.72);
-    }}
-    .btn.ghost {{
-      background: transparent;
-    }}
+    .btn.secondary {{ background: rgba(255,255,255,0.72); }}
+    .btn.ghost {{ background: transparent; }}
     .proof-note {{
       margin-top: 16px;
       padding: 16px 18px;
@@ -336,9 +355,6 @@ open_first_html = f"""<!doctype html>
       background: linear-gradient(180deg, rgba(255,250,235,0.92), rgba(255,247,220,0.82));
       line-height: 1.55;
       font-size: 14px;
-    }}
-    .proof-note strong {{
-      color: var(--text);
     }}
     .mini-list {{
       display: grid;
@@ -369,9 +385,7 @@ open_first_html = f"""<!doctype html>
       gap: 18px;
       margin-top: 22px;
     }}
-    .card {{
-      padding: 22px;
-    }}
+    .card {{ padding: 22px; }}
     .card h3 {{
       margin: 0 0 10px 0;
       font-size: 18px;
@@ -424,13 +438,15 @@ open_first_html = f"""<!doctype html>
       font-size: 12px;
       word-break: break-all;
     }}
+    [data-lang] {{ display: none; }}
+    html[data-lang="en"] [data-lang="en"] {{ display: block; }}
+    html[data-lang="fr"] [data-lang="fr"] {{ display: block; }}
+    html[data-lang="en"] [data-lang-inline="en"] {{ display: inline; }}
+    html[data-lang="fr"] [data-lang-inline="fr"] {{ display: inline; }}
+    [data-lang-inline] {{ display: none; }}
     @media (max-width: 900px) {{
-      .hero-grid, .grid, .meta {{
-        grid-template-columns: 1fr;
-      }}
-      .hero {{
-        padding: 24px;
-      }}
+      .hero-grid, .grid, .meta {{ grid-template-columns: 1fr; }}
+      .hero {{ padding: 24px; }}
     }}
   </style>
 </head>
@@ -439,42 +455,93 @@ open_first_html = f"""<!doctype html>
     <section class="hero">
       <div class="topline">
         <div class="brand">HumanOrigin package</div>
-        <div class="badge">Preferred proof: {esc(v1_ho_filename)}</div>
+        <div class="top-actions">
+          <div class="badge">Preferred proof: {esc(v1_ho_filename)}</div>
+          <div class="lang-switch" aria-label="Language switch">
+            <button class="lang-btn active" id="lang-en" type="button">EN</button>
+            <button class="lang-btn" id="lang-fr" type="button">FR</button>
+          </div>
+        </div>
       </div>
 
-      <h1>Open this package first.</h1>
-      <div class="lede">
-        This package is designed to be readable and verifiable by a third party without prior context.
-        It brings together the public-facing document, the preferred portable proof, the compatibility proof,
-        and the verification path.
+      <div data-lang="en">
+        <h1>Open this package first.</h1>
+        <div class="lede">
+          This package is designed to be readable and verifiable by a third party without prior context.
+          It brings together the public-facing document, the preferred portable proof, the compatibility proof,
+          and the verification path.
+        </div>
+      </div>
+
+      <div data-lang="fr">
+        <h1>Ouvrez d’abord ce package ici.</h1>
+        <div class="lede">
+          Ce package est conçu pour être lisible et vérifiable par un tiers, sans contexte préalable.
+          Il réunit le document public, la preuve portable de référence, la preuve de compatibilité,
+          et le parcours de vérification.
+        </div>
       </div>
 
       <div class="hero-grid">
         <div class="hero-card">
-          <div class="eyebrow">Primary file</div>
-          <div class="hero-main-title">{esc(primary_public_label)}</div>
+          <div class="eyebrow">
+            <span data-lang-inline="en">Primary file</span>
+            <span data-lang-inline="fr">Fichier principal</span>
+          </div>
+
+          <div class="hero-main-title">
+            <span data-lang-inline="en">{esc(primary_public_label)}</span>
+            <span data-lang-inline="fr">{esc("Ouvrir la version publique" if is_pdf else "Ouvrir le document source lié")}</span>
+          </div>
+
           <div class="hero-main-copy">
-            This is the main file to open first for normal public circulation.
+            <span data-lang="en">This is the main file to open first for normal public circulation.</span>
+            <span data-lang="fr">C’est le fichier principal à ouvrir en premier pour une circulation normale du package.</span>
           </div>
 
           <div class="actions">
-            <a class="btn primary" href="{esc(primary_public_file)}">{esc(primary_public_label)}</a>
-            <a class="btn secondary" href="{esc(v1_ho_filename)}">Open reference proof</a>
-            <a class="btn ghost" href="{esc(verifier_url)}" target="_blank" rel="noopener">Verify online</a>
+            <a class="btn primary" href="{esc(primary_public_file)}">
+              <span data-lang-inline="en">{esc(primary_public_label)}</span>
+              <span data-lang-inline="fr">{esc("Ouvrir la version publique" if is_pdf else "Ouvrir le document source")}</span>
+            </a>
+            <a class="btn secondary" href="{esc(v1_ho_filename)}">
+              <span data-lang-inline="en">Open reference proof</span>
+              <span data-lang-inline="fr">Ouvrir la preuve de référence</span>
+            </a>
+            <a class="btn ghost" href="{esc(verifier_url)}" target="_blank" rel="noopener">
+              <span data-lang-inline="en">Verify online</span>
+              <span data-lang-inline="fr">Vérifier en ligne</span>
+            </a>
           </div>
 
           <div class="proof-note">
-            <strong>Reference proof:</strong> <code>{esc(v1_ho_filename)}</code><br>
-            The legacy file <code>{esc(legacy_ho_filename)}</code> remains included for compatibility,
-            while the preferred portable proof format is HO-JSON v1.
+            <strong>
+              <span data-lang-inline="en">Reference proof:</span>
+              <span data-lang-inline="fr">Preuve de référence :</span>
+            </strong>
+            <code>{esc(v1_ho_filename)}</code><br>
+            <span data-lang="en">
+              The legacy file <code>{esc(legacy_ho_filename)}</code> remains included for compatibility,
+              while the preferred portable proof format is HO-JSON v1.
+            </span>
+            <span data-lang="fr">
+              Le fichier legacy <code>{esc(legacy_ho_filename)}</code> reste inclus pour la compatibilité,
+              tandis que le format de preuve portable privilégié est HO-JSON v1.
+            </span>
           </div>
         </div>
 
         <div class="hero-card">
-          <div class="eyebrow">At a glance</div>
+          <div class="eyebrow">
+            <span data-lang-inline="en">At a glance</span>
+            <span data-lang-inline="fr">En un coup d’œil</span>
+          </div>
           <div class="mini-list">
             <div class="mini-item">
-              <div class="mini-title">Project</div>
+              <div class="mini-title">
+                <span data-lang-inline="en">Project</span>
+                <span data-lang-inline="fr">Projet</span>
+              </div>
               <div class="mini-value">{esc(project_title)}</div>
             </div>
             <div class="mini-item">
@@ -482,7 +549,10 @@ open_first_html = f"""<!doctype html>
               <div class="mini-value">{esc(certificate_id)}</div>
             </div>
             <div class="mini-item">
-              <div class="mini-title">Issued at</div>
+              <div class="mini-title">
+                <span data-lang-inline="en">Issued at</span>
+                <span data-lang-inline="fr">Date d’émission</span>
+              </div>
               <div class="mini-value">{esc(issued_at)}</div>
             </div>
             <div class="mini-item">
@@ -495,33 +565,67 @@ open_first_html = f"""<!doctype html>
 
       <div class="grid">
         <div class="card">
-          <div class="eyebrow">1 — Public file</div>
-          <h3>What to open or send</h3>
-          <p>
+          <div class="eyebrow">
+            <span data-lang-inline="en">1 — Public file</span>
+            <span data-lang-inline="fr">1 — Fichier public</span>
+          </div>
+          <h3>
+            <span data-lang-inline="en">What to open or send</span>
+            <span data-lang-inline="fr">Quoi ouvrir ou envoyer</span>
+          </h3>
+          <p data-lang="en">
             Open <strong>{esc(primary_public_file)}</strong> as the main public-facing file in this package.
             {'This is the visibly published PDF prepared for circulation.' if is_pdf else 'This is the bound working document linked to the proof package.'}
           </p>
+          <p data-lang="fr">
+            Ouvrez <strong>{esc(primary_public_file)}</strong> comme fichier public principal de ce package.
+            {'Il s’agit du PDF publié et visiblement marqué pour la circulation.' if is_pdf else 'Il s’agit du document de travail lié au package de preuve.'}
+          </p>
         </div>
+
         <div class="card">
-          <div class="eyebrow">2 — Reference proof</div>
-          <h3>What anchors the document</h3>
-          <p>
+          <div class="eyebrow">
+            <span data-lang-inline="en">2 — Reference proof</span>
+            <span data-lang-inline="fr">2 — Preuve de référence</span>
+          </div>
+          <h3>
+            <span data-lang-inline="en">What anchors the document</span>
+            <span data-lang-inline="fr">Ce qui ancre le document</span>
+          </h3>
+          <p data-lang="en">
             The preferred portable proof file is <strong>{esc(v1_ho_filename)}</strong>.
             It anchors the document through its SHA-256 and is the recommended proof file to verify.
           </p>
+          <p data-lang="fr">
+            Le fichier de preuve portable privilégié est <strong>{esc(v1_ho_filename)}</strong>.
+            Il ancre le document par son SHA-256 et constitue le fichier de preuve recommandé pour la vérification.
+          </p>
         </div>
+
         <div class="card">
-          <div class="eyebrow">3 — Verification path</div>
-          <h3>How to verify the package</h3>
-          <p>
+          <div class="eyebrow">
+            <span data-lang-inline="en">3 — Verification path</span>
+            <span data-lang-inline="fr">3 — Parcours de vérification</span>
+          </div>
+          <h3>
+            <span data-lang-inline="en">How to verify the package</span>
+            <span data-lang-inline="fr">Comment vérifier le package</span>
+          </h3>
+          <p data-lang="en">
             Open the public verifier, load <strong>{esc(v1_ho_filename)}</strong>, then optionally load the bound document to confirm the SHA-256 match.
+          </p>
+          <p data-lang="fr">
+            Ouvrez le vérificateur public, chargez <strong>{esc(v1_ho_filename)}</strong>, puis chargez si besoin le document lié pour confirmer la correspondance SHA-256.
           </p>
         </div>
       </div>
 
       <div class="meta">
         <div class="meta-card">
-          <div class="meta-label">Bound document</div>
+          <div class="meta-label">
+            <span data-lang-inline="en">Bound document</span>
+            <span data-lang-inline="fr">Document lié</span>
+          </div>
           <div class="meta-value">{esc(document_filename)}</div>
         </div>
         <div class="meta-card">
@@ -533,20 +637,68 @@ open_first_html = f"""<!doctype html>
           <div class="meta-value"><code>{esc(document_sha256)}</code></div>
         </div>
         <div class="meta-card">
-          <div class="meta-label">Recommended public workflow</div>
-          <div class="meta-value">{esc(recommended_public_workflow)}</div>
+          <div class="meta-label">
+            <span data-lang-inline="en">Recommended public workflow</span>
+            <span data-lang-inline="fr">Workflow public recommandé</span>
+          </div>
+          <div class="meta-value">
+            <span data-lang="en">{esc(recommended_public_workflow)}</span>
+            <span data-lang="fr">{esc("Utilisez le PDF publié inclus pour la circulation publique." if is_pdf else "Conservez le document source lié comme document de travail, utilisez CERTIFICAT_FINAL.v1.ho.json comme preuve portable privilégiée, gardez CERTIFICAT_FINAL.ho.json pour la compatibilité, puis publiez un PDF plus tard si une version visiblement marquée est nécessaire.")}</span>
+          </div>
         </div>
       </div>
 
       <div class="footer-actions">
-        <a class="btn secondary" href="HumanOrigin_READ_ME_FIRST.txt">Read package notes</a>
-        <a class="btn secondary" href="HumanOrigin_VERIFY.txt">Open verification guide</a>
-        <a class="btn secondary" href="HumanOrigin_MANIFEST.json">Open manifest</a>
-        <a class="btn secondary" href="HumanOrigin_SHARE_CARD.html">Open sharing card</a>
-        <a class="btn secondary" href="{esc(legacy_ho_filename)}">Open compatibility proof</a>
+        <a class="btn secondary" href="HumanOrigin_READ_ME_FIRST.txt">
+          <span data-lang-inline="en">Read package notes</span>
+          <span data-lang-inline="fr">Lire les notes du package</span>
+        </a>
+        <a class="btn secondary" href="HumanOrigin_VERIFY.txt">
+          <span data-lang-inline="en">Open verification guide</span>
+          <span data-lang-inline="fr">Ouvrir le guide de vérification</span>
+        </a>
+        <a class="btn secondary" href="HumanOrigin_MANIFEST.json">
+          <span data-lang-inline="en">Open manifest</span>
+          <span data-lang-inline="fr">Ouvrir le manifeste</span>
+        </a>
+        <a class="btn secondary" href="HumanOrigin_SHARE_CARD.html">
+          <span data-lang-inline="en">Open sharing card</span>
+          <span data-lang-inline="fr">Ouvrir la carte de partage</span>
+        </a>
+        <a class="btn secondary" href="{esc(legacy_ho_filename)}">
+          <span data-lang-inline="en">Open compatibility proof</span>
+          <span data-lang-inline="fr">Ouvrir la preuve de compatibilité</span>
+        </a>
       </div>
     </section>
   </div>
+
+  <script>
+    (function() {{
+      const root = document.documentElement;
+      const enBtn = document.getElementById("lang-en");
+      const frBtn = document.getElementById("lang-fr");
+      const storageKey = "humanorigin-open-first-lang";
+
+      function applyLang(lang) {{
+        const safeLang = (lang === "fr") ? "fr" : "en";
+        root.setAttribute("data-lang", safeLang);
+        enBtn.classList.toggle("active", safeLang === "en");
+        frBtn.classList.toggle("active", safeLang === "fr");
+        try {{ localStorage.setItem(storageKey, safeLang); }} catch (e) {{}}
+      }}
+
+      enBtn.addEventListener("click", function() {{ applyLang("en"); }});
+      frBtn.addEventListener("click", function() {{ applyLang("fr"); }});
+
+      let initial = "en";
+      try {{
+        const saved = localStorage.getItem(storageKey);
+        if (saved === "fr" || saved === "en") initial = saved;
+      }} catch (e) {{}}
+      applyLang(initial);
+    }})();
+  </script>
 </body>
 </html>
 """
