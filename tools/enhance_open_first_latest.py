@@ -253,6 +253,33 @@ def main() -> None:
         public_file=public_file,
     )
 
+    raw_verdict = str(recursive_find(manifest, {"verdict", "final_verdict", "humanorigin_verdict"}) or "").strip().upper()
+
+    if raw_verdict == "INCOMPLETE":
+        assessment_tone = "warning"
+        assessment_label_en = "Assessment status"
+        assessment_label_fr = "Statut d’évaluation"
+        assessment_title_en = "More proof is still needed"
+        assessment_title_fr = "Une preuve supplémentaire reste nécessaire"
+        assessment_body_en = "This package already establishes a document-bound proof path, but the current result should not yet be read as a completed certification outcome."
+        assessment_body_fr = "Ce dossier établit déjà un chemin de preuve lié au document, mais le résultat actuel ne doit pas encore être lu comme une certification pleinement aboutie."
+    elif raw_verdict in {"CERTIFIED", "VALID", "VERIFIED"}:
+        assessment_tone = "success"
+        assessment_label_en = "Assessment status"
+        assessment_label_fr = "Statut d’évaluation"
+        assessment_title_en = "This package reaches a certified outcome"
+        assessment_title_fr = "Ce dossier atteint un résultat certifié"
+        assessment_body_en = "The package provides a document-bound proof, a preferred portable reference proof, and a public verification path consistent with a certified outcome."
+        assessment_body_fr = "Le dossier fournit une preuve liée au document, une preuve portable de référence, et un chemin de vérification public cohérents avec un résultat certifié."
+    else:
+        assessment_tone = "neutral"
+        assessment_label_en = "Assessment status"
+        assessment_label_fr = "Statut d’évaluation"
+        assessment_title_en = "This package should be interpreted with care"
+        assessment_title_fr = "Ce dossier doit être interprété avec prudence"
+        assessment_body_en = "Use the preferred proof and the public verifier to interpret the current status before relying on the package."
+        assessment_body_fr = "Utilisez la preuve préférée et le vérificateur public pour interpréter le statut actuel avant de vous appuyer sur ce dossier."
+
     publication_status = str(
         recursive_find(manifest, {"publication_status"}) or ""
     ).strip().lower()
@@ -850,6 +877,90 @@ def main() -> None:
       border-color: transparent;
     }}
 
+    .assessment-banner {{
+      display: grid;
+      grid-template-columns: 0.95fr 1.05fr;
+      gap: 16px;
+      margin-top: 14px;
+      margin-bottom: 18px;
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: var(--paper-strong);
+    }}
+
+    .assessment-banner.warning {{
+      background: linear-gradient(180deg, rgba(255,248,235,0.98), rgba(255,255,255,0.90));
+      border-color: rgba(154,106,29,0.18);
+    }}
+
+    .assessment-banner.success {{
+      background: linear-gradient(180deg, rgba(238,248,243,0.98), rgba(255,255,255,0.90));
+      border-color: rgba(31,122,87,0.18);
+    }}
+
+    .assessment-banner.neutral {{
+      background: linear-gradient(180deg, rgba(245,247,250,0.98), rgba(255,255,255,0.90));
+      border-color: rgba(20,43,71,0.12);
+    }}
+
+    .assessment-label {{
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(20,43,71,0.06);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }}
+
+    .assessment-banner h3 {{
+      margin: 0 0 10px;
+      font-size: 26px;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+    }}
+
+    .assessment-banner p {{
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.65;
+      max-width: 760px;
+    }}
+
+    .assessment-side {{
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }}
+
+    .assessment-mini {{
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.70);
+      padding: 12px 14px;
+    }}
+
+    .assessment-mini .mini-label {{
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }}
+
+    .assessment-mini .mini-value {{
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }}
+
     .metrics {{
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -923,6 +1034,7 @@ def main() -> None:
     }}
 
     @media (max-width: 920px) {{
+      .assessment-banner,
       .status-strip,
       .hero-grid,
       .cards,
@@ -1046,6 +1158,24 @@ def main() -> None:
       <div class="section-intro"
            data-en="This section clarifies the current status without overclaiming. The package is meant to be readable by a third party before they open technical files."
            data-fr="Cette section clarifie l’état actuel sans sur-promesse. Le dossier est conçu pour être lisible par un tiers avant même l’ouverture des fichiers techniques."></div>
+
+      <div class="assessment-banner {html.escape(assessment_tone)}">
+        <div>
+          <div class="assessment-label" data-en="{html.escape(assessment_label_en, quote=True)}" data-fr="{html.escape(assessment_label_fr, quote=True)}"></div>
+          <h3 data-en="{html.escape(assessment_title_en, quote=True)}" data-fr="{html.escape(assessment_title_fr, quote=True)}"></h3>
+          <p data-en="{html.escape(assessment_body_en, quote=True)}" data-fr="{html.escape(assessment_body_fr, quote=True)}"></p>
+        </div>
+        <div class="assessment-side">
+          <div class="assessment-mini">
+            <div class="mini-label" data-en="Verdict status" data-fr="Statut du verdict"></div>
+            <div class="mini-value">{html.escape(verdict_en)}</div>
+          </div>
+          <div class="assessment-mini">
+            <div class="mini-label" data-en="Confidence level" data-fr="Niveau de confiance"></div>
+            <div class="mini-value">{html.escape(confidence_en)}</div>
+          </div>
+        </div>
+      </div>
 
       <div class="metrics">
         <div class="metric">
