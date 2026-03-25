@@ -181,14 +181,58 @@ def main() -> None:
         public_file = published_pdf
         public_kind_en = "Published public file"
         public_kind_fr = "Fichier public publié"
+        public_title_en = "Public circulation file"
+        public_title_fr = "Fichier de circulation publique"
+        public_desc_en = "Open or send this published file first."
+        public_desc_fr = "Ouvrez ou envoyez d’abord ce fichier publié."
+        public_card_title_en = "Send this public file"
+        public_card_title_fr = "Envoyer ce fichier public"
+        public_card_body_en = "Use this file for normal reading, sharing, or public/editorial circulation."
+        public_card_body_fr = "Utilisez ce fichier pour la lecture, le partage, ou la circulation publique / éditoriale."
+        public_button_en = "Open public file"
+        public_button_fr = "Ouvrir le fichier public"
+    elif bound_document and bound_document.lower().endswith(".docx"):
+        public_file = bound_document
+        public_kind_en = "Source working file"
+        public_kind_fr = "Document source de travail"
+        public_title_en = "Source working document"
+        public_title_fr = "Document source de travail"
+        public_desc_en = "Open this source file first if you need to inspect the bound working document."
+        public_desc_fr = "Ouvrez d’abord ce fichier source si vous devez consulter le document de travail lié."
+        public_card_title_en = "Open the bound source document"
+        public_card_title_fr = "Ouvrir le document source lié"
+        public_card_body_en = "This is the bound working document. Use the v1 proof as the authoritative proof, and publish a PDF later for public circulation if needed."
+        public_card_body_fr = "C’est le document de travail lié. Utilisez la preuve v1 comme preuve de référence, puis publiez un PDF plus tard pour la circulation publique si nécessaire."
+        public_button_en = "Open source document"
+        public_button_fr = "Ouvrir le document source"
     elif bound_document:
         public_file = bound_document
         public_kind_en = "Readable/source file"
         public_kind_fr = "Fichier lisible / source"
+        public_title_en = "Readable bound file"
+        public_title_fr = "Fichier lié lisible"
+        public_desc_en = "Open this bound file first."
+        public_desc_fr = "Ouvrez d’abord ce fichier lié."
+        public_card_title_en = "Open the bound file"
+        public_card_title_fr = "Ouvrir le fichier lié"
+        public_card_body_en = "Use this file for reading or sharing, and keep the v1 proof alongside it for verification."
+        public_card_body_fr = "Utilisez ce fichier pour la lecture ou le partage, et gardez la preuve v1 à côté pour la vérification."
+        public_button_en = "Open bound file"
+        public_button_fr = "Ouvrir le fichier lié"
     else:
         public_file = first_existing(export_dir, ["HumanOrigin_SHARE_CARD.html", "CERTIFICAT_FINAL.html"])
         public_kind_en = "Readable package file"
         public_kind_fr = "Fichier lisible du dossier"
+        public_title_en = "Readable package file"
+        public_title_fr = "Fichier lisible du dossier"
+        public_desc_en = "Open this readable package file first."
+        public_desc_fr = "Ouvrez d’abord ce fichier lisible du dossier."
+        public_card_title_en = "Open the readable package file"
+        public_card_title_fr = "Ouvrir le fichier lisible du dossier"
+        public_card_body_en = "Use this file for reading, then rely on the v1 proof for authoritative verification."
+        public_card_body_fr = "Utilisez ce fichier pour la lecture, puis appuyez-vous sur la preuve v1 pour la vérification de référence."
+        public_button_en = "Open readable file"
+        public_button_fr = "Ouvrir le fichier lisible"
 
     verify_url = extract_url(export_dir / VERIFY_TXT)
     verify_href = verify_url or VERIFY_TXT
@@ -256,12 +300,12 @@ def main() -> None:
     public_card = build_card(
         eyebrow_en="Send this",
         eyebrow_fr="À envoyer",
-        title_en="Send this public file",
-        title_fr="Envoyer ce fichier public",
-        body_en="Use this file for normal reading, sharing, or public/editorial circulation.",
-        body_fr="Utilisez ce fichier pour la lecture, le partage, ou la circulation publique / éditoriale.",
-        button_en="Open public file",
-        button_fr="Ouvrir le fichier public",
+        title_en=public_card_title_en,
+        title_fr=public_card_title_fr,
+        body_en=public_card_body_en,
+        body_fr=public_card_body_fr,
+        button_en=public_button_en,
+        button_fr=public_button_fr,
         href=public_file,
         filename=public_file,
         tone="primary",
@@ -937,8 +981,8 @@ def main() -> None:
         <div class="status-card primary">
           <div class="step-no">1</div>
           <div class="kicker" data-en="Send this" data-fr="À envoyer"></div>
-          <div class="title" data-en="Public circulation file" data-fr="Fichier de circulation publique"></div>
-          <div class="desc" data-en="Open or send this readable file first." data-fr="Ouvrez ou envoyez d’abord ce fichier lisible."></div>
+          <div class="title" data-en="{html.escape(public_title_en, quote=True)}" data-fr="{html.escape(public_title_fr, quote=True)}"></div>
+          <div class="desc" data-en="{html.escape(public_desc_en, quote=True)}" data-fr="{html.escape(public_desc_fr, quote=True)}"></div>
           <div class="file">{html.escape(public_file or "Not included")}</div>
         </div>
 
