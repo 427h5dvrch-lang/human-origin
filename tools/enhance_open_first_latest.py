@@ -284,10 +284,10 @@ def main() -> None:
     verify_card = build_card(
         eyebrow_en="Verify with this",
         eyebrow_fr="Vérifier avec ceci",
-        title_en="Use the public verifier",
-        title_fr="Utiliser le vérificateur public",
-        body_en="Use the public verification path to check the preferred proof file.",
-        body_fr="Utilisez le parcours de vérification public pour contrôler le fichier de preuve préféré.",
+        title_en="Verify the reference proof online",
+        title_fr="Vérifier la preuve de référence en ligne",
+        body_en="Use the public verifier to confirm the preferred proof file, its signature, and its document binding.",
+        body_fr="Utilisez le vérificateur public pour confirmer le fichier de preuve préféré, sa signature et son lien au document.",
         button_en="Open online verifier",
         button_fr="Ouvrir la vérification en ligne",
         href=verify_href,
@@ -468,6 +468,104 @@ def main() -> None:
       font-weight: 700;
     }}
 
+    .status-strip {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }}
+
+    .status-card {{
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+      padding: 16px 16px 14px;
+      min-height: 132px;
+    }}
+
+    .status-card.primary {{
+      background: linear-gradient(180deg, rgba(20,43,71,0.96), rgba(27,49,77,0.94));
+      border-color: rgba(20,43,71,0.16);
+      color: white;
+    }}
+
+    .status-card.trust {{
+      background: linear-gradient(180deg, rgba(238,243,246,0.96), rgba(255,255,255,0.88));
+      border-color: rgba(15,90,122,0.14);
+    }}
+
+    .status-card .step-no {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      background: rgba(20,43,71,0.08);
+      color: var(--accent);
+      margin-bottom: 10px;
+    }}
+
+    .status-card.primary .step-no {{
+      background: rgba(255,255,255,0.16);
+      color: white;
+    }}
+
+    .status-card .kicker {{
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }}
+
+    .status-card.primary .kicker {{
+      color: rgba(255,255,255,0.78);
+    }}
+
+    .status-card .title {{
+      font-size: 20px;
+      font-weight: 800;
+      line-height: 1.08;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }}
+
+    .status-card .desc {{
+      color: var(--muted);
+      line-height: 1.5;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }}
+
+    .status-card.primary .desc {{
+      color: rgba(255,255,255,0.86);
+    }}
+
+    .status-card .file {{
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.74);
+      border: 1px solid var(--line);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      color: var(--accent);
+      word-break: break-word;
+    }}
+
+    .status-card.primary .file {{
+      background: rgba(255,255,255,0.12);
+      border-color: rgba(255,255,255,0.14);
+      color: rgba(255,255,255,0.92);
+    }}
+
     .hero-grid {{
       margin-top: 24px;
       display: grid;
@@ -591,7 +689,7 @@ def main() -> None:
       font-size: 24px;
       line-height: 1.1;
       letter-spacing: -0.02em;
-      min-height: 54px;
+      min-height: 64px;
     }}
 
     .card p {{
@@ -718,6 +816,7 @@ def main() -> None:
     }}
 
     @media (max-width: 920px) {{
+      .status-strip,
       .hero-grid,
       .cards,
       .authority {{
@@ -771,6 +870,32 @@ def main() -> None:
         <div class="meta-pill" data-en="Online verification available" data-fr="Vérification en ligne disponible"></div>
       </div>
 
+      <div class="status-strip">
+        <div class="status-card primary">
+          <div class="step-no">1</div>
+          <div class="kicker" data-en="Send this" data-fr="À envoyer"></div>
+          <div class="title" data-en="Public circulation file" data-fr="Fichier de circulation publique"></div>
+          <div class="desc" data-en="Open or send this readable file first." data-fr="Ouvrez ou envoyez d’abord ce fichier lisible."></div>
+          <div class="file">{html.escape(public_file or "Not included")}</div>
+        </div>
+
+        <div class="status-card trust">
+          <div class="step-no">2</div>
+          <div class="kicker" data-en="Trust this" data-fr="Fiez-vous à ceci"></div>
+          <div class="title" data-en="Authoritative portable proof" data-fr="Preuve portable de référence"></div>
+          <div class="desc" data-en="This is the preferred proof file." data-fr="C’est le fichier de preuve préféré."></div>
+          <div class="file">{html.escape(preferred_proof or "Not included")}</div>
+        </div>
+
+        <div class="status-card trust">
+          <div class="step-no">3</div>
+          <div class="kicker" data-en="Verify here" data-fr="Vérifier ici"></div>
+          <div class="title" data-en="Public verification path" data-fr="Parcours de vérification public"></div>
+          <div class="desc" data-en="Use this path to validate the reference proof." data-fr="Utilisez ce parcours pour valider la preuve de référence."></div>
+          <div class="file">{html.escape(verify_url or VERIFY_TXT)}</div>
+        </div>
+      </div>
+
       <div class="hero-grid">
         <div class="hero-panel">
           <div class="panel-label" data-en="Package focus" data-fr="Objet du dossier"></div>
@@ -789,8 +914,8 @@ def main() -> None:
     <section class="section">
       <h2 data-en="What to do now" data-fr="Que faire maintenant"></h2>
       <div class="section-intro"
-           data-en="Use the package in this order: send the public file, keep the preferred proof as the authoritative portable proof, use the public verification path to check it, and treat the legacy file as compatibility only."
-           data-fr="Utilisez le dossier dans cet ordre : envoyez le fichier public, gardez la preuve préférée comme preuve portable de référence, utilisez le parcours de vérification public pour la contrôler, et considérez le fichier legacy comme une compatibilité seulement."></div>
+           data-en="Use the package in this order: send the public file, treat the v1 proof as authoritative, verify it online, and use the legacy file only when compatibility is required."
+           data-fr="Utilisez le dossier dans cet ordre : envoyez le fichier public, considérez la preuve v1 comme la référence, vérifiez-la en ligne, et n’utilisez le fichier legacy que lorsqu’une compatibilité est nécessaire."></div>
 
       <div class="cards">
         {public_card}
