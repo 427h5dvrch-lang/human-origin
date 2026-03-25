@@ -623,8 +623,71 @@ def main() -> None:
 
     .cards {{
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 16px;
+    }}
+
+    .compat-note {{
+      margin-top: 16px;
+      border-radius: 22px;
+      border: 1px dashed var(--line-strong);
+      background: rgba(245,240,230,0.64);
+      padding: 18px 18px 16px;
+    }}
+
+    .compat-kicker {{
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(20,43,71,0.06);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }}
+
+    .compat-note h3 {{
+      margin: 0 0 10px;
+      font-size: 20px;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }}
+
+    .compat-note p {{
+      margin: 0 0 14px;
+      color: var(--muted);
+      line-height: 1.6;
+      max-width: 860px;
+    }}
+
+    .compat-file {{
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.74);
+      border: 1px solid var(--line);
+      margin-bottom: 12px;
+    }}
+
+    .compat-link {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: fit-content;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 12px;
+      border: 1px solid var(--line-strong);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 700;
+      background: white;
     }}
 
     .card {{
@@ -921,7 +984,16 @@ def main() -> None:
         {public_card}
         {reference_card}
         {verify_card}
-        {compatibility_card}
+      </div>
+
+      <div class="compat-note">
+        <div class="compat-kicker" data-en="Compatibility only" data-fr="Compatibilité seulement"></div>
+        <h3 data-en="Legacy proof remains available if needed" data-fr="La preuve legacy reste disponible si nécessaire"></h3>
+        <p
+          data-en="Use the legacy proof only for older tooling or transitional workflows. It is included for compatibility, not as the preferred reference proof."
+          data-fr="Utilisez la preuve legacy uniquement pour des outils plus anciens ou des workflows transitoires. Elle est incluse pour compatibilité, pas comme preuve de référence préférée."></p>
+        {"<div class='compat-file'><code>" + html.escape(legacy_proof) + "</code></div>" if legacy_proof else ""}
+        {"<a class='compat-link' href='" + html.escape(legacy_proof, quote=True) + "'><span data-en='Open compatibility proof' data-fr='Ouvrir la preuve de compatibilité'></span></a>" if legacy_proof else ""}
       </div>
     </section>
 
