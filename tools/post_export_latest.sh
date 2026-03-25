@@ -9,6 +9,7 @@ python3 tools/clean_latest_export_package.py
 
 echo "=== PATCH LATEST EXPORT PACKAGE ==="
 python3 tools/patch_latest_export_package.py
+python3 tools/enhance_open_first_latest.py
 
 echo "=== CLEAN LATEST EXPORT PACKAGE (POST) ==="
 python3 tools/clean_latest_export_package.py
