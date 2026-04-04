@@ -431,6 +431,18 @@ def build_open_first(
       background: rgba(17,24,39,0.03);
       border: 1px dashed rgba(17,24,39,0.10);
     }}
+    .static-note {{
+      display: inline-flex;
+      align-items: center;
+      min-height: 46px;
+      padding: 0 16px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--muted);
+      background: rgba(17,24,39,0.03);
+      border: 1px solid rgba(17,24,39,0.08);
+    }}
     .section {{
       margin-top: 22px;
       border-radius: 28px;
@@ -568,12 +580,13 @@ def build_open_first(
         <div class="label">{dual("Technical verification file", "Fichier technique de vérification")}</div>
         <h2>{dual("Verification file (.ho.json)", "Fichier de vérification (.ho.json)")}</h2>
         <p class="sub">{dual(
-            "Keep this file with the readable document when a stronger check is needed. It is not meant to be read like a normal document.",
-            "Gardez ce fichier avec le document lisible lorsqu’un contrôle renforcé est nécessaire. Il n’est pas destiné à être lu comme un document normal."
+            "Keep this file with the readable document. Attach it only if someone asks for verification. Use it inside the verifier when needed. It is not meant to be read like a normal document.",
+            "Gardez ce fichier avec le document lisible. Joignez-le seulement si une vérification est demandée. Utilisez-le dans le vérificateur si nécessaire. Il n’est pas destiné à être lu comme un document normal."
         )}</p>
         <div class="file-chip">{file_chip(reference_proof, "No verification file included", "Aucun fichier de vérification inclus")}</div>
         <div class="actions">
-          {action(reference_proof, "Open verification file (technical)", "Ouvrir le fichier de vérification (technique)")}
+          <div class="static-note">{dual("Attach only if verification is needed", "Joindre seulement si une vérification est nécessaire")}</div>
+          <a class="btn btn-secondary" href="{escape(verifier_url)}">{dual("Open verifier", "Ouvrir le vérificateur")}</a>
         </div>
       </article>
     </section>
