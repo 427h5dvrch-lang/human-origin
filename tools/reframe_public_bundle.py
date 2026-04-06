@@ -552,7 +552,7 @@ def build_open_first(
         <div class="share-grid">
           <div class="share-card">
             <div class="share-label">{dual("Default mode", "Mode par défaut")}</div>
-            <h3 class="share-head">{dual("Normal sending", "Envoi normal")}</h3>
+            <h3 class="share-head">{dual("Normal sending", "Envoi standard")}</h3>
             <p class="share-copy">{dual(
                 "This is the normal case. Send only the readable document.",
                 "C’est le cas normal. Envoyez seulement le document lisible."
@@ -822,12 +822,12 @@ def build_start_here(
     return f"""HUMANORIGIN — START HERE
 
 EN
-Normal sharing
+Standard sharing
 - Send this readable document:
   {readable_name}
 
-Only if someone asks for stronger or offline verification
-- Add this verification file:
+Only if stronger or offline verification is requested
+- Add this verification file (.ho.json):
   {verification_name}
 
 Optional verification page
@@ -842,12 +842,12 @@ Meaning
 - It does not certify truth, legality, ethics, or institutional approval.
 
 FR
-Envoi normal
+Envoi standard
 - Envoyez ce document lisible :
   {readable_name}
 
-Seulement si quelqu’un demande une vérification renforcée ou hors ligne
-- Ajoutez ce fichier de vérification :
+Seulement si une vérification renforcée ou hors ligne est demandée
+- Ajoutez ce fichier de vérification (.ho.json) :
   {verification_name}
 
 Page de vérification optionnelle
@@ -869,7 +869,7 @@ def build_verify(reference_proof: Path | None, bound_doc: Path | None, verifier_
     return f"""HUMANORIGIN — OPTIONAL VERIFICATION
 
 EN
-Use verification only when needed.
+Use verification only if stronger or offline verification is needed.
 
 Recommended files
 - Verification file: {verification_name}
@@ -879,12 +879,12 @@ Open verifier
 - {verifier_url}
 
 Interpretation
-- The .ho.json file is a technical verification file.
+- The .ho.json file is a technical verification file, not a reading document.
 - It is not a normal reading document.
 - The readable document remains the main file for normal sharing.
 
 FR
-Utilisez la vérification seulement si nécessaire.
+Utilisez la vérification seulement si une vérification renforcée ou hors ligne est nécessaire.
 
 Fichiers recommandés
 - Fichier de vérification : {verification_name}
@@ -894,7 +894,7 @@ Ouvrir le vérificateur
 - {verifier_url}
 
 Interprétation
-- Le fichier .ho.json est un fichier technique de vérification.
+- Le fichier .ho.json est un fichier technique de vérification, pas un document de lecture.
 - Ce n’est pas un document de lecture normal.
 - Le document lisible reste le fichier principal pour l’envoi normal.
 """
