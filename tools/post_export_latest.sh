@@ -32,3 +32,49 @@ sed -n '1,120p' "$LATEST_DIR/HumanOrigin_VERIFY.txt"
 echo
 echo "===== MANIFEST ====="
 sed -n '1,200p' "$LATEST_DIR/HumanOrigin_MANIFEST.json"
+
+echo
+echo "===== OPEN FIRST ====="
+OPEN_FIRST="$LATEST_DIR/HumanOrigin_OPEN_FIRST.html"
+if [ -f "$OPEN_FIRST" ]; then
+  echo "$OPEN_FIRST"
+  open "$OPEN_FIRST"
+else
+  echo "HumanOrigin_OPEN_FIRST.html introuvable"
+fi
+
+# HUMANORIGIN_PUBLIC_REFRAME_BEGIN
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TARGET_DIR="${LATEST_DIR:-${1:-}}"
+if [ -z "$TARGET_DIR" ] || [ ! -d "$TARGET_DIR" ]; then
+  TARGET_DIR="$(find "$HOME/Documents/HumanOrigin/Projects" -type f -name 'HumanOrigin_MANIFEST.json' -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -n 1 | xargs -I{} dirname "{}")"
+fi
+
+if [ -n "$TARGET_DIR" ] && [ -d "$TARGET_DIR" ]; then
+  echo
+  echo "=== INJECT RECORD URL ==="
+  python3 "$SCRIPT_DIR/inject_record_verification_url.py" "$TARGET_DIR" || exit 1
+
+  echo
+  echo "=== REFRAME PUBLIC BUNDLE ==="
+  python3 "$SCRIPT_DIR/reframe_public_bundle.py" "$TARGET_DIR" || exit 1
+
+  echo
+  echo "===== START_HERE ====="
+  sed -n '1,120p' "$TARGET_DIR/HumanOrigin_START_HERE.txt"
+
+  echo
+  echo "===== VERIFY ====="
+  sed -n '1,120p' "$TARGET_DIR/HumanOrigin_VERIFY.txt"
+
+  echo
+  echo "===== MANIFEST ====="
+  sed -n '1,220p' "$TARGET_DIR/HumanOrigin_MANIFEST.json"
+
+  echo
+  echo "===== OPEN FIRST ====="
+  if [ -f "$TARGET_DIR/HumanOrigin_OPEN_FIRST.html" ]; then
+    open "$TARGET_DIR/HumanOrigin_OPEN_FIRST.html"
+  fi
+fi
+# HUMANORIGIN_PUBLIC_REFRAME_END
