@@ -19,26 +19,63 @@ fn mm_to_pt(mm: f32) -> f32 {
     mm * 72.0 / 25.4
 }
 
+#[derive(Debug, Clone, Copy)]
+struct CartouchePlacement {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+}
+
+fn add_clickable_link_on_page(
+    page: &mut PdfPage,
+    url: &str,
+    placement: CartouchePlacement,
+) -> Result<(), String> {
+    let bindings = page.bindings();
+    let page_handle = bindings.get_handle_from_page(page);
+
+    let annot = bindings.FPDFPage_CreateAnnot(page_handle, 2); // FPDF_ANNOT_LINK
+    if annot.is_null() {
+        return Err("FPDFPage_CreateAnnot returned null".to_string());
+    }
+
+    let rect = FS_RECTF {
+        left: placement.x,
+        bottom: placement.y,
+        right: placement.x + placement.w,
+        top: placement.y + placement.h,
+    };
+
+    let rect_ok = bindings.FPDFAnnot_SetRect(annot, &rect);
+    if !bindings.is_true(rect_ok) {
+        return Err("FPDFAnnot_SetRect failed".to_string());
+    }
+
+    let uri_ok = bindings.FPDFAnnot_SetURI(annot, url);
+    if !bindings.is_true(uri_ok) {
+        return Err("FPDFAnnot_SetURI failed".to_string());
+    }
+
+    Ok(())
+}
+
 fn render_cartouche_on_page(
     page: &mut PdfPage,
     cartouche: &image::DynamicImage,
     scale: f32,
     margin_pt: f32,
     is_first_page: bool,
-) -> Result<(), PdfiumError> {
+) -> Result<CartouchePlacement, PdfiumError> {
     let page_w = page.width().value;
-    let page_h = page.height().value;
 
     let (img_w, img_h) = cartouche.dimensions();
     let image_ratio = img_h as f32 / img_w as f32;
 
-    // HumanOrigin physical standard:
-    // first page  = 60 x 22 mm
-    // other pages = 45 x 18 mm
     let (base_w_mm, base_h_mm) = if is_first_page {
-        (60.0_f32, 22.0_f32)
+        (78.0_f32, 24.0_f32)
     } else {
-        (45.0_f32, 18.0_f32)
+        (58.0_f32, 20.0_f32)
     };
 
     let margin = if margin_pt > 0.0 {
@@ -47,12 +84,10 @@ fn render_cartouche_on_page(
         mm_to_pt(12.0)
     };
 
-    // Keep scale as a controlled adjustment around the standard size.
     let scale = clamp_f32(scale, 0.72, 1.55);
     let box_w = mm_to_pt(base_w_mm) * scale;
     let box_h = mm_to_pt(base_h_mm) * scale;
 
-    // Fit the cartouche image inside the physical box while preserving aspect ratio.
     let box_ratio = box_h / box_w;
     let (target_w, target_h) = if image_ratio > box_ratio {
         let h = box_h;
@@ -64,7 +99,6 @@ fn render_cartouche_on_page(
         (w, h)
     };
 
-    // Bottom-right placement with fixed documentary margins.
     let x = (page_w - margin - target_w).max(0.0);
     let y = (margin).max(0.0);
 
@@ -78,7 +112,12 @@ fn render_cartouche_on_page(
 
     page.regenerate_content()?;
 
-    Ok(())
+    Ok(CartouchePlacement {
+        x,
+        y,
+        w: target_w,
+        h: target_h,
+    })
 }
 
 pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
@@ -132,6 +171,8 @@ pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
         mm_to_pt(12.0)
     };
 
+    let mut warnings = vec![];
+
     for index in 0..page_count {
         let page_res = document.pages_mut().get(index);
 
@@ -151,19 +192,26 @@ pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
             job.render.other_pages_scale
         };
 
-  let scale = clamp_f32(raw_scale, 0.72, 1.55);
+        let scale = clamp_f32(raw_scale, 0.72, 1.55);
 
-        if let Err(e) = render_cartouche_on_page(
+        let placement = match render_cartouche_on_page(
             &mut page,
             &cartouche,
             scale,
             margin_pt,
             index == 0,
         ) {
-            return PublicationResult::err(
-                "PAGE_RENDER_FAILED",
-                &format!("Unable to mark page {}: {e}", index + 1),
-            );
+            Ok(v) => v,
+            Err(e) => {
+                return PublicationResult::err(
+                    "PAGE_RENDER_FAILED",
+                    &format!("Unable to mark page {}: {e}", index + 1),
+                );
+            }
+        };
+
+        if let Err(e) = add_clickable_link_on_page(&mut page, &job.verify_url, placement) {
+            warnings.push(format!("Page {} link annotation failed: {}", index + 1, e));
         }
     }
 
@@ -178,6 +226,6 @@ pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
         job.output_pdf_path.clone(),
         page_count as u32,
         "pdfium-auto",
-        vec![],
+        warnings,
     )
 }
