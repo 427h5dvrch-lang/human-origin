@@ -179,6 +179,7 @@ async function pickDocumentToBind() {
 // =========================================================
 function showScreen(screenName) {
   currentScreenName = screenName;
+  try { document.body.setAttribute("data-screen", screenName); } catch {}
 
   const loginScreen = $("login-screen");
   const appScreen = $("app-screen");
@@ -210,13 +211,13 @@ function showScreen(screenName) {
     case "PROJECT_SELECT":
       if (appScreen) appScreen.style.display = "block";
       if (projectSec) projectSec.style.display = "block";
-      safeText("current-project-title", "—");
+      safeText("current-project-title", "Sélection du projet");
       break;
 
     case "DASHBOARD":
       if (appScreen) appScreen.style.display = "block";
       if (controlsSec) controlsSec.classList.remove("hidden");
-      safeText("current-project-title", currentProjectName || "Projet");
+      safeText("current-project-title", currentProjectName || "Workspace HumanOrigin");
       break;
   }
 }
@@ -281,22 +282,87 @@ function isPermissionsScreenVisible() {
   return currentScreenName === "PERMISSIONS";
 }
 
+async function getInputPermissionEvidence() {
+  try {
+    const raw = await invoke("get_input_status");
+    const ts =
+      Number(
+        raw?.last_input_ts ??
+        raw?.lastInputTs ??
+        raw?.timestamp ??
+        raw?.ts ??
+        0
+      ) || 0;
+
+    const granted = Boolean(
+      raw?.input_monitoring_granted ??
+      raw?.inputMonitoringGranted ??
+      raw?.permission_granted ??
+      raw?.granted ??
+      raw?.ok ??
+      raw?.permission_ok ??
+      (ts > 0)
+    );
+
+    return { granted, ts, raw };
+  } catch {
+    return { granted: false, ts: 0, raw: null };
+  }
+}
+
 function setPermissionsHint(message) {
   safeText("perm-help-text", message || "");
   safeText("perm-manual-hint", message || "");
 }
 
-function updatePermissionBadge(ok) {
+function updatePermissionBadge(accessOk, inputOk) {
   const badge = $("perm-badge");
-  if (badge) {
-    badge.innerText = ok ? "Accessibilité : OK ✅" : "Accessibilité : Bloquée ❌";
+  if (!badge) return;
+
+  const warn = $("perm-warn-input");
+
+  if (accessOk && inputOk) {
+    badge.innerText = "Accessibilité + Surveillance de l’entrée : OK ✅";
+    badge.style.color = "#166534";
+    badge.style.background = "#ecfdf3";
+    badge.style.borderColor = "#bbf7d0";
+    if (warn) warn.style.display = "none";
+    return;
   }
+
+  if (accessOk && !inputOk) {
+    badge.innerText = "Accès incomplet : Surveillance de l’entrée manquante";
+    badge.style.color = "#9a3412";
+    badge.style.background = "#fff7ed";
+    badge.style.borderColor = "#fed7aa";
+    if (warn) {
+      warn.style.display = "block";
+      warn.innerHTML =
+        "⚠️ <strong>Il manque encore Surveillance de l’entrée.</strong> HumanOrigin peut s’ouvrir, mais n’enregistrera pas correctement la session. Activez aussi cette autorisation, puis appuyez sur une touche et relancez la vérification.";
+    }
+    return;
+  }
+
+  if (!accessOk && inputOk) {
+    badge.innerText = "Accès incomplet : Accessibilité manquante";
+    badge.style.color = "#9a3412";
+    badge.style.background = "#fff7ed";
+    badge.style.borderColor = "#fed7aa";
+    if (warn) warn.style.display = "none";
+    return;
+  }
+
+  badge.innerText = "Accessibilité + Surveillance de l’entrée : à activer";
+  badge.style.color = "#b91c1c";
+  badge.style.background = "#fff";
+  badge.style.borderColor = "rgba(0,0,0,0.1)";
+  if (warn) warn.style.display = "none";
 }
 
 async function isMacPermissionsOk() {
   try {
-    const ok = await invoke("is_accessibility_trusted");
-    return !!ok;
+    const accessOk = await invoke("is_accessibility_trusted");
+    return !!accessOk;
   } catch {
     return true;
   }
@@ -326,82 +392,128 @@ async function openMacSettings(kind) {
   }
 }
 
-async function refreshPermissionsStateAndMaybeContinue() {
-  const ok = await isMacPermissionsOk();
-  updatePermissionBadge(ok);
+async function refreshPermissionsStateAndMaybeContinue(autoAdvance = false) {
+  const accessOk = await invoke("is_accessibility_trusted").catch(() => false);
+  const input = await getInputPermissionEvidence();
 
-  if (ok && isPermissionsScreenVisible()) {
-    stopPermissionTimers();
-    toast("Accessibilité OK ✅");
-    await forcePostLogin().catch(() => {});
+  updatePermissionBadge(!!accessOk, !!input.granted);
+
+  if (accessOk && input.granted) {
+    setPermissionsHint("Les deux autorisations sont détectées. HumanOrigin peut maintenant mesurer correctement la session.");
+    if (autoAdvance) {
+      stopPermissionTimers();
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) {
+        await forcePostLogin().catch(() => showScreen("LOGIN"));
+      } else {
+        showScreen("LOGIN");
+      }
+    }
     return true;
   }
 
-  return ok;
+  if (accessOk && !input.granted) {
+    setPermissionsHint("Accessibilité est active, mais Surveillance de l’entrée manque encore. Activez-la, puis appuyez sur une touche et relancez la vérification.");
+    return false;
+  }
+
+  if (!accessOk && input.granted) {
+    setPermissionsHint("Surveillance de l’entrée semble active, mais Accessibilité manque encore. Activez aussi Accessibilité.");
+    return false;
+  }
+
+  setPermissionsHint("Activez les deux autorisations macOS : Accessibilité et Surveillance de l’entrée.");
+  return false;
 }
 
 async function startInputWatchdog() {
+  try {
+    if (inputWatchdogTimer) clearInterval(inputWatchdogTimer);
+  } catch {}
+  inputWatchdogTimer = null;
+
   lastInputTs = 0;
   inputTsStableCount = 0;
 
   inputWatchdogTimer = setInterval(async () => {
     try {
-      const ts = await invoke("get_input_status");
-      if (!ts) return;
+      const accessOk = !!(await invoke("is_accessibility_trusted").catch(() => false));
+      const input = await getInputPermissionEvidence();
 
-      if (lastInputTs === 0) {
-        lastInputTs = ts;
-        return;
-      }
-
-      if (ts === lastInputTs) {
+      if (input.ts <= 0 || input.ts === lastInputTs) {
         inputTsStableCount += 1;
       } else {
         inputTsStableCount = 0;
-        lastInputTs = ts;
+      }
+      lastInputTs = input.ts || 0;
+
+      updatePermissionBadge(accessOk, input.granted);
+
+      if (accessOk && input.granted) {
+        stopPermissionTimers();
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) {
+          await forcePostLogin().catch(() => showScreen("LOGIN"));
+        } else {
+          showScreen("LOGIN");
+        }
+        return;
       }
 
       const warn = $("perm-warn-input");
-      if (warn) warn.style.display = inputTsStableCount >= 4 ? "block" : "none";
+      if (warn && accessOk && !input.granted && inputTsStableCount >= 2) {
+        warn.style.display = "block";
+      }
     } catch {}
-  }, 1000);
+  }, 1200);
 }
 
 async function showPermissionsWall() {
-  stopPermissionTimers();
   showScreen("PERMISSIONS");
 
-  updatePermissionBadge(false);
-  setPermissionsHint(
-    "Cliquez sur “Ouvrir Accessibilité”. Si macOS ouvre Réglages au mauvais endroit, allez manuellement dans Confidentialité et sécurité > Accessibilité puis activez HumanOrigin."
-  );
-
-  on("perm-open-accessibility", async () => {
-    await openMacSettings("accessibility");
-    await refreshPermissionsStateAndMaybeContinue().catch(() => {});
-  });
-
-  on("perm-open-input", async () => {
-    await openMacSettings("input");
-  });
+  on("perm-open-accessibility", () => openMacSettings("accessibility"));
+  on("perm-open-input", () => openMacSettings("input"));
 
   on("perm-recheck", async () => {
-    const ok = await refreshPermissionsStateAndMaybeContinue();
-    if (!ok) {
-      toast("Toujours bloqué. Activez Accessibilité puis revenez dans l’app.");
+    toast("Vérification…");
+
+    const fullyReady = await refreshPermissionsStateAndMaybeContinue(false);
+    const accessOk = await invoke("is_accessibility_trusted").catch(() => false);
+
+    if (fullyReady) {
+      stopPermissionTimers();
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) {
+        await forcePostLogin().catch(() => showScreen("LOGIN"));
+      } else {
+        showScreen("LOGIN");
+      }
+      return;
     }
+
+    if (accessOk) {
+      toast("Accès partiel détecté — ouverture de l’app, test clavier encore requis.");
+      stopPermissionTimers();
+
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) {
+        await forcePostLogin().catch(() => showScreen("LOGIN"));
+      } else {
+        showScreen("LOGIN");
+      }
+      return;
+    }
+
+    toast("Accessibilité manquante — impossible d’ouvrir l’app.");
   });
 
-  permissionsPollTimer = setInterval(async () => {
-    await refreshPermissionsStateAndMaybeContinue().catch(() => {});
-  }, 1500);
-
+  await refreshPermissionsStateAndMaybeContinue(false);
   await startInputWatchdog();
 }
 
 async function ensurePermissionsBeforeApp() {
-  const ok = await isMacPermissionsOk();
-  if (!ok) {
+  const accessOk = await isMacPermissionsOk();
+  if (!accessOk) {
     await showPermissionsWall();
     return false;
   }
@@ -753,7 +865,7 @@ async function initProject() {
 
     showScreen("DASHBOARD");
     updateDashboardUI("READY");
-    toast("Projet activé");
+    toast("Projet prêt ✅");
 
     refreshHistory().catch(() => {});
     checkForDrafts(true).catch(() => {});
@@ -847,6 +959,7 @@ async function stopScan() {
   }
 }
 function updateDashboardUI(state) {
+  try { document.body.setAttribute("data-scan-state", state); } catch {}
   const startBtn = $("start-btn");
   const stopBtn = $("stop-btn");
   const finBtn = $("finalize-btn");
@@ -1089,7 +1202,7 @@ async function startScan() {
       retryProjectCloudBindingSilently(currentProjectName, currentSessionId);
     }
 
-    toast("Session démarrée");
+    toast("Session active ✅");
   } catch (e) {
     isScanningUI = false;
     currentSessionId = null;
@@ -1618,12 +1731,14 @@ async function exportFinalProjectCertificate() {
       console.log("[PUBLISHER RESULT]", publishResult);
 
       toast("PDF publié HumanOrigin généré ✅");
-      await openCertViewer(publishResult.output_pdf_path || publishedPdfPath);
+      const finalPdfPath = publishResult.output_pdf_path || publishedPdfPath;
+      toast("PDF publié HumanOrigin généré ✅");
+      await invoke("open_file", { path: finalPdfPath });
       return;
     }
 
     toast("Kit de diffusion HumanOrigin généré ✅");
-    await openCertViewer(publishedHtmlPath);
+    await invoke("open_file", { path: publishedHtmlPath });
   } catch (e) {
     console.error("exportFinalProjectCertificate failed", e);
     alert("Erreur export final projet : " + (e?.message || e));
@@ -1728,15 +1843,15 @@ function ensureDraftModal() {
     <div id="draft-modal-card">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <div>
-          <h2 style="margin:0;font-weight:950;letter-spacing:-0.02em;color:#0b1b33;font-size:22px;">Sessions non certifiées</h2>
-          <div style="margin-top:6px;font-size:13px;color:rgba(11,18,32,0.6);">Restaurer ou supprimer un brouillon local.</div>
+          <h2 style="margin:0;font-weight:950;letter-spacing:-0.02em;color:#0b1b33;font-size:22px;">Sessions en attente de certification</h2>
+          <div style="margin-top:6px;font-size:13px;color:rgba(11,18,32,0.6);">Reprendre ou supprimer un brouillon local avant certification.</div>
         </div>
         <button id="draft-modal-x" style="width:40px;height:40px;border-radius:12px;border:1px solid rgba(14,29,58,0.12);background:rgba(255,255,255,0.7);font-weight:900;cursor:pointer;">✕</button>
       </div>
 
       <div style="display:flex;gap:10px;align-items:center;margin:12px 0 14px;">
-        <input id="draft-modal-filter" placeholder="Filtrer..." style="flex:1;padding:10px 12px;border-radius:14px;border:1px solid rgba(15,23,42,0.12);background:rgba(255,255,255,0.8);outline:none;" />
-        <button id="draft-modal-refresh" style="padding:8px 12px;border-radius:12px;border:1px solid rgba(14,29,58,0.12);background:rgba(255,255,255,0.7);font-weight:850;cursor:pointer;">Rafraîchir</button>
+        <input id="draft-modal-filter" placeholder="Rechercher un projet..." style="flex:1;padding:10px 12px;border-radius:14px;border:1px solid rgba(15,23,42,0.12);background:rgba(255,255,255,0.8);outline:none;" />
+        <button id="draft-modal-refresh" style="padding:8px 12px;border-radius:12px;border:1px solid rgba(14,29,58,0.12);background:rgba(255,255,255,0.7);font-weight:850;cursor:pointer;">Actualiser</button>
       </div>
 
       <div id="draft-modal-list" style="overflow:auto;border-radius:18px;border:1px solid rgba(15,23,42,0.08);background:rgba(255,255,255,0.72);max-height:min(52vh,460px);"></div>
@@ -1867,7 +1982,7 @@ async function checkForDrafts(forceRefresh = false) {
     }
 
     banner.style.display = "flex";
-    btnRecover.innerText = "Restaurer " + (d0.project_name || "");
+    btnRecover.innerText = "Reprendre · " + (d0.project_name || "");
     btnRecover.onclick = async () => {
       if (!currentProjectName && d0.project_name) {
         await quickActivateProjectByName(d0.project_name);
@@ -1878,7 +1993,7 @@ async function checkForDrafts(forceRefresh = false) {
     if (!$("btn-drafts-all")) {
       const btnAll = document.createElement("button");
       btnAll.id = "btn-drafts-all";
-      btnAll.innerText = "Voir tout";
+      btnAll.innerText = "Bibliothèque";
       btnAll.className = "btn btn-ghost btn-mini";
       banner.appendChild(btnAll);
 
@@ -1926,7 +2041,7 @@ async function recoverDraft(sid) {
 
     showScreen("DASHBOARD");
     updateDashboardUI("STOPPED");
-    toast("Brouillon restauré.");
+    toast("Session restaurée.");
   } catch (e) {
     alert("Erreur restauration : " + e);
   }
