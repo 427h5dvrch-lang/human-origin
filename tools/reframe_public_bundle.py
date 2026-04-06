@@ -899,6 +899,106 @@ Interprétation
 - Le document lisible reste le fichier principal pour l’envoi normal.
 """
 
+
+def split_bilingual_text(text: str, fr_title: str | None = None) -> tuple[str, str]:
+    text = text.rstrip()
+    if "\n\nEN\n" not in text or "\n\nFR\n" not in text:
+        return text + "\n", text + "\n"
+
+    header, rest = text.split("\n\nEN\n", 1)
+    en_body, fr_body = rest.split("\n\nFR\n", 1)
+
+    en_text = f"{header}\n\n{en_body.strip()}\n"
+    fr_header = fr_title or header
+    fr_text = f"{fr_header}\n\n{fr_body.strip()}\n"
+    return en_text, fr_text
+
+def build_start_here_variants(
+    public_doc: Path | None,
+    bound_doc: Path | None,
+    reference_proof: Path | None,
+    legacy_proof: Path | None,
+    verifier_url: str,
+) -> tuple[str, str]:
+    return split_bilingual_text(
+        build_start_here(public_doc, bound_doc, reference_proof, legacy_proof, verifier_url),
+        "HUMANORIGIN — COMMENCER ICI",
+    )
+
+def build_verify_variants(
+    reference_proof: Path | None,
+    bound_doc: Path | None,
+    verifier_url: str,
+) -> tuple[str, str]:
+    return split_bilingual_text(
+        build_verify(reference_proof, bound_doc, verifier_url),
+        "HUMANORIGIN — VÉRIFICATION OPTIONNELLE",
+    )
+
+def build_readme_en(
+    public_doc: Path | None,
+    bound_doc: Path | None,
+    reference_proof: Path | None,
+    legacy_proof: Path | None,
+    verifier_url: str,
+) -> str:
+    public_name = public_doc.name if public_doc else "No public readable document included"
+    source_name = bound_doc.name if bound_doc else "Not included"
+    verification_name = "HumanOrigin_VERIFICATION_FILE.ho.json" if reference_proof else "Not included"
+    legacy_name = legacy_proof.name if legacy_proof else "Not included"
+
+    return f"""HUMANORIGIN — READ ME FIRST
+
+Main public file
+- {public_name}
+
+Verification file
+- {verification_name}
+
+Optional verification page
+- {verifier_url}
+
+Other files
+- Source document: {source_name}
+- Compatibility file: {legacy_name}
+
+Meaning
+HumanOrigin certifies that a measured human process was linked to a specific document.
+It does not certify truth, legality, ethics, or institutional approval.
+"""
+
+def build_readme_fr(
+    public_doc: Path | None,
+    bound_doc: Path | None,
+    reference_proof: Path | None,
+    legacy_proof: Path | None,
+    verifier_url: str,
+) -> str:
+    public_name = public_doc.name if public_doc else "Aucun document public lisible inclus"
+    source_name = bound_doc.name if bound_doc else "Non inclus"
+    verification_name = "HumanOrigin_VERIFICATION_FILE.ho.json" if reference_proof else "Non inclus"
+    legacy_name = legacy_proof.name if legacy_proof else "Non inclus"
+
+    return f"""HUMANORIGIN — LISEZ D’ABORD
+
+Fichier public principal
+- {public_name}
+
+Fichier de vérification
+- {verification_name}
+
+Page de vérification optionnelle
+- {verifier_url}
+
+Autres fichiers
+- Document source : {source_name}
+- Fichier de compatibilité : {legacy_name}
+
+Signification
+HumanOrigin certifie qu’un processus humain mesuré a été lié à un document précis.
+Il ne certifie pas la vérité, la légalité, l’éthique ou une approbation institutionnelle.
+"""
+
 def update_manifest(
     manifest_path: Path,
     public_doc: Path | None,
@@ -973,14 +1073,30 @@ def main() -> int:
         bundle / "HumanOrigin_START_HERE.txt",
         build_start_here(public_doc, bound_doc, reference_proof, legacy_proof, verifier_url),
     )
+    start_here_en, start_here_fr = build_start_here_variants(
+        public_doc, bound_doc, reference_proof, legacy_proof, verifier_url
+    )
+    write_text(bundle / "HumanOrigin_START_HERE_EN.txt", start_here_en)
+    write_text(bundle / "HumanOrigin_START_HERE_FR.txt", start_here_fr)
     write_text(
         bundle / "HumanOrigin_READ_ME_FIRST.txt",
         build_readme(public_doc, bound_doc, reference_proof, legacy_proof, verifier_url),
     )
     write_text(
+        bundle / "HumanOrigin_READ_ME_FIRST_EN.txt",
+        build_readme_en(public_doc, bound_doc, reference_proof, legacy_proof, verifier_url),
+    )
+    write_text(
+        bundle / "HumanOrigin_READ_ME_FIRST_FR.txt",
+        build_readme_fr(public_doc, bound_doc, reference_proof, legacy_proof, verifier_url),
+    )
+    write_text(
         bundle / "HumanOrigin_VERIFY.txt",
         build_verify(reference_proof, bound_doc, verifier_url),
     )
+    verify_en, verify_fr = build_verify_variants(reference_proof, bound_doc, verifier_url)
+    write_text(bundle / "HumanOrigin_VERIFY_EN.txt", verify_en)
+    write_text(bundle / "HumanOrigin_VERIFY_FR.txt", verify_fr)
 
     if manifest_path.exists():
         update_manifest(manifest_path, public_doc, bound_doc, reference_proof, legacy_proof, verifier_url)
