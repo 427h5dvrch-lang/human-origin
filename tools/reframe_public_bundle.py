@@ -31,6 +31,14 @@ def first_existing(bundle: Path, names: list[str]) -> Path | None:
 
 
 def detect_bound_document(bundle: Path) -> Path | None:
+    preferred = [
+        bundle / "BOUND_DOCUMENT.pdf",
+        bundle / "BOUND_DOCUMENT.docx",
+        bundle / "BOUND_DOCUMENT.html",
+    ]
+    for p in preferred:
+        if p.exists():
+            return p
     candidates = sorted(bundle.glob("BOUND_DOCUMENT.*"))
     return candidates[0] if candidates else None
 
@@ -773,64 +781,123 @@ def build_readme(
     legacy_proof: Path | None,
     verifier_url: str,
 ) -> str:
-    public_name = public_doc.name if public_doc else "No public PDF included yet"
+    public_name = public_doc.name if public_doc else "No public readable document included"
     source_name = bound_doc.name if bound_doc else "Not included"
-    ref_name = reference_proof.name if reference_proof else "Not included"
+    verification_name = "HumanOrigin_VERIFICATION_FILE.ho.json" if reference_proof else "Not included"
+    legacy_name = legacy_proof.name if legacy_proof else "Not included"
+
+    return f"""HUMANORIGIN — READ ME FIRST
+
+Main public file
+- {public_name}
+
+Verification file
+- {verification_name}
+
+Optional verification page
+- {verifier_url}
+
+Other files
+- Source document: {source_name}
+- Compatibility file: {legacy_name}
+
+Meaning
+HumanOrigin certifies that a measured human process was linked to a specific document.
+It does not certify truth, legality, ethics, or institutional approval.
+"""
+
+def build_start_here(
+    public_doc: Path | None,
+    bound_doc: Path | None,
+    reference_proof: Path | None,
+    legacy_proof: Path | None,
+    verifier_url: str,
+) -> str:
+    readable_doc = public_doc or bound_doc
+    readable_name = readable_doc.name if readable_doc else "Not included"
+    verification_name = "HumanOrigin_VERIFICATION_FILE.ho.json" if reference_proof else "Not included"
+    source_name = bound_doc.name if bound_doc else "Not included"
     legacy_name = legacy_proof.name if legacy_proof else "Not included"
 
     return f"""HUMANORIGIN — START HERE
 
-Main entry
-- HumanOrigin_OPEN_FIRST.html
+EN
+Normal sharing
+- Send this readable document:
+  {readable_name}
 
-Public path
-1. Open the public document first
-   {public_name}
+Only if someone asks for stronger or offline verification
+- Add this verification file:
+  {verification_name}
 
-2. Keep the reference proof with it
-   {ref_name}
+Optional verification page
+- {verifier_url}
 
-3. Treat the source document as underlying material
-   {source_name}
-
-4. Keep the legacy file only for compatibility when needed
-   {legacy_name}
-
-5. Verify only if needed
-   {verifier_url}
+Other files
+- Source document: {source_name}
+- Older compatibility file: {legacy_name}
 
 Meaning
-HumanOrigin certifies that a measured human process was linked to a specific document.
-It does not certify that the document is true, accurate, lawful, ethical, or institutionally endorsed.
+- HumanOrigin certifies a measured human process linked to a specific document.
+- It does not certify truth, legality, ethics, or institutional approval.
+
+FR
+Envoi normal
+- Envoyez ce document lisible :
+  {readable_name}
+
+Seulement si quelqu’un demande une vérification renforcée ou hors ligne
+- Ajoutez ce fichier de vérification :
+  {verification_name}
+
+Page de vérification optionnelle
+- {verifier_url}
+
+Autres fichiers
+- Document source : {source_name}
+- Ancien fichier de compatibilité : {legacy_name}
+
+Signification
+- HumanOrigin certifie un processus humain mesuré lié à un document précis.
+- Il ne certifie pas la vérité, la légalité, l’éthique ou une approbation institutionnelle.
 """
 
-
 def build_verify(reference_proof: Path | None, bound_doc: Path | None, verifier_url: str) -> str:
-    ref_name = reference_proof.name if reference_proof else "CERTIFICAT_FINAL.v1.ho.json"
+    verification_name = "HumanOrigin_VERIFICATION_FILE.ho.json" if reference_proof else "Not included"
     source_name = bound_doc.name if bound_doc else "BOUND_DOCUMENT.*"
 
     return f"""HUMANORIGIN — OPTIONAL VERIFICATION
 
-Verification is secondary in the package reading path.
+EN
+Use verification only when needed.
 
-Recommended order
-1. Open the public document
-2. Keep the reference proof with it
-3. Verify only if you want an independent external check
+Recommended files
+- Verification file: {verification_name}
+- Related document: {source_name}
 
-Verifier
-{verifier_url}
-
-Recommended verification files
-- Reference proof: {ref_name}
-- Source document: {source_name}
+Open verifier
+- {verifier_url}
 
 Interpretation
-- Preferred proof: CERTIFICAT_FINAL.v1.ho.json
-- Public document: HumanOrigin_PUBLISHED.pdf when included
-- Source document: BOUND_DOCUMENT.*
-"""
+- The .ho.json file is a technical verification file.
+- It is not a normal reading document.
+- The readable document remains the main file for normal sharing.
 
+FR
+Utilisez la vérification seulement si nécessaire.
+
+Fichiers recommandés
+- Fichier de vérification : {verification_name}
+- Document lié : {source_name}
+
+Ouvrir le vérificateur
+- {verifier_url}
+
+Interprétation
+- Le fichier .ho.json est un fichier technique de vérification.
+- Ce n’est pas un document de lecture normal.
+- Le document lisible reste le fichier principal pour l’envoi normal.
+"""
 
 def update_manifest(
     manifest_path: Path,
@@ -845,13 +912,14 @@ def update_manifest(
     data["public_document_filename"] = public_doc.name if public_doc else None
     data["public_document_role"] = "public_document" if public_doc else "not_included"
     data["reference_proof_filename"] = reference_proof.name if reference_proof else None
-    data["reference_proof_role"] = "preferred_portable_proof"
+    data["public_verification_filename"] = "HumanOrigin_VERIFICATION_FILE.ho.json" if reference_proof else None
+    data["reference_proof_role"] = "technical_verification_file"
     data["source_document_filename"] = bound_doc.name if bound_doc else None
     data["legacy_compatibility_filename"] = legacy_proof.name if legacy_proof else None
     data["secondary_public_page"] = "HumanOrigin_PUBLISHED.html"
     data["verification_url"] = verifier_url
-    data["verification_priority"] = "secondary_optional"
-    data["package_hierarchy_version"] = "public-clarity-v3"
+    data["verification_priority"] = "optional_only_if_needed"
+    data["package_hierarchy_version"] = "public-clarity-v6"
     data["recommended_share_file"] = public_doc.name if public_doc else "HumanOrigin_OPEN_FIRST.html"
     manifest_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -870,8 +938,9 @@ def main() -> int:
     manifest = read_json(manifest_path)
 
     verifier_url = (
-        manifest.get("verification_url")
+        manifest.get("record_verification_url")
         or manifest.get("verifier_url")
+        or manifest.get("verification_url")
         or manifest.get("public_verifier_url")
         or DEFAULT_VERIFIER_URL
     )
@@ -886,6 +955,12 @@ def main() -> int:
     reference_proof = first_existing(bundle, ["CERTIFICAT_FINAL.v1.ho.json", "CERTIFICAT_FINAL.ho.json"])
     legacy_proof = (bundle / "CERTIFICAT_FINAL.ho.json") if (bundle / "CERTIFICAT_FINAL.ho.json").exists() else None
 
+    verification_alias = bundle / "HumanOrigin_VERIFICATION_FILE.ho.json"
+    if reference_proof and reference_proof.exists():
+        write_text(verification_alias, reference_proof.read_text(encoding="utf-8"))
+    elif verification_alias.exists():
+        verification_alias.unlink()
+
     write_text(
         bundle / "HumanOrigin_OPEN_FIRST.html",
         build_open_first(public_doc, bound_doc, reference_proof, legacy_proof, verifier_url),
@@ -893,6 +968,10 @@ def main() -> int:
     write_text(
         bundle / "HumanOrigin_PUBLISHED.html",
         build_published_alias(public_doc, reference_proof, bound_doc),
+    )
+    write_text(
+        bundle / "HumanOrigin_START_HERE.txt",
+        build_start_here(public_doc, bound_doc, reference_proof, legacy_proof, verifier_url),
     )
     write_text(
         bundle / "HumanOrigin_READ_ME_FIRST.txt",
