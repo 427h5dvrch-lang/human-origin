@@ -393,6 +393,110 @@ async function openMacSettings(kind) {
   }
 }
 
+function hoUiLang() {
+  try {
+    const saved = (localStorage.getItem("ho_lang") || "").toLowerCase();
+    if (saved in {"fr": 1, "en": 1}) return saved;
+  } catch {}
+  const nav = String(navigator.language || "fr").toLowerCase();
+  return nav.startsWith("fr") ? "fr" : "en";
+}
+
+function hoPerm(fr, en) {
+  return hoUiLang() === "fr" ? fr : en;
+}
+
+function ensurePermissionsLangToggle() {
+  const root = $("permissions-screen");
+  if (!root) return;
+
+  let bar = document.getElementById("perm-lang-toggle");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "perm-lang-toggle";
+    bar.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px;";
+    bar.innerHTML = `
+      <button id="perm-lang-fr" class="btn btn-ghost btn-mini" type="button">FR</button>
+      <button id="perm-lang-en" class="btn btn-ghost btn-mini" type="button">EN</button>
+    `;
+    const card = root.querySelector(".glass-card");
+    if (card) card.insertBefore(bar, card.firstChild);
+
+    bar.querySelector("#perm-lang-fr")?.addEventListener("click", () => {
+      try { localStorage.setItem("ho_lang", "fr"); } catch {}
+      applyPermissionsScreenCopy();
+    });
+
+    bar.querySelector("#perm-lang-en")?.addEventListener("click", () => {
+      try { localStorage.setItem("ho_lang", "en"); } catch {}
+      applyPermissionsScreenCopy();
+    });
+  }
+
+  const fr = document.getElementById("perm-lang-fr");
+  const en = document.getElementById("perm-lang-en");
+  const lang = hoUiLang();
+
+  if (fr) {
+    fr.style.opacity = lang == "fr" ? "1" : "0.65";
+    fr.style.fontWeight = lang == "fr" ? "800" : "700";
+  }
+  if (en) {
+    en.style.opacity = lang == "en" ? "1" : "0.65";
+    en.style.fontWeight = lang == "en" ? "800" : "700";
+  }
+}
+
+function applyPermissionsScreenCopy() {
+  const root = $("permissions-screen");
+  if (!root) return;
+  ensurePermissionsLangToggle();
+
+  const kicker = root.querySelector(".ritual-kicker");
+  if (kicker) kicker.innerText = "HumanOrigin";
+
+  const title = root.querySelector(".brand-title");
+  if (title) title.innerText = hoPerm(
+    "Activer le protocole de preuve",
+    "Enable the proof protocol"
+  );
+
+  const sub = root.querySelector(".brand-sub");
+  if (sub) sub.innerText = hoPerm(
+    "HumanOrigin a besoin de deux autorisations macOS — Accessibilité et Surveillance de l’entrée — pour mesurer correctement une session humaine.",
+    "HumanOrigin needs two macOS permissions — Accessibility and Input Monitoring — to measure a human session correctly."
+  );
+
+  const note = root.querySelector(".ritual-note");
+  if (note) note.innerText = hoPerm(
+    "Cette étape ne sert pas à configurer une simple app. Elle ouvre l’accès au protocole de mesure. Les deux autorisations sont nécessaires pour que l’enregistrement fonctionne réellement.",
+    "This step is not simple app setup. It unlocks the measurement protocol. Both permissions are required for recording to work properly."
+  );
+
+  const warn = $("perm-warn-input");
+  if (warn) {
+    warn.innerHTML = hoPerm(
+      '⚠️ <strong>Attention :</strong> Aucune frappe détectée. Vérifiez aussi "Surveillance de l\'entrée".',
+      '⚠️ <strong>Warning:</strong> No keystrokes detected. Also check "Input Monitoring".'
+    );
+  }
+
+  const btn1 = $("perm-open-accessibility");
+  if (btn1) btn1.innerText = hoPerm("1. Ouvrir Accessibilité", "1. Open Accessibility");
+
+  const btn2 = $("perm-open-input");
+  if (btn2) btn2.innerText = hoPerm("2. Ouvrir Surveillance Entrée", "2. Open Input Monitoring");
+
+  const btn3 = $("perm-recheck");
+  if (btn3) btn3.innerText = hoPerm("C'est fait, vérifier ✅", "Done, verify ✅");
+
+  const foot = root.querySelector('p[style*="font-size: 11px"]');
+  if (foot) foot.innerText = hoPerm(
+    "Une fois coché, il faut parfois redémarrer l'application.",
+    "Once enabled, you may need to restart the application."
+  );
+}
+
 async function refreshPermissionsStateAndMaybeContinue(autoAdvance = false) {
   const accessOk = await invoke("is_accessibility_trusted").catch(() => false);
   const input = await getInputPermissionEvidence();
@@ -400,7 +504,7 @@ async function refreshPermissionsStateAndMaybeContinue(autoAdvance = false) {
   updatePermissionBadge(!!accessOk, !!input.granted);
 
   if (accessOk && input.granted) {
-    setPermissionsHint("Les deux autorisations sont détectées. HumanOrigin peut maintenant mesurer correctement la session.");
+    setPermissionsHint(hoPerm("Les deux autorisations sont détectées. HumanOrigin peut maintenant mesurer correctement la session.", "Both permissions are detected. HumanOrigin can now measure the session correctly."));
     if (autoAdvance) {
       await continueAfterPermissions();
     }
@@ -408,16 +512,16 @@ async function refreshPermissionsStateAndMaybeContinue(autoAdvance = false) {
   }
 
   if (accessOk && !input.granted) {
-    setPermissionsHint("Accessibilité est active, mais Surveillance de l’entrée manque encore. Activez-la, puis appuyez sur une touche et relancez la vérification.");
+    setPermissionsHint(hoPerm("Accessibilité est active, mais Surveillance de l’entrée manque encore. Activez-la, puis appuyez sur une touche et relancez la vérification.", "Accessibility is active, but Input Monitoring is still missing. Enable it, then press a key and run the check again."));
     return false;
   }
 
   if (!accessOk && input.granted) {
-    setPermissionsHint("Surveillance de l’entrée semble active, mais Accessibilité manque encore. Activez aussi Accessibilité.");
+    setPermissionsHint(hoPerm("Surveillance de l’entrée semble active, mais Accessibilité manque encore. Activez aussi Accessibilité.", "Input Monitoring appears active, but Accessibility is still missing. Enable Accessibility as well."));
     return false;
   }
 
-  setPermissionsHint("Activez les deux autorisations macOS : Accessibilité et Surveillance de l’entrée.");
+  setPermissionsHint(hoPerm("Activez les deux autorisations macOS : Accessibilité et Surveillance de l’entrée.", "Enable both macOS permissions: Accessibility and Input Monitoring."));
   return false;
 }
 
@@ -459,12 +563,13 @@ async function startInputWatchdog() {
 
 async function showPermissionsWall() {
   showScreen("PERMISSIONS");
+  applyPermissionsScreenCopy();
 
   on("perm-open-accessibility", () => openMacSettings("accessibility"));
   on("perm-open-input", () => openMacSettings("input"));
 
   on("perm-recheck", async () => {
-    toast("Vérification…");
+    toast(hoPerm("Vérification…", "Checking…"));
 
     const fullyReady = await refreshPermissionsStateAndMaybeContinue(false);
     const accessOk = await invoke("is_accessibility_trusted").catch(() => false);
@@ -475,12 +580,12 @@ async function showPermissionsWall() {
     }
 
     if (accessOk) {
-      toast("Accès partiel détecté — il manque encore la surveillance de l’entrée.");
+      toast(hoPerm("Accès partiel détecté — il manque encore la surveillance de l’entrée.", "Partial access detected — Input Monitoring is still missing."));
       await startInputWatchdog();
       return;
     }
 
-    toast("Accessibilité manquante — impossible d’ouvrir l’app.");
+    toast(hoPerm("Accessibilité manquante — impossible d’ouvrir l’app.", "Accessibility missing — the app cannot be opened."));
   });
 
   await refreshPermissionsStateAndMaybeContinue(false);
@@ -3215,14 +3320,13 @@ window.addEventListener("focus", () => {
   }
 });
 
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && isPermissionsScreenVisible()) {
-    refreshPermissionsStateAndMaybeContinue().catch(() => {});
-  }
-});
+// visibilitychange disabled on macOS to avoid duplicate permission resume
 
 window.addEventListener("DOMContentLoaded", async () => {
   setupDeepLinkListeners().catch(() => {});
+
+  const __hoLoginTitle = document.querySelector("#login-screen .brand-title");
+  if (__hoLoginTitle) __hoLoginTitle.innerText = "Accédez à votre espace HumanOrigin";
 
   try {
     const v = await app.getVersion();
