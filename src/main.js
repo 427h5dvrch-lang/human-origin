@@ -182,6 +182,7 @@ function showScreen(screenName) {
   currentScreenName = screenName;
   if (screenName === "LOGIN" && typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
   if (screenName === "PERMISSIONS" && typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
+  if (screenName === "PROJECT_SELECT" && typeof applyProjectScreenCopy === "function") applyProjectScreenCopy();
   try { document.body.setAttribute("data-screen", screenName); } catch {}
 
   const loginScreen = $("login-screen");
@@ -406,6 +407,138 @@ function hoUiLang() {
 
 function hoPerm(fr, en) {
   return hoUiLang() === "fr" ? fr : en;
+}
+
+function ensureProjectLangToggle() {
+  const root = $("project-section");
+  if (!root) return;
+
+  let bar = document.getElementById("project-lang-toggle");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "project-lang-toggle";
+    bar.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px;";
+    bar.innerHTML = `
+      <button id="project-lang-fr" class="btn btn-ghost btn-mini" type="button">FR</button>
+      <button id="project-lang-en" class="btn btn-ghost btn-mini" type="button">EN</button>
+    `;
+    const card = root.querySelector(".project-picker-card");
+    if (card) card.insertBefore(bar, card.firstChild);
+
+    bar.querySelector("#project-lang-fr")?.addEventListener("click", () => {
+      try { localStorage.setItem("ho_lang", "fr"); } catch {}
+      applyProjectScreenCopy();
+      if (typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
+      if (typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
+    });
+
+    bar.querySelector("#project-lang-en")?.addEventListener("click", () => {
+      try { localStorage.setItem("ho_lang", "en"); } catch {}
+      applyProjectScreenCopy();
+      if (typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
+      if (typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
+    });
+  }
+
+  const fr = document.getElementById("project-lang-fr");
+  const en = document.getElementById("project-lang-en");
+  const lang = hoUiLang();
+
+  if (fr) {
+    fr.style.opacity = lang == "fr" ? "1" : "0.65";
+    fr.style.fontWeight = lang == "fr" ? "800" : "700";
+  }
+  if (en) {
+    en.style.opacity = lang == "en" ? "1" : "0.65";
+    en.style.fontWeight = lang == "en" ? "800" : "700";
+  }
+}
+
+function applyProjectScreenCopy() {
+  const projectRoot = $("project-section");
+  const appRoot = $("app-screen");
+  if (!projectRoot || !appRoot) return;
+
+  ensureProjectLangToggle();
+
+  const workspaceKicker = appRoot.querySelector(".workspace-hero .ritual-kicker");
+  if (workspaceKicker) workspaceKicker.innerText = "HumanOrigin Workspace";
+
+  const workspaceTitle = appRoot.querySelector(".workspace-title");
+  if (workspaceTitle) workspaceTitle.innerText = hoPerm(
+    "Un espace de certification humaine",
+    "A human certification workspace"
+  );
+
+  const workspaceSub = appRoot.querySelector(".workspace-sub");
+  if (workspaceSub) workspaceSub.innerText = hoPerm(
+    "Ici, le travail humain ne se contente pas d’être produit : il est mesuré, certifié, puis préparé pour circuler comme une preuve lisible, signée et liée à un document précis.",
+    "Here, human work is not simply produced: it is measured, certified, then prepared to circulate as readable proof, signed and linked to a specific document."
+  );
+
+  const updateBtn = $("check-update-btn");
+  if (updateBtn) updateBtn.innerText = hoPerm("⬆️ Mise à jour", "⬆️ Update");
+
+  const changeBtn = $("change-project-btn");
+  if (changeBtn) changeBtn.innerText = hoPerm("Changer", "Change");
+
+  const logoutBtn = $("logout-btn");
+  if (logoutBtn) logoutBtn.innerText = hoPerm("Sortir", "Sign out");
+
+  const projectLineLabel = appRoot.querySelector(".workspace-project-label");
+  if (projectLineLabel) projectLineLabel.innerText = hoPerm("Projet actif", "Active project");
+
+  const currentTitle = $("current-project-title");
+  if (currentTitle) {
+    const t = (currentTitle.innerText || "").trim();
+    if (t === "Projet" || t === "Sélection du projet" || t === "Project" || t === "Project selection") {
+      currentTitle.innerText = hoPerm("Sélection du projet", "Project selection");
+    }
+  }
+
+  const kicker = projectRoot.querySelector(".ritual-kicker");
+  if (kicker) kicker.innerText = hoPerm("Projet", "Project");
+
+  const title = projectRoot.querySelector(".section-title");
+  if (title) title.innerText = hoPerm(
+    "Ouvrir un dossier de travail",
+    "Open a working folder"
+  );
+
+  const lead = projectRoot.querySelector(".section-lead");
+  if (lead) lead.innerText = hoPerm(
+    "Chaque projet devient un cadre vivant pour vos sessions certifiées, vos brouillons, votre historique, et votre export final.",
+    "Each project becomes a structured space for your certified sessions, drafts, history, and final export."
+  );
+
+  const labels = projectRoot.querySelectorAll(".project-picker-label");
+  if (labels[0]) labels[0].innerText = hoPerm("Projet existant", "Existing project");
+  if (labels[1]) labels[1].innerText = hoPerm("Nouveau projet", "New project");
+
+  const notes = projectRoot.querySelectorAll(".project-picker-note");
+  if (notes[0]) notes[0].innerText = hoPerm(
+    "Rouvrez un projet déjà lié à une trajectoire de travail et à un historique certifié.",
+    "Reopen a project already linked to a work trajectory and certified history."
+  );
+  if (notes[1]) notes[1].innerText = hoPerm(
+    "Créez un nouveau cadre de travail quand vous commencez une nouvelle œuvre, étude, ou série de documents.",
+    "Create a new workspace when you begin a new work, study, or document series."
+  );
+
+  const input = $("project-name");
+  if (input) input.placeholder = hoPerm(
+    "Nom du nouveau projet...",
+    "Name of the new project..."
+  );
+
+  const btn = $("init-btn");
+  if (btn) btn.innerText = hoPerm("Charger", "Load");
+
+  const sel = $("project-selector");
+  if (sel) {
+    const first = sel.querySelector('option[value=""]');
+    if (first) first.innerText = hoPerm("Choisir un projet...", "Choose a project...");
+  }
 }
 
 function ensureLoginLangToggle() {
