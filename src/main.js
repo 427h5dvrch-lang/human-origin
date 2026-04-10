@@ -180,6 +180,8 @@ async function pickDocumentToBind() {
 // =========================================================
 function showScreen(screenName) {
   currentScreenName = screenName;
+  if (screenName === "LOGIN" && typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
+  if (screenName === "PERMISSIONS" && typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
   try { document.body.setAttribute("data-screen", screenName); } catch {}
 
   const loginScreen = $("login-screen");
@@ -404,6 +406,74 @@ function hoUiLang() {
 
 function hoPerm(fr, en) {
   return hoUiLang() === "fr" ? fr : en;
+}
+
+function ensureLoginLangToggle() {
+  const root = $("login-screen");
+  if (!root) return;
+
+  let bar = document.getElementById("login-lang-toggle");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "login-lang-toggle";
+    bar.style.cssText = "display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px;";
+    bar.innerHTML = `
+      <button id="login-lang-fr" class="btn btn-ghost btn-mini" type="button">FR</button>
+      <button id="login-lang-en" class="btn btn-ghost btn-mini" type="button">EN</button>
+    `;
+    const card = root.querySelector(".glass-card");
+    if (card) card.insertBefore(bar, card.firstChild);
+
+    bar.querySelector("#login-lang-fr")?.addEventListener("click", () => {
+      try { localStorage.setItem("ho_lang", "fr"); } catch {}
+      applyLoginScreenCopy();
+      if (typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
+    });
+
+    bar.querySelector("#login-lang-en")?.addEventListener("click", () => {
+      try { localStorage.setItem("ho_lang", "en"); } catch {}
+      applyLoginScreenCopy();
+      if (typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
+    });
+  }
+
+  const fr = document.getElementById("login-lang-fr");
+  const en = document.getElementById("login-lang-en");
+  const lang = hoUiLang();
+
+  if (fr) {
+    fr.style.opacity = lang == "fr" ? "1" : "0.65";
+    fr.style.fontWeight = lang == "fr" ? "800" : "700";
+  }
+  if (en) {
+    en.style.opacity = lang == "en" ? "1" : "0.65";
+    en.style.fontWeight = lang == "en" ? "800" : "700";
+  }
+}
+
+function applyLoginScreenCopy() {
+  const root = $("login-screen");
+  if (!root) return;
+
+  ensureLoginLangToggle();
+
+  const title = root.querySelector(".brand-title");
+  if (title) title.innerText = hoPerm(
+    "Accédez à votre espace HumanOrigin",
+    "Access your HumanOrigin workspace"
+  );
+
+  const sub = root.querySelector(".brand-sub");
+  if (sub) sub.innerText = hoPerm(
+    "Un espace sécurisé pour reprendre vos projets, certifier vos sessions et préparer une preuve liée à un document précis.",
+    "A secure space to resume your projects, certify your sessions, and prepare proof linked to a specific document."
+  );
+
+  const email = $("email");
+  if (email) email.placeholder = hoPerm("votre@email.com", "your@email.com");
+
+  const btn = $("login-btn");
+  if (btn) btn.innerText = hoPerm("Recevoir mon lien", "Send my link");
 }
 
 function ensurePermissionsLangToggle() {
