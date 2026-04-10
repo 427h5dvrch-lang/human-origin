@@ -1,6 +1,6 @@
 [package]
 name = "human-origin"
-version = "0.1.8"
+version = "0.1.19"
 description = "HumanOrigin Core V1"
 authors = ["Philippe"]
 edition = "2021"
@@ -10,7 +10,18 @@ tauri-build = { version = "1", features = [] }
 
 [dependencies]
 # --- TAURI ---
-tauri = { version = "1", features = [ "window-all", "fs-all", "protocol-all", "http-all", "path-all", "dialog-all", "shell-open" ] }
+tauri = { version = "1", features = [ "shell-sidecar",
+  "process-all",
+  "updater",
+  "window-all",
+  "fs-all",
+  "protocol-all",
+  "http-all",
+  "path-all",
+  "dialog-all",
+  "shell-open",
+  "shell-execute"
+] }
 tauri-plugin-deep-link = "0.1"
 
 # --- DATA ---
@@ -20,7 +31,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # --- SYSTEM (keyboard/mouse + dirs) ---
-device_query = "0.2"
+device_query = "4.0.1"
 dirs = "5.0"
 
 # --- CRYPTO (device signature + drafts encryption) ---
@@ -30,6 +41,18 @@ rand_core = { version = "0.6", features = ["std"] }
 
 aes-gcm = "0.10"
 keyring = "2"
+
+# ✅ MAC PERMISSIONS (Accessibilité / AX)
+macos-accessibility-client = "0.0.2"
+
+# --- HASH (document binding / verifier) ---
+sha2 = "0.10"
+
+# --- SVG -> PNG RENDERING (Publication Kit) ---
+resvg = "0.44"
+
+# --- PUBLICATION PDF NATIVE ---
+
 
 [features]
 default = ["custom-protocol"]

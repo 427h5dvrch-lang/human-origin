@@ -67,6 +67,7 @@ let inputWatchdogTimer = null;
 let lastInputTs = 0;
 let inputTsStableCount = 0;
 let currentScreenName = null;
+let __permissionsContinueInFlight = false;
 
 // Viewer
 let currentCertAssetUrl = null;
@@ -401,13 +402,7 @@ async function refreshPermissionsStateAndMaybeContinue(autoAdvance = false) {
   if (accessOk && input.granted) {
     setPermissionsHint("Les deux autorisations sont détectées. HumanOrigin peut maintenant mesurer correctement la session.");
     if (autoAdvance) {
-      stopPermissionTimers();
-      const { data } = await supabase.auth.getSession();
-      if (data?.session) {
-        await forcePostLogin().catch(() => showScreen("LOGIN"));
-      } else {
-        showScreen("LOGIN");
-      }
+      await continueAfterPermissions();
     }
     return true;
   }
@@ -450,13 +445,7 @@ async function startInputWatchdog() {
       updatePermissionBadge(accessOk, input.granted);
 
       if (accessOk && input.granted) {
-        stopPermissionTimers();
-        const { data } = await supabase.auth.getSession();
-        if (data?.session) {
-          await forcePostLogin().catch(() => showScreen("LOGIN"));
-        } else {
-          showScreen("LOGIN");
-        }
+        await continueAfterPermissions();
         return;
       }
 
@@ -481,26 +470,13 @@ async function showPermissionsWall() {
     const accessOk = await invoke("is_accessibility_trusted").catch(() => false);
 
     if (fullyReady) {
-      stopPermissionTimers();
-      const { data } = await supabase.auth.getSession();
-      if (data?.session) {
-        await forcePostLogin().catch(() => showScreen("LOGIN"));
-      } else {
-        showScreen("LOGIN");
-      }
+      await continueAfterPermissions();
       return;
     }
 
     if (accessOk) {
-      toast("Accès partiel détecté — ouverture de l’app, test clavier encore requis.");
-      stopPermissionTimers();
-
-      const { data } = await supabase.auth.getSession();
-      if (data?.session) {
-        await forcePostLogin().catch(() => showScreen("LOGIN"));
-      } else {
-        showScreen("LOGIN");
-      }
+      toast("Accès partiel détecté — il manque encore la surveillance de l’entrée.");
+      await startInputWatchdog();
       return;
     }
 
@@ -576,10 +552,28 @@ async function handleLogout() {
   }
 }
 
+async function continueAfterPermissions() {
+  if (__permissionsContinueInFlight) return;
+  __permissionsContinueInFlight = true;
+  try {
+    stopPermissionTimers();
+    const { data } = await supabase.auth.getSession();
+    if (data?.session) {
+      await forcePostLogin(true).catch(() => showScreen("LOGIN"));
+    } else {
+      showScreen("LOGIN");
+    }
+  } finally {
+    setTimeout(() => {
+      __permissionsContinueInFlight = false;
+    }, 1200);
+  }
+}
+
 // =========================================================
 // POST-LOGIN ROUTING
 // =========================================================
-async function forcePostLogin() {
+async function forcePostLogin(skipPermissionsCheck = false) {
   const myEpoch = uiEpoch;
 
   try {
@@ -590,8 +584,10 @@ async function forcePostLogin() {
       return;
     }
 
+    if (!skipPermissionsCheck) {
     const permOk = await ensurePermissionsBeforeApp();
     if (!permOk) return;
+  }
 
     const { data } = await supabase.auth.getSession();
     if (epochIsStale(myEpoch)) return;
@@ -606,11 +602,11 @@ async function forcePostLogin() {
 
     if (checkAndShowTuto()) return;
 
-    await loadProjectList();
-    if (epochIsStale(myEpoch)) return;
-
     if (currentProjectName) showScreen("DASHBOARD");
     else showScreen("PROJECT_SELECT");
+
+    await loadProjectList().catch(() => {});
+    if (epochIsStale(myEpoch)) return;
 
     refreshHistory().catch(() => {});
     checkForDrafts(true).catch(() => {});
@@ -656,6 +652,8 @@ async function handleIncomingDeepLink(urlStr) {
     const access_token = p.get("access_token");
     const refresh_token = p.get("refresh_token");
     const code = p.get("code");
+    const token_hash = p.get("token_hash");
+    const type = p.get("type") || "email";
 
     if (access_token && refresh_token) {
       const { error } = await supabase.auth.setSession({ access_token, refresh_token });
@@ -673,7 +671,15 @@ async function handleIncomingDeepLink(urlStr) {
       return;
     }
 
-    console.warn("DeepLink sans token/code:", urlStr);
+    if (token_hash && typeof supabase.auth.verifyOtp === "function") {
+      const { error } = await supabase.auth.verifyOtp({ token_hash, type });
+      if (error) throw error;
+      toast("Connexion OK ✅");
+      await forcePostLogin();
+      return;
+    }
+
+    console.warn("DeepLink sans token/code/token_hash:", urlStr);
   } catch (e) {
     console.warn("DeepLink auth fail:", e);
     alert("Erreur connexion : " + (e?.message || e));
@@ -3273,6 +3279,5 @@ window.addEventListener("DOMContentLoaded", async () => {
     await forcePostLogin().catch(() => {});
   });
 
-  await checkSession().catch(() => {});
-  await forcePostLogin().catch(() => {});
+  await forcePostLogin().catch(() => showScreen("LOGIN"));
 });

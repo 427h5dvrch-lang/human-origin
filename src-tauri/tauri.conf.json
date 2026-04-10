@@ -3,26 +3,13 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "devPath": "http://localhost:1420",
-    "distDir": "../dist",
-    "withGlobalTauri": false
+    "distDir": "../dist"
   },
   "package": {
     "productName": "HumanOrigin",
-    "version": "0.1.11"
+    "version": "0.1.19"
   },
   "tauri": {
-    "windows": [
-      {
-        "title": "HumanOrigin",
-        "width": 900,
-        "height": 720,
-        "resizable": true,
-        "fullscreen": false,
-        "visible": true,
-        "center": true,
-        "focus": true
-      }
-    ],
     "allowlist": {
       "all": false,
       "window": {
@@ -30,7 +17,26 @@
       },
       "shell": {
         "all": false,
-        "open": true
+        "open": true,
+        "execute": true,
+        "scope": [
+          {
+            "name": "binaries/humanorigin-publisher",
+            "sidecar": true,
+            "args": true
+          },
+          {
+            "name": "binaries/humanorigin-publisher",
+            "sidecar": true,
+            "args": [
+              "--job",
+              {
+                "validator": ".+"
+              }
+            ]
+          }
+        ],
+        "sidecar": true
       },
       "dialog": {
         "all": true
@@ -57,20 +63,26 @@
       },
       "protocol": {
         "all": true
+      },
+      "process": {
+        "all": true
       }
     },
     "bundle": {
       "active": true,
-      "category": "DeveloperTool",
       "targets": "all",
       "identifier": "com.humanorigin.app",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
-        "icons/128x128.png",
+        "icons/128x128@2x.png",
         "icons/icon.icns",
         "icons/icon.ico"
       ],
+      "externalBin": [
+        "binaries/humanorigin-publisher"
+      ],
+      "category": "DeveloperTool",
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
@@ -85,10 +97,22 @@
     "updater": {
       "active": true,
       "dialog": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwQkM3NzU4ODEwODVCNTMKUldSVFd3aUJXSGU4d0c4YlR3R01BdU5uUnoyREh6REZsdkVOK05nZHUvL2NuTXUxSWJxcnJBMC8K",
       "endpoints": [
         "https://github.com/427h5dvrch-lang/human-origin/releases/latest/download/latest.json"
-      ]
-    }
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhCMkFEMzI3RkFFRTJFNwpSV1RuNHE1L01xMnlDRUNZcTU1bG5NZXZMaGFvWTBkUzgwTXhuWWZ2YjBmS2gyUDM4eFB0OUZMMQo="
+    },
+    "windows": [
+      {
+        "title": "HumanOrigin",
+        "width": 900,
+        "height": 720,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": true,
+        "center": true,
+        "focus": true
+      }
+    ]
   }
 }

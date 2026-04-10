@@ -5,234 +5,826 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HumanOrigin</title>
 
+    
     <style>
       :root {
-        --bg: #f5f6fb;
+        --bg: #08111f;
+        --bg-soft: #0d1b30;
+        --bg-ink: #142743;
+        --paper: rgba(255,255,255,0.78);
+        --paper-strong: rgba(255,255,255,0.92);
+        --paper-line: rgba(255,255,255,0.36);
         --text: #0b1220;
-        --muted: rgba(11, 18, 32, 0.55);
-        --border: rgba(15, 23, 42, 0.1);
+        --muted: rgba(15, 23, 42, 0.66);
+        --muted-soft: rgba(15, 23, 42, 0.46);
+        --line: rgba(15, 23, 42, 0.10);
 
-        --night: #0b1b33;
-        --night2: #102a52;
-        --blue: #007aff;
+        --night: #10233f;
+        --night2: #183764;
+        --blue: #2d6df6;
+        --blue-2: #76a7ff;
+        --human: #f4ede3;
+        --human-2: #f8f5ef;
 
         --card: rgba(255, 255, 255, 0.78);
-        --shadow: 0 28px 70px rgba(12, 24, 46, 0.18);
+        --shadow: 0 28px 70px rgba(9, 20, 38, 0.22);
+        --shadow-soft: 0 18px 40px rgba(9, 20, 38, 0.10);
       }
 
       * { box-sizing: border-box; }
+
       body {
         margin: 0;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         color: var(--text);
-        background: var(--bg);
-        overflow: hidden; /* Pas de scroll global */
+        background:
+          radial-gradient(1200px 700px at 50% -10%, rgba(78,133,255,0.22), transparent 58%),
+          radial-gradient(820px 600px at 12% 14%, rgba(27,66,133,0.26), transparent 62%),
+          radial-gradient(980px 640px at 88% 18%, rgba(244,237,227,0.12), transparent 60%),
+          linear-gradient(180deg, #10223f 0%, #0b1a2f 24%, #08111f 66%, #050b14 100%);
+        overflow: hidden;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
       }
 
       .hidden { display: none !important; }
 
-      /* =========================
-         GLOBAL UI COMPONENTS
-         ========================= */
       .btn {
         border: none;
-        border-radius: 12px;
-        padding: 12px 16px;
-        font-weight: 700;
+        border-radius: 14px;
+        padding: 13px 16px;
+        font-weight: 760;
         cursor: pointer;
         font-size: 14px;
-        transition: transform 0.1s, box-shadow 0.2s;
+        transition: transform 0.08s ease, box-shadow 0.18s ease, opacity 0.18s ease, background 0.18s ease;
       }
-      .btn:active { transform: scale(0.98); }
+      .btn:active { transform: scale(0.985); }
 
       .btn-primary {
-        background: linear-gradient(180deg, var(--night2) 0%, #071429 100%);
+        background: linear-gradient(180deg, #13294b 0%, #0a1830 100%);
         color: #fff;
-        box-shadow: 0 4px 12px rgba(8, 20, 41, 0.25);
+        box-shadow: 0 10px 24px rgba(7, 18, 36, 0.22);
       }
-      .btn-primary:hover { box-shadow: 0 6px 16px rgba(8, 20, 41, 0.35); }
+      .btn-primary:hover { box-shadow: 0 14px 28px rgba(7, 18, 36, 0.28); }
 
       .btn-blue {
-        background: var(--blue);
+        background: linear-gradient(180deg, #3d7bff 0%, #1f5ce0 100%);
         color: #fff;
-        box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        box-shadow: 0 10px 24px rgba(37, 99, 235, 0.24);
       }
-      .btn-blue:hover { background: #0062cc; }
+      .btn-blue:hover { filter: brightness(1.02); }
 
       .btn-ghost {
-        background: rgba(255, 255, 255, 0.6);
-        border: 1px solid rgba(14, 29, 58, 0.1);
+        background: rgba(255, 255, 255, 0.66);
+        border: 1px solid rgba(14, 29, 58, 0.08);
         color: var(--night);
       }
-      .btn-ghost:hover { background: #fff; }
+      .btn-ghost:hover { background: rgba(255,255,255,0.9); }
 
       .btn-red {
-        background: rgba(254, 226, 226, 0.6);
+        background: rgba(254, 226, 226, 0.72);
         color: #b91c1c;
-        border: 1px solid rgba(239, 68, 68, 0.2);
+        border: 1px solid rgba(239, 68, 68, 0.16);
       }
       .btn-red:hover { background: #fee2e2; }
 
-      .btn-mini { padding: 6px 10px; font-size: 12px; border-radius: 8px; }
+      .btn-mini {
+        padding: 7px 11px;
+        font-size: 12px;
+        border-radius: 10px;
+      }
 
-      /* =========================
-         SHARED LAYOUT (Glassmorphism)
-         ========================= */
       .screen {
-        position: fixed; inset: 0;
-        display: none; /* JS toggle */
+        position: fixed;
+        inset: 0;
+        display: none;
         -webkit-app-region: no-drag;
       }
 
       .screen-bg {
-        position: absolute; inset: 0; pointer-events: none;
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
         background:
-          radial-gradient(900px 600px at 65% 35%, rgba(56, 132, 255, 0.25), transparent 60%),
-          radial-gradient(700px 500px at 35% 60%, rgba(10, 26, 60, 0.15), transparent 65%),
-          linear-gradient(135deg, #f7f8ff 0%, #ffffff 45%, #f7faff 100%);
+          radial-gradient(900px 620px at 65% 24%, rgba(88, 146, 255, 0.26), transparent 62%),
+          radial-gradient(840px 560px at 28% 72%, rgba(244, 237, 227, 0.10), transparent 58%),
+          linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.00) 40%, rgba(255,255,255,0.04) 100%);
       }
 
       .screen-center {
-        position: relative; z-index: 10;
+        position: relative;
+        z-index: 10;
         height: 100vh;
-        display: flex; align-items: center; justify-content: center;
-        padding: 20px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
       }
 
       .glass-card {
-        width: 100%; max-width: 480px;
-        background: rgba(255, 255, 255, 0.75);
-        border: 1px solid rgba(255, 255, 255, 0.6);
-        border-radius: 28px;
-        padding: 32px;
-        box-shadow: var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
-        backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-        text-align: center;
-        animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        width: 100%;
+        max-width: 560px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.93) 0%, rgba(247,249,252,0.88) 100%);
+        border: 1px solid rgba(255,255,255,0.40);
+        border-radius: 34px;
+        padding: 34px 32px 28px;
+        box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,0.55);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        text-align: left;
+        animation: popIn 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .glass-card::before {
+        content: "";
+        display: block;
+        width: 84px;
+        height: 5px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, rgba(45,109,246,0.90) 0%, rgba(118,167,255,0.38) 100%);
+        margin-bottom: 24px;
       }
 
       @keyframes popIn {
-        from { opacity: 0; transform: scale(0.95); }
-        to { opacity: 1; transform: scale(1); }
+        from { opacity: 0; transform: scale(0.96) translateY(8px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
       }
 
-      .brand-title { font-size: 28px; font-weight: 900; color: var(--night); margin: 0 0 8px 0; }
-      .brand-sub { font-size: 14px; color: var(--muted); margin-bottom: 24px; line-height: 1.5; }
+      .brand-title {
+        font-size: 38px;
+        line-height: 0.98;
+        letter-spacing: -0.045em;
+        font-weight: 900;
+        color: var(--night);
+        margin: 0 0 10px 0;
+      }
+
+      .brand-sub {
+        font-size: 15px;
+        color: var(--muted);
+        margin: 0 0 24px 0;
+        line-height: 1.65;
+        max-width: 42ch;
+      }
+
+      .ritual-kicker {
+        font-size: 11px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: rgba(16,35,63,0.52);
+        margin-bottom: 12px;
+      }
+
+      .ritual-note {
+        margin-top: 16px;
+        padding: 14px 15px;
+        border-radius: 16px;
+        background: rgba(16,35,63,0.04);
+        border: 1px solid rgba(16,35,63,0.06);
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--muted);
+      }
 
       .login-input {
-        width: 100%; padding: 14px; margin-bottom: 12px;
-        border-radius: 12px; border: 1px solid rgba(14, 29, 58, 0.1);
-        background: rgba(255, 255, 255, 0.8);
-        font-size: 15px; outline: none;
+        width: 100%;
+        padding: 15px 14px;
+        margin-bottom: 12px;
+        border-radius: 14px;
+        border: 1px solid rgba(14, 29, 58, 0.08);
+        background: rgba(255, 255, 255, 0.84);
+        font-size: 15px;
+        outline: none;
+        transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
       }
-      .login-input:focus { border-color: var(--blue); background: #fff; }
+      .login-input:focus {
+        border-color: var(--blue);
+        background: #fff;
+        box-shadow: 0 0 0 4px rgba(45,109,246,0.10);
+      }
 
-      /* =========================
-         PERMISSIONS SCREEN
-         ========================= */
       #permissions-screen { z-index: 9998; }
+      #onboarding-screen { z-index: 9997; }
 
       .perm-badge {
-        display: inline-block; padding: 6px 12px; border-radius: 20px;
-        font-size: 12px; font-weight: 700; margin: 10px 0 20px 0;
-        background: #fff; border: 1px solid rgba(0,0,0,0.1); color: #b91c1c;
-      }
-      .perm-warn {
-        background: #fffbeb; color: #b45309; border: 1px solid #fcd34d;
-        font-size: 12px; padding: 10px; border-radius: 10px; margin-bottom: 16px;
-        text-align: left; display: none;
+        display: inline-block;
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 800;
+        margin: 6px 0 18px 0;
+        background: rgba(255,255,255,0.72);
+        border: 1px solid rgba(0,0,0,0.06);
+        color: #b91c1c;
       }
 
-      /* =========================
-         ONBOARDING SCREEN
-         ========================= */
-      #onboarding-screen { z-index: 9997; }
+      .perm-warn {
+        background: #fff7e8;
+        color: #a16207;
+        border: 1px solid #f5d98a;
+        font-size: 12px;
+        padding: 12px 13px;
+        border-radius: 14px;
+        margin-bottom: 16px;
+        text-align: left;
+        display: none;
+        line-height: 1.55;
+      }
 
       .tuto-step { display: none; animation: slideUp 0.3s ease; }
       .tuto-step.active { display: block; }
 
-      .tuto-dots { display: flex; justify-content: center; gap: 6px; margin: 24px 0; }
-      .dot { width: 8px; height: 8px; background: #ccc; border-radius: 50%; transition: 0.3s; }
-      .dot.active { width: 24px; background: var(--night); border-radius: 4px; }
+      .tuto-dots {
+        display: flex;
+        justify-content: center;
+        gap: 6px;
+        margin: 24px 0;
+      }
+
+      .dot {
+        width: 8px;
+        height: 8px;
+        background: rgba(148,163,184,0.45);
+        border-radius: 50%;
+        transition: 0.3s;
+      }
+
+      .dot.active {
+        width: 28px;
+        background: linear-gradient(90deg, #10233f 0%, #3b6dde 100%);
+        border-radius: 999px;
+      }
 
       .tuto-content {
-        background: #fff; padding: 20px; border-radius: 16px;
-        text-align: left; margin: 10px 0; border: 1px solid rgba(0,0,0,0.05);
+        background: rgba(255,255,255,0.74);
+        padding: 20px;
+        border-radius: 18px;
+        text-align: left;
+        margin: 12px 0;
+        border: 1px solid rgba(0,0,0,0.05);
       }
-      .tuto-content h3 { margin: 0 0 8px 0; font-size: 16px; color: var(--night); }
-      .tuto-content p { margin: 0; font-size: 13px; color: #666; line-height: 1.5; }
+
+      .tuto-content h3 {
+        margin: 0 0 8px 0;
+        font-size: 17px;
+        color: var(--night);
+      }
+
+      .tuto-content p {
+        margin: 0;
+        font-size: 14px;
+        color: #596579;
+        line-height: 1.65;
+      }
 
       @keyframes slideUp {
         from { opacity: 0; transform: translateY(10px); }
         to { opacity: 1; transform: translateY(0); }
       }
 
-      /* =========================
-         APP SCREEN (Dashboard)
-         ========================= */
-      #app-screen { z-index: 100; display:none; }
+      #app-screen {
+        z-index: 100;
+        display: none;
+      }
 
       .app-shell {
-        position: relative; z-index: 10;
-        max-width: 900px; margin: 0 auto;
-        min-height: 100vh; padding: 20px;
+        position: relative;
+        z-index: 10;
+        max-width: 1180px;
+        margin: 0 auto;
+        min-height: 100vh;
+        padding: 28px 24px 40px;
       }
 
       .app-card {
-        background: rgba(255, 255, 255, 0.65);
-        border-radius: 24px;
-        padding: 20px;
-        border: 1px solid rgba(255, 255, 255, 0.4);
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
-        margin-bottom: 20px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.80) 0%, rgba(246,248,252,0.74) 100%);
+        border-radius: 28px;
+        padding: 22px;
+        border: 1px solid rgba(255,255,255,0.30);
+        box-shadow: var(--shadow-soft);
+        backdrop-filter: blur(28px);
+        -webkit-backdrop-filter: blur(28px);
+        margin-bottom: 18px;
       }
 
-      .top-bar { display: flex; justify-content: space-between; align-items: center; }
+      .workspace-hero {
+        padding: 28px 26px 24px;
+        overflow: hidden;
+        background:
+          radial-gradient(520px 260px at 82% 18%, rgba(118,167,255,0.18), transparent 62%),
+          radial-gradient(480px 220px at 8% 86%, rgba(244,237,227,0.36), transparent 66%),
+          linear-gradient(180deg, rgba(255,255,255,0.84) 0%, rgba(247,249,252,0.74) 100%);
+      }
+
+      .workspace-title {
+        font-size: 42px;
+        line-height: 0.98;
+        letter-spacing: -0.05em;
+        font-weight: 900;
+        color: var(--night);
+        margin: 0 0 10px 0;
+        max-width: 12ch;
+      }
+
+      .workspace-sub {
+        font-size: 15px;
+        line-height: 1.68;
+        color: var(--muted);
+        max-width: 58ch;
+        margin: 0;
+      }
+
+      .top-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+      }
+
       .user-pill {
-        background: rgba(255,255,255,0.6); padding: 6px 12px; border-radius: 20px;
-        font-size: 12px; color: #555; border: 1px solid rgba(0,0,0,0.05);
-        max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        background: rgba(255,255,255,0.74);
+        padding: 8px 13px;
+        border-radius: 999px;
+        font-size: 12px;
+        color: #4b5563;
+        border: 1px solid rgba(0,0,0,0.05);
+        max-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
-      .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
+      #current-project-title {
+        margin: 0 !important;
+        font-size: 32px !important;
+        line-height: 1.02 !important;
+        letter-spacing: -0.04em !important;
+        color: var(--night) !important;
+      }
+
+      .section-lead {
+        margin: 0 0 18px 0;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--muted-soft);
+        max-width: 56ch;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0,1fr));
+        gap: 14px;
+        margin: 18px 0 4px;
+      }
+
       .stat-box {
-        background: #fff; padding: 16px; border-radius: 16px; text-align: center;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+        background: rgba(255,255,255,0.84);
+        padding: 18px 16px;
+        border-radius: 18px;
+        text-align: center;
+        box-shadow: 0 8px 18px rgba(0,0,0,0.04);
+        border: 1px solid rgba(15,23,42,0.04);
       }
-      .stat-val { font-size: 24px; font-weight: 800; color: var(--night); display: block; }
-      .stat-lbl { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
 
-      .history-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-      .history-table td { padding: 12px 8px; border-bottom: 1px solid rgba(0,0,0,0.05); font-size: 13px; }
-      .history-table tr:hover { background: rgba(255,255,255,0.4); cursor: pointer; }
+      .stat-val {
+        font-size: 28px;
+        font-weight: 900;
+        color: var(--night);
+        display: block;
+        letter-spacing: -0.04em;
+      }
 
-      /* =========================
-         VIEWER OVERLAY
-         ========================= */
+      .stat-lbl {
+        font-size: 11px;
+        text-transform: uppercase;
+        color: #7b8797;
+        letter-spacing: 0.08em;
+        font-weight: 700;
+      }
+
+      .history-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+      }
+
+      .history-table td {
+        padding: 14px 10px;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        font-size: 13px;
+      }
+
+      .history-table tr:hover {
+        background: rgba(255,255,255,0.45);
+        cursor: pointer;
+      }
+
+      #project-section,
+      #controls-section,
+      #draft-banner {
+        margin-top: 0;
+      }
+
+      #project-section .btn,
+      #controls-section .btn {
+        min-height: 46px;
+      }
+
+      #project-selector,
+      #project-name {
+        min-height: 50px;
+      }
+
+      #live-dashboard {
+        margin-bottom: 20px !important;
+        padding: 18px;
+        border-radius: 22px;
+        background: rgba(255,255,255,0.74);
+        border: 1px solid rgba(15,23,42,0.05);
+      }
+
       #viewer-overlay {
-        position: fixed; inset: 0; z-index: 20000;
-        background: rgba(10, 15, 30, 0.85);
-        backdrop-filter: blur(5px);
-        display: none; flex-direction: column;
+        position: fixed;
+        inset: 0;
+        z-index: 20000;
+        background: rgba(8, 13, 25, 0.82);
+        backdrop-filter: blur(8px);
+        display: none;
+        flex-direction: column;
       }
-      .viewer-header {
-        height: 60px; background: #fff;
-        display: flex; align-items: center; justify-content: space-between;
-        padding: 0 20px;
-      }
-      #viewer-iframe { flex: 1; border: none; background: #fff; }
 
-      /* =========================
-         TOAST
-         ========================= */
-      #toast {
-        position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
-        background: rgba(0,0,0,0.85); color: #fff; padding: 10px 20px;
-        border-radius: 30px; font-size: 13px; font-weight: 600;
-        display: none; z-index: 30000;
+      .viewer-header {
+        height: 62px;
+        background: rgba(255,255,255,0.94);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        border-bottom: 1px solid rgba(15,23,42,0.08);
       }
+
+      #viewer-iframe {
+        flex: 1;
+        border: none;
+        background: #fff;
+      }
+
+      #toast {
+        position: fixed;
+        bottom: 28px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(8, 14, 28, 0.92);
+        color: #fff;
+        padding: 11px 18px;
+        border-radius: 999px;
+        font-size: 13px;
+        font-weight: 700;
+        display: none;
+        z-index: 30000;
+        box-shadow: 0 14px 30px rgba(0,0,0,0.26);
+      }
+
+      @media (max-width: 900px) {
+        .app-shell { padding: 22px 16px 34px; }
+        .workspace-title { font-size: 34px; }
+        .stat-grid { grid-template-columns: 1fr; }
+        .top-bar { flex-direction: column; align-items: flex-start; }
+      }
+
+      @media (max-width: 640px) {
+        .screen-center { padding: 16px; }
+        .glass-card {
+          padding: 26px 20px 22px;
+          border-radius: 26px;
+        }
+        .brand-title { font-size: 32px; }
+        .workspace-title { font-size: 30px; }
+      }
+    
+      /* === HUMANORIGIN WORKSPACE PASS START === */
+      .workspace-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+        gap: 18px;
+        align-items: start;
+      }
+
+      .workspace-utility {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        align-items: flex-start;
+      }
+
+      .workspace-action-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .workspace-project-line {
+        margin-top: 18px;
+        padding-top: 18px;
+        border-top: 1px solid rgba(15,23,42,0.08);
+      }
+
+      .workspace-project-label {
+        font-size: 11px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: rgba(16,35,63,0.48);
+        margin-bottom: 10px;
+      }
+
+      .section-title {
+        margin: 0 0 10px 0;
+        font-size: 28px;
+        line-height: 1.02;
+        letter-spacing: -0.04em;
+        font-weight: 900;
+        color: var(--night);
+      }
+
+      .project-picker-card {
+        padding: 28px;
+        text-align: left !important;
+      }
+
+      .project-picker-grid {
+        display: grid;
+        grid-template-columns: minmax(0,1fr) 28px minmax(0,1fr);
+        gap: 18px;
+        align-items: start;
+        margin-top: 22px;
+      }
+
+      .project-picker-block {
+        background: rgba(255,255,255,0.62);
+        border: 1px solid rgba(15,23,42,0.05);
+        border-radius: 20px;
+        padding: 18px;
+      }
+
+      .project-picker-label {
+        font-size: 11px;
+        line-height: 1;
+        font-weight: 800;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: rgba(16,35,63,0.48);
+        margin-bottom: 12px;
+      }
+
+      .project-picker-divider {
+        align-self: stretch;
+        width: 1px;
+        justify-self: center;
+        background: linear-gradient(180deg, transparent 0%, rgba(15,23,42,0.10) 20%, rgba(15,23,42,0.10) 80%, transparent 100%);
+      }
+
+      .project-picker-note {
+        margin-top: 10px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--muted-soft);
+      }
+
+      .session-stage {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+        gap: 18px;
+        margin-bottom: 18px;
+      }
+
+      .session-core {
+        text-align: left !important;
+        padding: 26px;
+      }
+
+      .session-side {
+        padding: 24px;
+        background:
+          radial-gradient(360px 180px at 85% 10%, rgba(118,167,255,0.16), transparent 60%),
+          linear-gradient(180deg, rgba(255,255,255,0.84) 0%, rgba(248,244,238,0.78) 100%);
+      }
+
+      .session-side-list {
+        margin: 18px 0 0 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .session-side-list li {
+        margin: 0 0 12px 0;
+        padding: 12px 13px;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.58);
+        border: 1px solid rgba(15,23,42,0.05);
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .live-dashboard-premium {
+        margin: 18px 0 20px !important;
+        padding: 20px !important;
+      }
+
+      .session-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .session-actions .btn {
+        min-width: 200px;
+        min-height: 52px;
+        font-size: 15px !important;
+        border-radius: 16px;
+      }
+
+      .draft-banner-premium {
+        display: none;
+        background: linear-gradient(180deg, #fff8ef 0%, #fff4e7 100%);
+        border: 1px solid #f6d7ad;
+        padding: 12px 15px;
+        border-radius: 16px;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 18px;
+        gap: 12px;
+      }
+
+      .history-card {
+        padding: 24px;
+      }
+
+      .history-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 18px;
+        margin-bottom: 14px;
+      }
+
+      .history-head-left p {
+        margin: 8px 0 0 0;
+        font-size: 13px;
+        line-height: 1.6;
+        color: var(--muted-soft);
+        max-width: 56ch;
+      }
+
+      .history-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      @media (max-width: 980px) {
+        .workspace-head,
+        .session-stage,
+        .project-picker-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .project-picker-divider {
+          display: none;
+        }
+
+        .workspace-utility {
+          align-items: flex-start;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .project-picker-card,
+        .session-core,
+        .session-side,
+        .history-card {
+          padding: 20px;
+        }
+
+        .section-title {
+          font-size: 24px;
+        }
+
+        .session-actions .btn {
+          width: 100%;
+          min-width: 0;
+        }
+      }
+      /* === HUMANORIGIN WORKSPACE PASS END === */
+
+    
+      /* === HUMANORIGIN FINISH PASS START === */
+      body{
+        overflow:auto !important;
+      }
+
+      .screen{
+        overflow-y:auto !important;
+      }
+
+      .screen-center{
+        min-height:100vh !important;
+        height:auto !important;
+        padding:32px 24px !important;
+      }
+
+      .app-shell{
+        min-height:100vh !important;
+        max-height:100vh !important;
+        overflow-y:auto !important;
+        padding-bottom:56px !important;
+        scrollbar-width:none !important;
+      }
+
+      .app-shell::-webkit-scrollbar{
+        display:none !important;
+      }
+
+      .screen-bg{
+        overflow:hidden;
+      }
+
+      .screen-bg::before,
+      .screen-bg::after{
+        content:"";
+        position:absolute;
+        inset:-12%;
+        pointer-events:none;
+        border-radius:999px;
+        filter:blur(28px);
+        opacity:.48;
+        will-change:transform, opacity;
+      }
+
+      .screen-bg::before{
+        background:
+          radial-gradient(42% 34% at 28% 36%, rgba(84,138,255,0.24) 0%, transparent 72%),
+          radial-gradient(34% 28% at 72% 24%, rgba(255,255,255,0.16) 0%, transparent 78%);
+        animation: hoAmbientDriftA 18s ease-in-out infinite alternate;
+      }
+
+      .screen-bg::after{
+        background:
+          radial-gradient(38% 30% at 72% 66%, rgba(46,94,190,0.16) 0%, transparent 74%),
+          radial-gradient(26% 22% at 18% 78%, rgba(244,237,227,0.22) 0%, transparent 78%);
+        animation: hoAmbientDriftB 24s ease-in-out infinite alternate;
+      }
+
+      @keyframes hoAmbientDriftA{
+        0%   { transform:translate3d(-1.5%, -1%, 0) scale(1); opacity:.38; }
+        50%  { transform:translate3d(1%, 1.5%, 0) scale(1.04); opacity:.54; }
+        100% { transform:translate3d(2%, -1%, 0) scale(1.02); opacity:.44; }
+      }
+
+      @keyframes hoAmbientDriftB{
+        0%   { transform:translate3d(1.5%, 1%, 0) scale(1.02); opacity:.26; }
+        50%  { transform:translate3d(-1%, -1.5%, 0) scale(1.05); opacity:.36; }
+        100% { transform:translate3d(-2%, 1%, 0) scale(1); opacity:.28; }
+      }
+
+      .workspace-hero{
+        position:relative;
+        overflow:hidden;
+      }
+
+      .workspace-hero::after{
+        content:"";
+        position:absolute;
+        inset:auto -8% -30% auto;
+        width:340px;
+        height:340px;
+        border-radius:50%;
+        background:radial-gradient(circle, rgba(121,168,255,0.12) 0%, rgba(121,168,255,0.04) 36%, transparent 74%);
+        filter:blur(10px);
+        pointer-events:none;
+        animation: hoHaloBreath 14s ease-in-out infinite;
+      }
+
+      @keyframes hoHaloBreath{
+        0%,100% { transform:scale(0.96); opacity:.42; }
+        50%     { transform:scale(1.06); opacity:.68; }
+      }
+
+      @media (prefers-reduced-motion: reduce){
+        .screen-bg::before,
+        .screen-bg::after,
+        .workspace-hero::after{
+          animation:none !important;
+        }
+      }
+      /* === HUMANORIGIN FINISH PASS END === */
+
     </style>
+
   </head>
 
   <body>
@@ -243,9 +835,10 @@
       <div class="screen-bg"></div>
       <div class="screen-center">
         <div class="glass-card">
-          <div style="font-size: 40px; margin-bottom: 10px;">🔒</div>
-          <h1 class="brand-title">Autorisation Requise</h1>
-          <p class="brand-sub">macOS bloque l'écoute du clavier. HumanOrigin ne peut pas fonctionner sans.</p>
+          <div class="ritual-kicker">HumanOrigin</div>
+          <h1 class="brand-title">Activer le protocole de preuve</h1>
+          <p class="brand-sub">HumanOrigin a besoin de deux autorisations macOS — Accessibilité et Surveillance de l’entrée — pour mesurer correctement une session humaine.</p>
+          <div class="ritual-note">Cette étape ne sert pas à configurer une simple app. Elle ouvre l’accès au protocole de mesure. Les deux autorisations sont nécessaires pour que l’enregistrement fonctionne réellement.</div>
 
           <div id="perm-badge" class="perm-badge">Accessibilité : Vérification...</div>
 
@@ -279,8 +872,9 @@
       <div class="screen-bg"></div>
       <div class="screen-center">
         <div class="glass-card" style="max-width: 550px;">
-          <h1 class="brand-title">Bienvenue </h1>
-          <p class="brand-sub">HumanOrigin certifie votre travail par votre rythme.</p>
+          <div class="ritual-kicker">HumanOrigin</div>
+          <h1 class="brand-title">Avant d’entrer dans l’atelier</h1>
+          <p class="brand-sub">HumanOrigin mesure une présence de travail. Le but n’est pas de produire vite, mais de rendre visible un processus humain réel, session après session.</p>
 
           <div id="tuto-step-1" class="tuto-step active">
             <div class="tuto-content">
@@ -338,89 +932,138 @@
       <div class="screen-bg"></div>
       <div class="screen-center">
         <div class="glass-card">
-          <div style="font-size: 50px; margin-bottom: 20px;">🧬</div>
-          <h1 class="brand-title">HumanOrigin</h1>
-          <p class="brand-sub">Connexion sécurisée</p>
+          <div class="ritual-kicker">HumanOrigin</div>
+          <h1 class="brand-title">Entrez dans l’atelier de preuve</h1>
+          <p class="brand-sub">Un espace calme pour mesurer un travail humain, certifier des sessions, et préparer une preuve diffusable liée à un document précis.</p>
 
           <input type="email" id="email" class="login-input" placeholder="votre@email.com" />
           <button id="login-btn" class="btn btn-primary" style="width: 100%">Recevoir mon lien</button>
 
-          <p style="margin-top: 20px; font-size: 12px; color: #888;">
-           <div id="app-version">Version —</div>
-          </p>
+          <div id="app-version" style="margin-top: 20px; font-size: 12px; color: #888;">Version —</div>
         </div>
       </div>
     </div>
 
+    
     <!-- =========================
          APP
          ========================= -->
     <div id="app-screen" class="screen">
       <div class="screen-bg"></div>
       <div class="app-shell">
-        <div class="app-card">
-          <div class="top-bar">
+        <div class="workspace-hero app-card">
+          <div class="workspace-head">
             <div>
-              <h2 id="current-project-title" style="margin: 0; font-size: 20px; color: var(--night);">Projet</h2>
-              <div id="user-email-display" class="user-pill" style="margin-top: 5px;">user@mail.com</div>
+              <div class="ritual-kicker">HumanOrigin Workspace</div>
+              <h1 class="workspace-title">Un espace de certification humaine</h1>
+              <p class="workspace-sub">
+                Ici, le travail humain ne se contente pas d’être produit : il est mesuré, certifié, puis préparé pour circuler comme une preuve lisible, signée et liée à un document précis.
+              </p>
             </div>
-            <div style="display: flex; gap: 10px;">
-  <button id="check-update-btn" class="btn btn-ghost btn-mini">⬆️ Mise à jour</button>
-  <button id="change-project-btn" class="btn btn-ghost btn-mini">Changer</button>
-  <button id="logout-btn" class="btn btn-ghost btn-mini">Sortir</button>
-</div>
+
+            <div class="workspace-utility">
+              <div id="user-email-display" class="user-pill">user@mail.com</div>
+              <div class="workspace-action-row">
+                <button id="check-update-btn" class="btn btn-ghost btn-mini">⬆️ Mise à jour</button>
+                <button id="change-project-btn" class="btn btn-ghost btn-mini">Changer</button>
+                <button id="logout-btn" class="btn btn-ghost btn-mini">Sortir</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="workspace-project-line">
+            <div class="workspace-project-label">Projet actif</div>
+            <h2 id="current-project-title" style="margin: 0; font-size: 20px; color: var(--night);">Projet</h2>
           </div>
         </div>
 
         <div id="project-section" style="display: none;">
-          <div class="app-card" style="text-align: center; padding: 40px;">
-            <h3 style="margin-top: 0;">Sélectionnez un projet</h3>
-            <div style="display: flex; gap: 10px; max-width: 400px; margin: 20px auto;">
-              <select id="project-selector" class="login-input" style="margin:0"></select>
-              <button id="init-btn" class="btn btn-primary">Charger</button>
-            </div>
-            <div style="margin-top: 10px;">
-              <input id="project-name" class="login-input" placeholder="Ou créez un nouveau..." style="max-width: 400px;" />
+          <div class="app-card project-picker-card">
+            <div class="ritual-kicker">Projet</div>
+            <h3 class="section-title">Ouvrir un dossier de travail</h3>
+            <p class="section-lead">
+              Chaque projet devient un cadre vivant pour vos sessions certifiées, vos brouillons, votre historique, et votre export final.
+            </p>
+
+            <div class="project-picker-grid">
+              <div class="project-picker-block">
+                <div class="project-picker-label">Projet existant</div>
+                <select id="project-selector" class="login-input" style="margin:0"></select>
+                <button id="init-btn" class="btn btn-primary" style="margin-top: 10px;">Charger</button>
+                <div class="project-picker-note">Rouvrez un projet déjà lié à une trajectoire de travail et à un historique certifié.</div>
+              </div>
+
+              <div class="project-picker-divider"></div>
+
+              <div class="project-picker-block">
+                <div class="project-picker-label">Nouveau projet</div>
+                <input id="project-name" class="login-input" placeholder="Nom du nouveau projet..." style="margin:0" />
+                <div class="project-picker-note">Créez un nouveau cadre de travail quand vous commencez une nouvelle œuvre, étude, ou série de documents.</div>
+              </div>
             </div>
           </div>
         </div>
 
         <div id="controls-section" class="hidden">
-          <div class="app-card" style="text-align: center;">
-            <div id="live-dashboard" style="display: none; margin-bottom: 20px;">
-              <div style="font-size: 48px; font-weight: 900; color: var(--blue);" id="timer">00:00</div>
-              <div class="stat-grid">
-                <div class="stat-box">
-                  <span class="stat-val" id="keystrokes-display">0</span><span class="stat-lbl">Frappes</span>
+          <div class="session-stage">
+            <div class="app-card session-core">
+              <div class="ritual-kicker">Session</div>
+              <h3 class="section-title">Mesurer un moment réel de travail humain</h3>
+              <p class="section-lead">
+                Lancez une session avant d’écrire. HumanOrigin suit le rythme de travail, puis vous permet de transformer cette présence en certificat de session.
+              </p>
+
+              <div id="live-dashboard" class="live-dashboard-premium" style="display: none; margin-bottom: 20px;">
+                <div style="font-size: 56px; font-weight: 900; color: var(--blue); letter-spacing: -0.05em;" id="timer">00:00</div>
+                <div class="stat-grid">
+                  <div class="stat-box">
+                    <span class="stat-val" id="keystrokes-display">0</span><span class="stat-lbl">Frappes</span>
+                  </div>
+                  <div class="stat-box">
+                    <span class="stat-val" id="clicks-display">0</span><span class="stat-lbl">Clics</span>
+                  </div>
                 </div>
-                <div class="stat-box">
-                  <span class="stat-val" id="clicks-display">0</span><span class="stat-lbl">Clics</span>
-                </div>
+              </div>
+
+              <div class="session-actions">
+                <button id="start-btn" class="btn btn-primary">Démarrer Session</button>
+                <button id="stop-btn" class="btn btn-red hidden">Arrêter</button>
+                <button id="finalize-btn" class="btn btn-blue hidden" disabled>Certifier la Session</button>
               </div>
             </div>
 
-            <div style="display: flex; gap: 15px; justify-content: center;">
-              <button id="start-btn" class="btn btn-primary" style="padding: 15px 40px; font-size: 16px;">Démarrer Session</button>
-              <button id="stop-btn" class="btn btn-red hidden" style="padding: 15px 40px; font-size: 16px;">Arrêter</button>
-              <button id="finalize-btn" class="btn btn-blue hidden" disabled style="padding: 15px 40px; font-size: 16px;">Certifier la Session</button>
+            <div class="app-card session-side">
+              <div class="ritual-kicker">Repère</div>
+              <h3 class="section-title" style="font-size: 24px;">Ce que HumanOrigin rend visible</h3>
+              <ul class="session-side-list">
+                <li>Un travail humain mesuré dans le temps, et non une simple sortie produite en silence.</li>
+                <li>Une session qui peut devenir une preuve, puis rejoindre un historique certifié cohérent.</li>
+                <li>Un chemin clair vers un export final lisible, signé, et diffusable publiquement.</li>
+              </ul>
             </div>
           </div>
 
           <div
             id="draft-banner"
-            style="display: none; background: #fff7ed; border: 1px solid #fed7aa; padding: 10px 15px; border-radius: 12px; align-items: center; justify-content: space-between; margin-bottom: 20px;"
+            class="draft-banner-premium"
+            style="display: none;"
           >
             <div style="display: flex; align-items: center; gap: 10px;">
               <span style="font-size: 20px;">💾</span>
-              <span style="font-size: 13px; color: #9a3412; font-weight: 600;">Session non sauvegardée trouvée</span>
+              <span style="font-size: 13px; color: #9a3412; font-weight: 700;">Session non sauvegardée trouvée</span>
             </div>
             <button id="btn-recover-draft" class="btn btn-mini btn-ghost">Restaurer</button>
           </div>
 
-          <div class="app-card">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-              <h3 style="margin: 0; font-size: 16px;">Historique Certifié</h3>
-              <div style="display: flex; gap: 5px;">
+          <div class="app-card history-card">
+            <div class="history-head">
+              <div class="history-head-left">
+                <div class="ritual-kicker">Historique</div>
+                <h3 style="margin: 0; font-size: 22px;">Historique certifié</h3>
+                <p>Retrouvez ici les sessions déjà certifiées pour ce projet, ainsi que l’accès à l’export final lorsqu’il est disponible.</p>
+              </div>
+
+              <div class="history-actions">
                 <button id="sync-btn" class="btn btn-ghost btn-mini">🔄</button>
                 <button id="close-project-btn" class="btn btn-ghost btn-mini" style="display: none;">📜 Certificat Final</button>
               </div>
@@ -440,6 +1083,7 @@
         </div>
       </div>
     </div>
+
 
     <!-- =========================
          VIEWER

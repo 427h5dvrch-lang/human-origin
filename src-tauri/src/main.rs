@@ -7,7 +7,9 @@ use chrono::Utc;
 use device_query::{DeviceQuery, DeviceState, Keycode};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -16,9 +18,18 @@ use std::time::Duration;
 use tauri::{Manager, State};
 use uuid::Uuid;
 
+use sha2::{Digest, Sha256};
+
 use base64::{engine::general_purpose, Engine as _};
 use ed25519_dalek::{Signer, SigningKey};
 use rand_core::OsRng;
+
+use resvg::render;
+use resvg::tiny_skia::{Pixmap, Transform};
+use resvg::usvg::{Options, Tree};
+
+#[cfg(target_os = "macos")]
+use macos_accessibility_client::accessibility;
 
 mod drafts;
 
@@ -82,6 +93,11 @@ struct FinalizationResult {
     total_keystrokes: u64,
     session_count: u32,
     scp_score: i32,
+
+    // ✅ verdict strict au niveau PROJET
+    project_valid: bool,
+    valid_sessions: u32,
+    validation_reason: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -112,6 +128,7 @@ struct KeyboardStats {
     total_keystrokes: u64,
     backspace_count: u64,
 }
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 struct MouseStats {
     total_clicks: u64,
@@ -132,6 +149,9 @@ struct AppState {
     active_project_path: Arc<Mutex<Option<PathBuf>>>,
     runtime: Arc<Mutex<RuntimeBuffers>>,
     scan_gen: AtomicU64,
+
+    // ✅ Watchdog : dernière fois qu'on a VRAIMENT vu un input
+    last_input_seen: Arc<AtomicU64>,
 }
 
 // --- UTILS ---
@@ -498,7 +518,7 @@ h1 {{ margin:0; font-size:28px; }}
     )
 }
 
-// --- HTML FINAL PROJET (celui affiché dans l’overlay) ---
+// --- HTML FINAL PROJET (overlay) ---
 fn generate_html_certificate(metadata: &ProjectMetadata, proofs: &Vec<BiometricProof>) -> String {
     let mut total_k = 0u64;
     let mut weighted_score_sum = 0f64;
@@ -598,7 +618,9 @@ fn generate_html_certificate(metadata: &ProjectMetadata, proofs: &Vec<BiometricP
         0
     };
 
-    let project_is_valid = certified_count >= 2 || (certified_count == 1 && max_valid_keystrokes > 300);
+    let project_is_valid =
+        certified_count >= 2 || (certified_count == 1 && max_valid_keystrokes > 300);
+
     let (main_title, score_color, validation_msg) = if project_is_valid {
         let col = if avg_scp >= 80 {
             "#10b981"
@@ -617,9 +639,10 @@ fn generate_html_certificate(metadata: &ProjectMetadata, proofs: &Vec<BiometricP
         )
     } else {
         (
-            "ÉBAUCHE (NON CERTIFIÉ)",
+            "Projet non certifié",
             "#ef4444",
-            "VOLUME INSUFFISANT — Min requis : 2 sessions OU 1 session intense (>300 frappes).".to_string(),
+            "Volume insuffisant pour une certification finale complète — min requis : 2 sessions OU 1 session intense (>300 frappes)."
+                .to_string(),
         )
     };
 
@@ -655,6 +678,9 @@ td {{ padding:14px 0; border-bottom:1px solid #f1f5f9; vertical-align:middle; }}
 .badge {{ padding:6px 10px; border-radius:10px; color:#fff; font-weight:900; font-size:11px; display:inline-block; }}
 .mini-flags {{ font-size:10px; color:var(--muted); margin-top:4px; }}
 .warn-mini {{ font-size:10px; color:#d97706; margin-top:4px; font-weight:800; }}
+.verify-note {{ margin:16px 0 18px 0; padding:14px 16px; border:1px solid var(--border); border-radius:14px; background:#fafafa; }}
+.verify-note-title {{ font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); font-weight:900; margin-bottom:8px; }}
+.verify-note-text {{ font-size:14px; line-height:1.5; color:#374151; }}
 </style></head><body>
 <div class="paper">
   <div class="header">
@@ -663,6 +689,14 @@ td {{ padding:14px 0; border-bottom:1px solid #f1f5f9; vertical-align:middle; }}
       <div class="title">{9}</div>
     </div>
     <div class="mono">REF: #{2}<br>{3}</div>
+  </div>
+
+  <div class="verify-note">
+    <div class="verify-note-title">Note de vérification</div>
+    <div class="verify-note-text">
+      Cette page HTML est une vue lisible du résumé de scoring HumanOrigin.
+      La preuve de référence reste le fichier signé <strong>CERTIFICAT_FINAL.ho.json</strong>.
+    </div>
   </div>
 
   <div class="score">
@@ -704,6 +738,7 @@ td {{ padding:14px 0; border-bottom:1px solid #f1f5f9; vertical-align:middle; }}
 fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
     let is_scanning = *state.is_scanning.lock().unwrap();
     let rt = state.runtime.lock().unwrap();
+
     if !is_scanning || rt.start_timestamp == 0 {
         return Ok(LiveStats {
             is_scanning: false,
@@ -712,7 +747,10 @@ fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
             clicks: 0,
         });
     }
-    let duration_sec = ((Utc::now().timestamp_millis() - rt.start_timestamp).max(0) as u64) / 1000;
+
+    let duration_sec =
+        ((Utc::now().timestamp_millis() - rt.start_timestamp).max(0) as u64) / 1000;
+
     Ok(LiveStats {
         is_scanning: true,
         duration_sec,
@@ -724,7 +762,7 @@ fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
 #[tauri::command]
 fn get_projects() -> Result<Vec<String>, String> {
     let doc_path = dirs::document_dir().ok_or("Err Documents")?;
-    let path = doc_path.join("HumanOrigin").join("Projets");
+    let path = doc_path.join("HumanOrigin").join("Projects");
     let _ = fs::create_dir_all(&path);
 
     let mut projects = Vec::new();
@@ -743,7 +781,7 @@ fn get_projects() -> Result<Vec<String>, String> {
 #[tauri::command]
 fn initialize_project(project_name: String) -> Result<String, String> {
     let doc_path = dirs::document_dir().ok_or("Err Documents")?;
-    let project_path = doc_path.join("HumanOrigin").join("Projets").join(&project_name);
+    let project_path = doc_path.join("HumanOrigin").join("Projects").join(&project_name);
     fs::create_dir_all(project_path.join("certificats")).map_err(|e| e.to_string())?;
 
     let pj = project_path.join("project.json");
@@ -756,7 +794,8 @@ fn initialize_project(project_name: String) -> Result<String, String> {
             total_active_seconds: 0,
             status: "ACTIVE".to_string(),
         };
-        fs::write(&pj, serde_json::to_string_pretty(&metadata).unwrap()).map_err(|e| e.to_string())?;
+        fs::write(&pj, serde_json::to_string_pretty(&metadata).unwrap())
+            .map_err(|e| e.to_string())?;
     }
 
     Ok(project_path.to_string_lossy().to_string())
@@ -765,10 +804,12 @@ fn initialize_project(project_name: String) -> Result<String, String> {
 #[tauri::command]
 fn activate_project(project_name: String, state: State<AppState>) -> Result<String, String> {
     let doc_path = dirs::document_dir().ok_or("Err Documents")?;
-    let project_path = doc_path.join("HumanOrigin").join("Projets").join(&project_name);
+    let project_path = doc_path.join("HumanOrigin").join("Projects").join(&project_name);
+
     if !project_path.exists() {
         return Err("Projet introuvable".into());
     }
+
     *state.active_project_path.lock().unwrap() = Some(project_path.clone());
     Ok(project_path.to_string_lossy().to_string())
 }
@@ -782,6 +823,7 @@ fn start_scan(state: State<AppState>, session_id: String) -> Result<String, Stri
     *scanning = true;
 
     let gen = state.scan_gen.fetch_add(1, Ordering::SeqCst) + 1;
+
     let mut rt = state.runtime.lock().unwrap();
     rt.keystroke_timestamps.clear();
     rt.backspace_timestamps.clear();
@@ -795,10 +837,46 @@ fn start_scan(state: State<AppState>, session_id: String) -> Result<String, Stri
 }
 
 #[tauri::command]
+fn sha256_file(path: String) -> Result<String, String> {
+    let file = File::open(&path).map_err(|e| format!("open failed: {e}"))?;
+    let mut reader = BufReader::new(file);
+
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 1024 * 1024];
+
+    loop {
+        let n = reader
+            .read(&mut buf)
+            .map_err(|e| format!("read failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+
+    Ok(format!("{:x}", hasher.finalize()))
+}
+#[tauri::command]
+fn copy_file(src_path: String, dest_path: String) -> Result<(), String> {
+    use std::path::Path;
+
+    if let Some(parent) = Path::new(&dest_path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+#[tauri::command]
+fn publish_pdf_native(_input: serde_json::Value) -> Result<String, String> {
+    Err("publish_pdf_native is deprecated; PDF publication now uses the Publisher sidecar.".to_string())
+}
+
+#[tauri::command]
 fn stop_scan(
     app: tauri::AppHandle,
     state: State<AppState>,
-    paste: PasteStats
+    paste: PasteStats,
 ) -> Result<serde_json::Value, String> {
     state.scan_gen.fetch_add(1, Ordering::SeqCst);
 
@@ -829,7 +907,9 @@ fn stop_scan(
             rt.keystroke_timestamps.clone(),
             rt.backspace_timestamps.clone(),
             rt.click_timestamps.clone(),
-            rt.current_session_id.clone().unwrap_or("unknown".to_string()),
+            rt.current_session_id
+                .clone()
+                .unwrap_or("unknown".to_string()),
         )
     };
 
@@ -837,7 +917,6 @@ fn stop_scan(
     let backspace_count = backs.len() as u32;
     let mut analysis = calculate_scp(start_ms, end_ms, &keys, &clicks, backspace_count);
 
-    // --- PASTE POLICY (DIAMOND) ---
     let pasted = paste.pasted_chars as f64;
     let typed = keys.len() as f64;
     let mut paste_dominant = false;
@@ -875,18 +954,19 @@ fn stop_scan(
                 ));
             }
         }
+
         if paste.paste_events > 0 {
             analysis.flags.push(format!("PASTE:{}ch", paste.pasted_chars));
             if analysis.flags.len() > 3 {
                 analysis.flags.truncate(3);
             }
         }
+
         let (lab, col) = apply_verdict(analysis.score);
         analysis.verdict_label = lab;
         analysis.verdict_color = col;
     }
 
-    // --- metadata update ---
     let json_path = path_buf.join("project.json");
     let content = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
     let mut metadata: ProjectMetadata = serde_json::from_str(&content).map_err(|e| e.to_string())?;
@@ -916,7 +996,6 @@ fn stop_scan(
 
     let proof_json = serde_json::to_string_pretty(&proof).unwrap();
 
-    // Archive JSON
     fs::write(
         path_buf
             .join("certificats")
@@ -925,18 +1004,15 @@ fn stop_scan(
     )
     .map_err(|e| e.to_string())?;
 
-    // Archive HTML (pas d’ouverture auto)
     let session_html = generate_session_html(&proof);
     let session_html_path = path_buf
         .join("certificats")
         .join(format!("session_{}.html", metadata.sessions_count));
     fs::write(&session_html_path, session_html).map_err(|e| e.to_string())?;
 
-    // Save metadata
     fs::write(&json_path, serde_json::to_string_pretty(&metadata).unwrap())
         .map_err(|e| e.to_string())?;
 
-    // Draft chiffré persistant (pour le bandeau orange)
     if let Some(app_dir) = app.path_resolver().app_data_dir() {
         let created_at = Utc::now().to_rfc3339();
         let _ = drafts::save_draft(
@@ -948,7 +1024,6 @@ fn stop_scan(
         );
     }
 
-    // cleanup runtime
     {
         let mut rt = state.runtime.lock().unwrap();
         rt.current_session_id = None;
@@ -971,10 +1046,13 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
     let content = fs::read_to_string(path.join("project.json")).map_err(|e| e.to_string())?;
     let metadata: ProjectMetadata = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
-    let mut all_proofs = Vec::new();
+    let mut all_proofs: Vec<BiometricProof> = Vec::new();
     let mut weighted_score_sum = 0f64;
     let mut total_weight = 0f64;
     let mut total_keys = 0u64;
+
+    let mut certified_count: u32 = 0;
+    let mut max_valid_keystrokes: u64 = 0;
 
     if let Ok(entries) = fs::read_dir(path.join("certificats")) {
         for entry in entries.flatten() {
@@ -982,23 +1060,41 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
                 if let Ok(c) = fs::read_to_string(entry.path()) {
                     if let Ok(proof) = serde_json::from_str::<BiometricProof>(&c) {
                         total_keys += proof.keyboard_dynamics.total_keystrokes;
+
                         if proof.analysis.gate_passed {
                             let w = proof.analysis.active_est_sec as f64;
                             weighted_score_sum += (proof.analysis.score as f64) * w;
                             total_weight += w;
+
+                            certified_count += 1;
+                            if proof.keyboard_dynamics.total_keystrokes > max_valid_keystrokes {
+                                max_valid_keystrokes = proof.keyboard_dynamics.total_keystrokes;
+                            }
                         }
+
                         all_proofs.push(proof);
                     }
                 }
             }
         }
     }
+
     all_proofs.sort_by_key(|k| k.session_index);
 
     let avg_scp = if total_weight > 0.0 {
         (weighted_score_sum / total_weight) as i32
     } else {
         0
+    };
+
+    let project_valid =
+        certified_count >= 2 || (certified_count == 1 && max_valid_keystrokes > 300);
+
+    let validation_reason = if project_valid {
+        format!("OK — basé sur {} session(s) validée(s).", certified_count)
+    } else {
+        "VOLUME INSUFFISANT — Min requis : 2 sessions OU 1 session intense (>300 frappes)."
+            .to_string()
     };
 
     let html = generate_html_certificate(&metadata, &all_proofs);
@@ -1012,6 +1108,9 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
         total_keystrokes: total_keys,
         session_count: metadata.sessions_count,
         scp_score: avg_scp,
+        project_valid,
+        valid_sessions: certified_count,
+        validation_reason,
     })
 }
 
@@ -1019,12 +1118,20 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
 fn open_file(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        Command::new("open").arg(path).spawn().map_err(|e| e.to_string())?;
+        Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
     }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = path;
+    }
+
     Ok(())
 }
 
-// ✅ lecture HTML via Rust -> plus de bug scope / iframe vide
 #[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
@@ -1043,21 +1150,133 @@ fn sign_payload_hash(payload_hash: String) -> Result<serde_json::Value, String> 
     }))
 }
 
+#[tauri::command]
+fn render_svg_to_png(
+    svg: String,
+    output_path: String,
+    width: Option<u32>,
+) -> Result<(), String> {
+    let mut opt = Options::default();
+    opt.fontdb_mut().load_system_fonts();
+
+    let tree = Tree::from_str(&svg, &opt)
+        .map_err(|e| format!("SVG parse error: {e}"))?;
+
+    let size = tree.size();
+    let src_w = size.width().max(1.0);
+    let src_h = size.height().max(1.0);
+
+    let target_w = width.unwrap_or(src_w.round() as u32).max(1);
+    let scale = target_w as f32 / src_w as f32;
+    let target_h = ((src_h as f32) * scale).round().max(1.0) as u32;
+
+    let mut pixmap =
+        Pixmap::new(target_w, target_h).ok_or_else(|| "Failed to create pixmap".to_string())?;
+
+    let transform = Transform::from_scale(scale, scale);
+    render(&tree, transform, &mut pixmap.as_mut());
+
+    let out = Path::new(&output_path);
+    if let Some(parent) = out.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Create dir error: {e}"))?;
+    }
+
+    pixmap
+        .save_png(out)
+        .map_err(|e| format!("Save PNG error: {e}"))?;
+
+    Ok(())
+}
+
 // --- DRAFT COMMANDS ---
 #[tauri::command]
 fn list_local_drafts(app: tauri::AppHandle) -> Result<Vec<drafts::DraftInfo>, String> {
     let dir = app.path_resolver().app_data_dir().ok_or("No AppData")?;
     drafts::list_drafts(&dir)
 }
+
 #[tauri::command]
 fn load_local_draft(app: tauri::AppHandle, session_id: String) -> Result<String, String> {
     let dir = app.path_resolver().app_data_dir().ok_or("No AppData")?;
     drafts::load_draft(&dir, &session_id)
 }
+
 #[tauri::command]
 fn delete_local_draft(app: tauri::AppHandle, session_id: String) -> Result<(), String> {
     let dir = app.path_resolver().app_data_dir().ok_or("No AppData")?;
     drafts::delete_draft(&dir, &session_id)
+}
+
+// ===============================
+// ✅✅ PERMISSIONS (macOS) ✅✅
+// ===============================
+
+#[tauri::command]
+fn is_accessibility_trusted() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        return accessibility::application_is_trusted();
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
+    }
+}
+
+#[tauri::command]
+fn open_mac_settings(kind: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let urls: Vec<&str> = if kind == "input" {
+            vec![
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent",
+                "x-apple.systempreferences:com.apple.preference.security",
+                "x-apple.systempreferences:",
+            ]
+        } else {
+            vec![
+                "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+                "x-apple.systempreferences:com.apple.preference.security",
+                "x-apple.systempreferences:",
+            ]
+        };
+
+        for url in urls {
+            let ok = Command::new("open")
+                .arg(url)
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+
+            if ok {
+                return Ok(());
+            }
+        }
+
+        let fallback = Command::new("open")
+            .arg("-a")
+            .arg("System Settings")
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+
+        if fallback {
+            Ok(())
+        } else {
+            Err("Impossible d'ouvrir Réglages macOS".into())
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = kind;
+        Ok(())
+    }
+}
+
+#[tauri::command]
+fn get_input_status(state: State<AppState>) -> u64 {
+    state.last_input_seen.load(Ordering::Relaxed)
 }
 
 fn main() {
@@ -1073,49 +1292,61 @@ fn main() {
         current_session_id: None,
     }));
 
-    let is_scanning_clone = is_scanning.clone();
-    let runtime_clone = runtime.clone();
+    let last_input_seen = Arc::new(AtomicU64::new(0));
 
     let _ = tauri_plugin_deep_link::prepare("com.humanorigin.app");
 
-    thread::spawn(move || {
-        let device_state = DeviceState::new();
-        let mut prev_keys = vec![];
-        let mut prev_mouse: Vec<bool> = vec![];
+let is_scanning_clone = is_scanning.clone();
+let runtime_clone = runtime.clone();
+let last_input_seen_clone = last_input_seen.clone();
 
-        loop {
-            thread::sleep(Duration::from_millis(20));
-            if !*is_scanning_clone.lock().unwrap() {
-                continue;
-            }
+thread::spawn(move || {
+    let device_state = DeviceState::new();
+    let mut prev_keys: Vec<Keycode> = vec![];
+    let mut prev_mouse: Vec<bool> = vec![];
 
-            let keys = device_state.get_keys();
-            let mouse = device_state.get_mouse();
-            let now = Utc::now().timestamp_millis();
+    loop {
+        thread::sleep(Duration::from_millis(20));
 
-            if keys != prev_keys && keys.len() > prev_keys.len() {
+        let keys = device_state.get_keys();
+        let mouse = device_state.get_mouse();
+        let now_u64 = Utc::now().timestamp_millis() as u64;
+        let now_i64 = now_u64 as i64;
+
+        if keys != prev_keys && keys.len() > prev_keys.len() {
+            last_input_seen_clone.store(now_u64, Ordering::Relaxed);
+
+            if *is_scanning_clone.lock().unwrap() {
                 let mut rt = runtime_clone.lock().unwrap();
                 if rt.active_gen != 0 {
-                    rt.keystroke_timestamps.push(now);
-                    if keys.contains(&Keycode::Backspace) && !prev_keys.contains(&Keycode::Backspace) {
-                        rt.backspace_timestamps.push(now);
+                    rt.keystroke_timestamps.push(now_i64);
+                    if keys.contains(&Keycode::Backspace)
+                        && !prev_keys.contains(&Keycode::Backspace)
+                    {
+                        rt.backspace_timestamps.push(now_i64);
                     }
                 }
             }
-            prev_keys = keys;
+        }
 
-            let current_buttons = mouse.button_pressed;
-            if current_buttons.iter().filter(|&&b| b).count()
-                > prev_mouse.iter().filter(|&&b| b).count()
-            {
+        let current_buttons = mouse.button_pressed;
+        if current_buttons.iter().filter(|&&b| b).count()
+            > prev_mouse.iter().filter(|&&b| b).count()
+        {
+            last_input_seen_clone.store(now_u64, Ordering::Relaxed);
+
+            if *is_scanning_clone.lock().unwrap() {
                 let mut rt = runtime_clone.lock().unwrap();
                 if rt.active_gen != 0 {
-                    rt.click_timestamps.push(now);
+                    rt.click_timestamps.push(now_i64);
                 }
             }
-            prev_mouse = current_buttons;
         }
-    });
+
+        prev_keys = keys;
+        prev_mouse = current_buttons;
+    }
+});
 
     tauri::Builder::default()
         .manage(AppState {
@@ -1123,6 +1354,7 @@ fn main() {
             active_project_path,
             runtime,
             scan_gen: AtomicU64::new(0),
+            last_input_seen,
         })
         .setup(|app| {
             let handle = app.handle();
@@ -1131,7 +1363,7 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
+              .invoke_handler(tauri::generate_handler![
             get_projects,
             initialize_project,
             activate_project,
@@ -1142,9 +1374,16 @@ fn main() {
             read_text_file,
             get_live_stats,
             sign_payload_hash,
+            render_svg_to_png,
             list_local_drafts,
             load_local_draft,
-            delete_local_draft
+            delete_local_draft,
+            is_accessibility_trusted,
+            open_mac_settings,
+            get_input_status,
+            sha256_file,
+            copy_file,
+            publish_pdf_native,
         ])
         .run(tauri::generate_context!())
         .expect("error");
