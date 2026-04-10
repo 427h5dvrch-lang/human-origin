@@ -183,6 +183,7 @@ function showScreen(screenName) {
   if (screenName === "LOGIN" && typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
   if (screenName === "PERMISSIONS" && typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
   if (screenName === "PROJECT_SELECT" && typeof applyProjectScreenCopy === "function") applyProjectScreenCopy();
+  if (screenName === "DASHBOARD" && typeof applySessionScreenCopy === "function") applySessionScreenCopy();
   try { document.body.setAttribute("data-screen", screenName); } catch {}
 
   const loginScreen = $("login-screen");
@@ -410,7 +411,7 @@ function hoPerm(fr, en) {
 }
 
 function ensureProjectLangToggle() {
-  const root = $("project-section");
+  const root = $("app-screen");
   if (!root) return;
 
   let bar = document.getElementById("project-lang-toggle");
@@ -422,12 +423,13 @@ function ensureProjectLangToggle() {
       <button id="project-lang-fr" class="btn btn-ghost btn-mini" type="button">FR</button>
       <button id="project-lang-en" class="btn btn-ghost btn-mini" type="button">EN</button>
     `;
-    const card = root.querySelector(".project-picker-card");
-    if (card) card.insertBefore(bar, card.firstChild);
+    const host = root.querySelector(".workspace-utility");
+    if (host) host.insertBefore(bar, host.firstChild);
 
     bar.querySelector("#project-lang-fr")?.addEventListener("click", () => {
       try { localStorage.setItem("ho_lang", "fr"); } catch {}
       applyProjectScreenCopy();
+      if (typeof applySessionScreenCopy === "function") applySessionScreenCopy();
       if (typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
       if (typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
     });
@@ -435,6 +437,7 @@ function ensureProjectLangToggle() {
     bar.querySelector("#project-lang-en")?.addEventListener("click", () => {
       try { localStorage.setItem("ho_lang", "en"); } catch {}
       applyProjectScreenCopy();
+      if (typeof applySessionScreenCopy === "function") applySessionScreenCopy();
       if (typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
       if (typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
     });
@@ -539,6 +542,95 @@ function applyProjectScreenCopy() {
     const first = sel.querySelector('option[value=""]');
     if (first) first.innerText = hoPerm("Choisir un projet...", "Choose a project...");
   }
+}
+
+function applySessionScreenCopy() {
+  const root = $("controls-section");
+  if (!root) return;
+
+  ensureProjectLangToggle();
+
+  const kickers = root.querySelectorAll(".ritual-kicker");
+  if (kickers[0]) kickers[0].innerText = hoPerm("Session", "Session");
+  if (kickers[1]) kickers[1].innerText = hoPerm("Repère", "Reference");
+  if (kickers[2]) kickers[2].innerText = hoPerm("Historique", "History");
+
+  const titles = root.querySelectorAll(".section-title");
+  if (titles[0]) titles[0].innerText = hoPerm(
+    "Mesurer un moment réel de travail humain",
+    "Measure a real moment of human work"
+  );
+  if (titles[1]) titles[1].innerText = hoPerm(
+    "Ce que HumanOrigin rend visible",
+    "What HumanOrigin makes visible"
+  );
+
+  const leads = root.querySelectorAll(".section-lead");
+  if (leads[0]) leads[0].innerText = hoPerm(
+    "Lancez une session avant d’écrire. HumanOrigin suit le rythme de travail, puis vous permet de transformer cette présence en certificat de session.",
+    "Start a session before writing. HumanOrigin follows the work rhythm, then allows you to turn that presence into a session certificate."
+  );
+
+  const statLabels = root.querySelectorAll(".stat-lbl");
+  if (statLabels[0]) statLabels[0].innerText = hoPerm("Frappes", "Keystrokes");
+  if (statLabels[1]) statLabels[1].innerText = hoPerm("Clics", "Clicks");
+
+  const startBtn = $("start-btn");
+  if (startBtn) startBtn.innerText = hoPerm("Démarrer Session", "Start Session");
+
+  const stopBtn = $("stop-btn");
+  if (stopBtn) stopBtn.innerText = hoPerm("Arrêter", "Stop");
+
+  const finalizeBtn = $("finalize-btn");
+  if (finalizeBtn) {
+    const t = (finalizeBtn.innerText || "").trim();
+    if (t === "Certifier la Session" || t === "Certifier la session" || t === "Certify Session" || t === "Certify session") {
+      finalizeBtn.innerText = hoPerm("Certifier la Session", "Certify Session");
+    }
+  }
+
+  const sideItems = root.querySelectorAll(".session-side-list li");
+  if (sideItems[0]) sideItems[0].innerText = hoPerm(
+    "Un travail humain mesuré dans le temps, et non une simple sortie produite en silence.",
+    "Human work measured over time, not a simple output produced in silence."
+  );
+  if (sideItems[1]) sideItems[1].innerText = hoPerm(
+    "Une session qui peut devenir une preuve, puis rejoindre un historique certifié cohérent.",
+    "A session that can become proof, then join a coherent certified history."
+  );
+  if (sideItems[2]) sideItems[2].innerText = hoPerm(
+    "Un chemin clair vers un export final lisible, signé, et diffusable publiquement.",
+    "A clear path toward a final export that is readable, signed, and publicly shareable."
+  );
+
+  const draftText = root.querySelector(".draft-banner-premium span[style*='font-size: 13px']");
+  if (draftText) draftText.innerText = hoPerm(
+    "Session non sauvegardée trouvée",
+    "Unsaved session found"
+  );
+
+  const recoverBtn = $("btn-recover-draft");
+  if (recoverBtn) recoverBtn.innerText = hoPerm("Restaurer", "Restore");
+
+  const histTitle = root.querySelector(".history-head-left h3");
+  if (histTitle) histTitle.innerText = hoPerm("Historique certifié", "Certified history");
+
+  const histLead = root.querySelector(".history-head-left p");
+  if (histLead) histLead.innerText = hoPerm(
+    "Retrouvez ici les sessions déjà certifiées pour ce projet, ainsi que l’accès à l’export final lorsqu’il est disponible.",
+    "Find here the sessions already certified for this project, as well as access to the final export when available."
+  );
+
+  const syncBtn = $("sync-btn");
+  if (syncBtn) syncBtn.innerText = hoPerm("🔄", "🔄");
+
+  const finalBtn = $("close-project-btn");
+  if (finalBtn) finalBtn.innerText = hoPerm("📜 Certificat Final", "📜 Final Certificate");
+
+  const ths = root.querySelectorAll(".history-table thead th");
+  if (ths[0]) ths[0].innerText = hoPerm("Date/Heure", "Date/Time");
+  if (ths[1]) ths[1].innerText = hoPerm("Statut", "Status");
+  if (ths[2]) ths[2].innerText = hoPerm("Preuve (Hash)", "Proof (Hash)");
 }
 
 function ensureLoginLangToggle() {
