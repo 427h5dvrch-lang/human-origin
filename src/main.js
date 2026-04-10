@@ -28,6 +28,31 @@ import { Command } from "@tauri-apps/api/shell";
 
 console.log("HumanOrigin main.js V3.2.1 FULL + Publication Kit V1 loaded ✅");
 
+async function hoGetSessionSafe(timeoutMs = 1800) {
+  return await Promise.race([
+    supabase.auth.getSession(),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("getSession timeout")), timeoutMs)
+    ),
+  ]);
+}
+
+function hoBootMark(step) {
+  try {
+    console.log("[BOOT]", step);
+    window.__hoLastBootStep = step;
+
+    let el = document.getElementById("ho-boot-debug");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "ho-boot-debug";
+      el.style.cssText = "position:fixed;top:8px;left:8px;z-index:99999;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,0.78);color:#fff;font:12px/1.3 monospace;max-width:70vw;pointer-events:none;";
+      document.body.appendChild(el);
+    }
+    el.innerText = "BOOT: " + step;
+  } catch {}
+}
+
 // =========================================================
 // CONFIG
 // =========================================================
@@ -179,6 +204,7 @@ async function pickDocumentToBind() {
 // SCREEN ROUTER
 // =========================================================
 function showScreen(screenName) {
+  hoBootMark("showScreen:" + screenName);
   currentScreenName = screenName;
   if (screenName === "LOGIN" && typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
   if (screenName === "PERMISSIONS" && typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
@@ -793,6 +819,7 @@ function applyPermissionsScreenCopy() {
 }
 
 async function refreshPermissionsStateAndMaybeContinue(autoAdvance = false) {
+  hoBootMark("permissions:refresh:start");
   const accessOk = await invoke("is_accessibility_trusted").catch(() => false);
   const input = await getInputPermissionEvidence();
 
@@ -843,6 +870,7 @@ async function startInputWatchdog() {
 
       updatePermissionBadge(accessOk, input.granted);
 
+      hoBootMark("watchdog:tick");
       if (accessOk && input.granted) {
         await continueAfterPermissions();
         return;
@@ -869,6 +897,7 @@ async function showPermissionsWall() {
     const fullyReady = await refreshPermissionsStateAndMaybeContinue(false);
     const accessOk = await invoke("is_accessibility_trusted").catch(() => false);
 
+    hoBootMark("permissions:recheck:fullyReady");
     if (fullyReady) {
       await continueAfterPermissions();
       return;
@@ -888,11 +917,16 @@ async function showPermissionsWall() {
 }
 
 async function ensurePermissionsBeforeApp() {
+  hoBootMark("permcheck:start");
   const accessOk = await isMacPermissionsOk();
+  hoBootMark("permcheck:afterIsMacPermissionsOk:" + String(accessOk));
   if (!accessOk) {
+    hoBootMark("permcheck:beforeShowPermissionsWall");
     await showPermissionsWall();
+    hoBootMark("permcheck:afterShowPermissionsWall");
     return false;
   }
+  hoBootMark("permcheck:returnTrue");
   return true;
 }
 
@@ -957,6 +991,7 @@ async function continueAfterPermissions() {
   __permissionsContinueInFlight = true;
   try {
     stopPermissionTimers();
+    hoBootMark("postlogin:getSession");
     const { data } = await supabase.auth.getSession();
     if (data?.session) {
       await forcePostLogin(true).catch(() => showScreen("LOGIN"));
@@ -974,6 +1009,7 @@ async function continueAfterPermissions() {
 // POST-LOGIN ROUTING
 // =========================================================
 async function forcePostLogin(skipPermissionsCheck = false) {
+  hoBootMark("postlogin:start");
   const myEpoch = uiEpoch;
 
   try {
@@ -989,9 +1025,20 @@ async function forcePostLogin(skipPermissionsCheck = false) {
     if (!permOk) return;
   }
 
-    const { data } = await supabase.auth.getSession();
+    hoBootMark("postlogin:beforeGetSession");
+    let data;
+    try {
+      ({ data } = await hoGetSessionSafe());
+      hoBootMark("postlogin:afterGetSession");
+    } catch (e) {
+      console.warn("getSession failed in forcePostLogin", e);
+      hoBootMark("postlogin:getSessionFailed");
+      showScreen("LOGIN");
+      return;
+    }
     if (epochIsStale(myEpoch)) return;
 
+    hoBootMark("postlogin:afterSession");
     if (!data?.session) {
       showScreen("LOGIN");
       return;
@@ -1002,16 +1049,23 @@ async function forcePostLogin(skipPermissionsCheck = false) {
 
     if (checkAndShowTuto()) return;
 
+    hoBootMark("postlogin:beforeShow");
     if (currentProjectName) showScreen("DASHBOARD");
     else showScreen("PROJECT_SELECT");
+    hoBootMark("postlogin:afterShow");
 
+    hoBootMark("postlogin:beforeLoadProjects");
     await loadProjectList().catch(() => {});
+    hoBootMark("postlogin:afterLoadProjects");
     if (epochIsStale(myEpoch)) return;
 
+    hoBootMark("postlogin:beforeRefreshHistory");
     refreshHistory().catch(() => {});
-    checkForDrafts(true).catch(() => {});
+    hoBootMark("postlogin:afterRefreshHistory");
+    // checkForDrafts(true).catch(() => {}); // temp stability test
   } catch (e) {
     console.warn("forcePostLogin failed", e);
+    hoBootMark("postlogin:error");
   }
 }
 
@@ -1137,6 +1191,7 @@ async function setupDeepLinkListeners() {
 // PROJECTS
 // =========================================================
 async function loadProjectList() {
+  hoBootMark("projects:load:start");
   try {
     const projects = await invoke("get_projects");
     const sel = $("project-selector");
@@ -1144,6 +1199,7 @@ async function loadProjectList() {
 
     sel.innerHTML = '<option value="" disabled selected>Choisir un projet...</option>';
 
+    hoBootMark("projects:load:gotList");
     (projects || []).forEach((p) => {
       const opt = document.createElement("option");
       opt.value = p;
@@ -1622,6 +1678,7 @@ async function startScan() {
 // HISTORIQUE — shows CERTIFIED + CERTIFIED_TEMP
 // =========================================================
 async function refreshHistory() {
+  hoBootMark("history:refresh:start");
   const tbody = $("certs-tbody");
   if (!tbody) return;
 
@@ -3618,6 +3675,7 @@ window.addEventListener("focus", () => {
 // visibilitychange disabled on macOS to avoid duplicate permission resume
 
 window.addEventListener("DOMContentLoaded", async () => {
+  hoBootMark("dom:loaded");
   setupDeepLinkListeners().catch(() => {});
 
   const __hoLoginTitle = document.querySelector("#login-screen .brand-title");
@@ -3666,8 +3724,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     } catch {}
   });
 
-  supabase.auth.onAuthStateChange(async (_event, session) => {
-    if (!session) {
+  supabase.auth.onAuthStateChange(async (event, session) => {
+    if (event === "SIGNED_OUT" || !session) {
       bumpEpoch();
       resetAllStateToLogin();
       return;
@@ -3675,7 +3733,10 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     currentUser = session.user;
     safeText("user-email-display", currentUser?.email || "");
-    await forcePostLogin().catch(() => {});
+
+    if (event === "SIGNED_IN") {
+      await forcePostLogin().catch(() => {});
+    }
   });
 
   await forcePostLogin().catch(() => showScreen("LOGIN"));
