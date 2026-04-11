@@ -761,9 +761,14 @@ fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
 
 #[tauri::command]
 fn get_projects() -> Result<Vec<String>, String> {
-    let doc_path = dirs::document_dir().ok_or("Err Documents")?;
+    let Some(doc_path) = dirs::document_dir() else {
+        return Ok(Vec::new());
+    };
+
     let path = doc_path.join("HumanOrigin").join("Projects");
-    let _ = fs::create_dir_all(&path);
+    if fs::create_dir_all(&path).is_err() {
+        return Ok(Vec::new());
+    }
 
     let mut projects = Vec::new();
     if let Ok(entries) = fs::read_dir(path) {
