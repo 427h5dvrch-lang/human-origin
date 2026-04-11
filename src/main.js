@@ -41,15 +41,6 @@ function hoBootMark(step) {
   try {
     console.log("[BOOT]", step);
     window.__hoLastBootStep = step;
-
-    let el = document.getElementById("ho-boot-debug");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "ho-boot-debug";
-      el.style.cssText = "position:fixed;top:8px;left:8px;z-index:99999;padding:6px 8px;border-radius:8px;background:rgba(0,0,0,0.78);color:#fff;font:12px/1.3 monospace;max-width:70vw;pointer-events:none;";
-      document.body.appendChild(el);
-    }
-    el.innerText = "BOOT: " + step;
   } catch {}
 }
 
