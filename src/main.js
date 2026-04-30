@@ -18,7 +18,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/api/dialog";
-import { writeTextFile } from "@tauri-apps/api/fs";
+import { writeTextFile, createDir, copyFile } from "@tauri-apps/api/fs";
 import { createClient } from "@supabase/supabase-js";
 import { checkUpdate, installUpdate } from "@tauri-apps/api/updater";
 import * as app from "@tauri-apps/api/app";
@@ -2023,6 +2023,8 @@ async function exportFinalProjectCertificate() {
     const publishedDocumentPath = `${dir}${sep}${publishedDocumentFilename}`;
 
     const publishedHtmlPath = `${dir}${sep}HumanOrigin_PUBLISHED.html`;
+    const openFirstPath = `${dir}${sep}HumanOrigin_OPEN_FIRST.html`;
+    let preferredOpenPath = openFirstPath;
     const publishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
     const publishedPdfPath = `${dir}${sep}${publishedPdfFilename}`;
 
@@ -2037,6 +2039,20 @@ async function exportFinalProjectCertificate() {
       verdict,
       verifierUrl,
       mime: hoDoc.document.mime,
+    });
+
+    const openFirstHtml = buildOpenFirstHtml({
+      projectTitle: hoDoc.subject.title,
+      documentFilename: hoDoc.document.filename,
+      publishedDocumentFilename,
+      publishedOutputFilename: bind.mime === "application/pdf" ? publishedPdfFilename : null,
+      referenceProofFilename: "CERTIFICAT_FINAL.v1.ho.json",
+      compatibilityProofFilename: "CERTIFICAT_FINAL.ho.json",
+      certificateId,
+      issuedAt,
+      verdict,
+      verifierUrl,
+      isPdf: bind.mime === "application/pdf",
     });
 
     const manifestJson = buildPublicationManifest({
@@ -2144,6 +2160,136 @@ async function exportFinalProjectCertificate() {
     });
 
     await writeTextFile(publishedHtmlPath, publishedHtml);
+    await writeTextFile(openFirstPath, openFirstHtml);
+    preferredOpenPath = openFirstPath;
+
+    try {
+      const sharePackageDir = `${dir}${sep}HumanOrigin_SHARE_PACKAGE`;
+      const shareProofDir = `${sharePackageDir}${sep}Proof`;
+      const shareOpenFirstPath = `${sharePackageDir}${sep}HumanOrigin_OPEN_FIRST.html`;
+      const shareStartHerePath = `${sharePackageDir}${sep}START_HERE.txt`;
+
+      await createDir(sharePackageDir, { recursive: true });
+      await createDir(shareProofDir, { recursive: true });
+
+      const shareRootCopies = [
+        [publishedHtmlPath, `${sharePackageDir}${sep}HumanOrigin_PUBLISHED.html`],
+        [`${dir}${sep}${publishedDocumentFilename}`, `${sharePackageDir}${sep}${publishedDocumentFilename}`],
+      ];
+
+      const shareProofCopies = [
+        [hoPath, `${shareProofDir}${sep}CERTIFICAT_FINAL.ho.json`],
+        [hoPathV1, `${shareProofDir}${sep}CERTIFICAT_FINAL.v1.ho.json`],
+        [verifyTxtPath, `${shareProofDir}${sep}HumanOrigin_VERIFY.txt`],
+        [`${dir}${sep}CERTIFICAT_FINAL.html`, `${shareProofDir}${sep}CERTIFICAT_FINAL.html`],
+      ];
+
+      for (const [src, dst] of shareRootCopies) {
+        await copyFile(src, dst);
+      }
+
+      for (const [src, dst] of shareProofCopies) {
+        await copyFile(src, dst);
+      }
+
+      const shareOpenFirstHtml = `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HumanOrigin — Ouvrir en premier</title>
+  <style>
+    body{margin:0;background:#f3f6fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0b1220;}
+    .wrap{max-width:920px;margin:0 auto;padding:32px;}
+    .card{background:#fff;border:1px solid #dbe3ee;border-radius:24px;padding:28px;box-shadow:0 18px 48px rgba(15,23,42,0.08);}
+    .eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:10px;}
+    h1{margin:0 0 10px 0;font-size:34px;line-height:1.02;letter-spacing:-.03em;}
+    .sub{font-size:17px;line-height:1.55;color:#475569;margin:0 0 20px 0;}
+    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0;}
+    .meta{background:#f8fbff;border:1px solid #e2e8f0;border-radius:18px;padding:16px;}
+    .meta-label{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:8px;}
+    .meta-value{font-size:15px;font-weight:700;color:#0b1220;word-break:break-word;}
+    .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px;}
+    .btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 16px;border-radius:999px;background:#0f2b57;color:#fff;text-decoration:none;font-weight:800;border:1px solid #0f2b57;}
+    .btn.secondary{background:#fff;color:#0f2b57;}
+    .note{margin-top:18px;padding:16px 18px;border:1px dashed #d7dce4;border-radius:16px;background:#fcfdff;color:#334155;line-height:1.55;}
+    @media (max-width:760px){.grid{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="eyebrow">HumanOrigin share package</div>
+      <h1>Ouvrir cette page en premier</h1>
+      <p class="sub">Ce package est la version simple à partager. Commencez ici, puis ouvrez le résumé lisible ou le document lié.</p>
+
+      <div class="grid">
+        <div class="meta">
+          <div class="meta-label">Projet</div>
+          <div class="meta-value">${esc(hoDoc.subject.title)}</div>
+        </div>
+        <div class="meta">
+          <div class="meta-label">Document lié</div>
+          <div class="meta-value">${esc(publishedDocumentFilename)}</div>
+        </div>
+        <div class="meta">
+          <div class="meta-label">Verdict</div>
+          <div class="meta-value">${esc(verdict || "UNKNOWN")}</div>
+        </div>
+        <div class="meta">
+          <div class="meta-label">ID certificat</div>
+          <div class="meta-value">${esc(certificateId)}</div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <a class="btn" href="HumanOrigin_PUBLISHED.html" target="_blank" rel="noopener">Lire la preuve</a>
+        <a class="btn secondary" href="${esc(publishedDocumentFilename)}" target="_blank" rel="noopener">Ouvrir le document lié</a>
+        <a class="btn secondary" href="${esc(verifierUrl)}" target="_blank" rel="noopener">Vérifier en ligne</a>
+        <a class="btn secondary" href="Proof/CERTIFICAT_FINAL.v1.ho.json" target="_blank" rel="noopener">Preuve technique</a>
+      </div>
+
+      <div class="note">
+        <strong>À envoyer :</strong> ce dossier complet ou son ZIP.<br/>
+        <strong>À ouvrir en premier :</strong> cette page.<br/>
+        <strong>Preuves techniques :</strong> elles sont rangées dans le dossier <strong>Proof</strong>.
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+
+      const shareStartHereTxt = [
+        "HUMANORIGIN — SHARE PACKAGE",
+        "",
+        "À ouvrir en premier :",
+        "- HumanOrigin_OPEN_FIRST.html",
+        "",
+        "Lecture simple :",
+        "- HumanOrigin_PUBLISHED.html",
+        "",
+        "Document lié :",
+        `- ${publishedDocumentFilename}`,
+        "",
+        "Preuves techniques :",
+        "- Proof/CERTIFICAT_FINAL.v1.ho.json",
+        "- Proof/CERTIFICAT_FINAL.ho.json",
+        "- Proof/HumanOrigin_VERIFY.txt",
+        "- Proof/CERTIFICAT_FINAL.html",
+        "",
+        "À envoyer :",
+        "- Envoyez ce dossier complet ou son ZIP.",
+        "- N'envoyez pas un fichier seul.",
+      ].join("\n");
+
+      await writeTextFile(shareOpenFirstPath, shareOpenFirstHtml);
+      await writeTextFile(shareStartHerePath, shareStartHereTxt);
+      // The main package entry remains HumanOrigin_OPEN_FIRST.html.
+      // The share package is generated as an optional secondary package.
+      preferredOpenPath = openFirstPath;
+    } catch (e) {
+      console.warn("[SHARE PACKAGE] build failed", e);
+    }
 
     await renderPublicationKitPngs({
       badgeSvg,
@@ -2186,13 +2332,13 @@ async function exportFinalProjectCertificate() {
 
       toast("PDF publié HumanOrigin généré ✅");
       const finalPdfPath = publishResult.output_pdf_path || publishedPdfPath;
-      toast("PDF publié HumanOrigin généré ✅");
-      await invoke("open_file", { path: finalPdfPath });
+      console.log("[PUBLISHED PDF PATH]", finalPdfPath);
+      await invoke("open_file", { path: preferredOpenPath });
       return;
     }
 
     toast("Kit de diffusion HumanOrigin généré ✅");
-    await invoke("open_file", { path: publishedHtmlPath });
+    await invoke("open_file", { path: preferredOpenPath });
   } catch (e) {
     console.error("exportFinalProjectCertificate failed", e);
     alert("Erreur export final projet : " + (e?.message || e));
@@ -2656,13 +2802,13 @@ const qrInner = qrSvg.replace(/^.*?<svg[^>]*>/s, "").replace(/<\/svg>\s*$/s, "")
   <line x1="682" y1="28" x2="682" y2="272" stroke="#e2e8f0" stroke-width="2"/>
 
   <text x="34" y="62" class="brand">HumanOrigin</text>
-  <text x="36" y="92" class="sub">Biological Origin Record</text>
+  <text x="36" y="92" class="sub">Human Process Proof</text>
 
   <rect x="36" y="118" width="164" height="38" rx="19" fill="${visual.bg}" stroke="${visual.border}" />
   <text x="118" y="143" text-anchor="middle" class="verdict" font-size="18">${visual.label}</text>
 
   <text x="36" y="188" class="body">Registered in a public verification chain</text>
-  <text x="36" y="218" class="mono">Registry ID: ${idShort} · ${dateLabel}</text>
+  <text x="36" y="218" class="mono">Proof ID: ${idShort} · ${dateLabel}</text>
   <text x="36" y="248" class="micro">Scan to inspect record</text>
 
   <g transform="translate(748,54)">
@@ -2681,67 +2827,101 @@ async function buildCartoucheCompactSvg({ verifierUrl, certificateId, verdict, i
   const visual = getVisualVerdictMeta(verdict);
   const dateLabel = formatDisplayDate(issuedAt);
 
+  const xml = (value) => String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
   const url = verifierUrl.includes("?")
     ? `${verifierUrl}&id=${encodeURIComponent(idShort)}`
     : `${verifierUrl}?id=${encodeURIComponent(idShort)}`;
 
-  const QR_BOX_SIZE = 136;
-  const QR_PADDING = 8;
-  const QR_SIZE = QR_BOX_SIZE - (QR_PADDING * 2); // 120
+  const NAVY = "#08234d";
+  const NAVY_SOFT = "#12376d";
+  const PAPER = "#fffdf8";
+  const HAIRLINE = "#d9e0ec";
+
+  const QR_SIZE = 318;
 
   const qrSvgRaw = await QRCode.toString(url, {
     type: "svg",
-    margin: 0,
+    margin: 1,
     width: QR_SIZE,
+    color: {
+      dark: NAVY,
+      light: "#ffffff",
+    },
   });
 
- const qrViewBox =
-  qrSvgRaw.match(/viewBox="([^"]+)"/)?.[1] || "0 0 29 29";
+  const qrViewBox =
+    qrSvgRaw.match(/viewBox="([^"]+)"/)?.[1] || "0 0 29 29";
 
-const qrInner = qrSvgRaw
-  .replace(/<\?xml[\s\S]*?\?>\s*/g, "")
-  .replace(/<!DOCTYPE[\s\S]*?>\s*/g, "")
-  .replace(/^.*?<svg[^>]*>/s, "")
-  .replace(/<\/svg>\s*$/s, "");
+  const qrInner = qrSvgRaw
+    .replace(/<\?xml[\s\S]*?\?>\s*/g, "")
+    .replace(/<!DOCTYPE[\s\S]*?>\s*/g, "")
+    .replace(/^.*?<svg[^>]*>/s, "")
+    .replace(/<\/svg>\s*$/s, "")
+    .replace(/#000000/gi, NAVY)
+    .replace(/black/gi, NAVY);
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="160" viewBox="0 0 720 160">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="520" height="760" viewBox="0 0 520 760">
   <defs>
     <style>
-      .paper{fill:#fffdf8}
-      .border{fill:none;stroke:#d7dde7;stroke-width:2}
-      .brand{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-weight:900;font-size:30px;fill:#0b1220}
-      .sub{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-weight:700;font-size:13px;fill:#475569}
-      .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;fill:#475569}
-      .pill{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-weight:900;font-size:13px;fill:${visual.color}}
+      .bg{fill:${PAPER}}
+      .frame{fill:none;stroke:${NAVY};stroke-width:18;stroke-linecap:butt;stroke-linejoin:round}
+      .brand{font-family:Georgia,'Times New Roman',serif;font-size:54px;font-weight:400;fill:${NAVY};letter-spacing:0.045em}
+      .smallcaps{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;font-weight:800;fill:${NAVY};letter-spacing:0.34em}
+      .micro{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:10px;font-weight:800;fill:${NAVY_SOFT};letter-spacing:0.28em}
+      .value{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;font-weight:700;fill:${NAVY};letter-spacing:0.12em}
+      .status{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:14px;font-weight:900;fill:${visual.color};letter-spacing:0.08em}
+      .scan{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:16px;font-weight:900;fill:${NAVY};letter-spacing:0.28em}
     </style>
   </defs>
 
-  <rect x="1" y="1" width="718" height="158" rx="22" class="paper"/>
-  <rect x="1" y="1" width="718" height="158" rx="22" class="border"/>
+  <rect x="0" y="0" width="520" height="760" rx="0" class="bg"/>
 
-  <text x="28" y="52" class="brand">HumanOrigin</text>
-  <text x="28" y="77" class="sub">Biological Origin Record</text>
+  <!-- Cadre premium avec fentes haute et basse -->
+  <path class="frame" d="M220 34 L96 34 Q56 34 56 74 L56 686 Q56 726 96 726 L220 726"/>
+  <path class="frame" d="M300 34 L424 34 Q464 34 464 74 L464 686 Q464 726 424 726 L300 726"/>
 
-  <rect x="28" y="96" width="150" height="32" rx="16" fill="${visual.bg}" stroke="${visual.border}" />
-  <text x="103" y="117" text-anchor="middle" class="pill">${visual.label}</text>
-
-  <text x="196" y="116" class="mono">Registry ID: ${idShort} · ${dateLabel}</text>
-
-  <g transform="translate(566,12)">
-    <rect x="0" y="0" width="${QR_BOX_SIZE}" height="${QR_BOX_SIZE}" rx="18" fill="#ffffff" stroke="#d7dde7" stroke-width="2"/>
-    <svg
-  x="${QR_PADDING}"
-  y="${QR_PADDING}"
-  width="${QR_SIZE}"
-  height="${QR_SIZE}"
-  viewBox="${qrViewBox}"
-  shape-rendering="crispEdges"
->
-  ${qrInner}
-</svg>
+  <g transform="translate(101,86)">
+    <rect x="-14" y="-14" width="346" height="346" rx="18" fill="#ffffff" opacity="0.86"/>
+    <svg x="0" y="0" width="${QR_SIZE}" height="${QR_SIZE}" viewBox="${qrViewBox}" shape-rendering="crispEdges">
+      ${qrInner}
+    </svg>
   </g>
+
+  <line x1="88" y1="436" x2="232" y2="436" stroke="${NAVY_SOFT}" stroke-width="1.5" stroke-dasharray="2 7" opacity="0.72"/>
+  <line x1="288" y1="436" x2="432" y2="436" stroke="${NAVY_SOFT}" stroke-width="1.5" stroke-dasharray="2 7" opacity="0.72"/>
+  <path d="M260 424 L267 436 L260 448 L253 436 Z" fill="${NAVY}"/>
+
+  <text x="260" y="505" text-anchor="middle" class="brand">HumanOrigin</text>
+
+  <line x1="94" y1="535" x2="139" y2="535" stroke="${NAVY}" stroke-width="2"/>
+  <line x1="381" y1="535" x2="426" y2="535" stroke="${NAVY}" stroke-width="2"/>
+  <text x="260" y="541" text-anchor="middle" class="smallcaps">HUMAN PROCESS PROOF</text>
+
+  <circle cx="204" cy="586" r="18" fill="${NAVY}"/>
+  <path d="M194 586 L201 594 L216 576" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="238" y="592" class="scan">SCAN TO VERIFY</text>
+
+  <rect x="74" y="628" width="372" height="62" rx="8" fill="#ffffff" stroke="${HAIRLINE}" stroke-width="1.5"/>
+  <line x1="198" y1="638" x2="198" y2="680" stroke="${HAIRLINE}" stroke-width="1.3" stroke-dasharray="2 5"/>
+  <line x1="322" y1="638" x2="322" y2="680" stroke="${HAIRLINE}" stroke-width="1.3" stroke-dasharray="2 5"/>
+
+  <text x="136" y="653" text-anchor="middle" class="micro">PROOF ID</text>
+  <text x="136" y="675" text-anchor="middle" class="value">${xml(idShort)}</text>
+
+  <text x="260" y="653" text-anchor="middle" class="micro">STATUS</text>
+  <text x="260" y="675" text-anchor="middle" class="status">${xml(visual.label)}</text>
+
+  <text x="384" y="653" text-anchor="middle" class="micro">ISSUED</text>
+  <text x="384" y="675" text-anchor="middle" class="value">${xml(dateLabel)}</text>
 </svg>`;
 }
+
 
 async function buildStampSvg({ verifierUrl, certificateId, verdictLabel, docHash }) {
   const idShort = shortId(certificateId);
@@ -2774,10 +2954,10 @@ const qrSvg = qrSvgRaw
   <rect x="8" y="8" width="504" height="164" rx="18" class="border"/>
 
   <text x="26" y="48" class="h" font-size="26">HumanOrigin</text>
-  <text x="26" y="76" class="m" font-size="14">Biological Origin Record</text>
+  <text x="26" y="76" class="m" font-size="14">Human Process Proof</text>
 
   <text x="26" y="110" class="m" font-size="16">Verdict: <tspan class="h" font-size="16">${verdictLabel}</tspan></text>
-  <text x="26" y="132" class="t">Registry ID: ${idShort}</text>
+  <text x="26" y="132" class="t">Proof ID: ${idShort}</text>
   <text x="26" y="152" class="t">Doc hash: ${hashShort}</text>
 
   <text x="300" y="152" class="t mut">Verifier: ${verifierUrl.replace(/^https?:\/\//, "")}</text>
@@ -3117,7 +3297,7 @@ function buildShareCardHtml({
         <div>
           <div class="panel" style="margin-bottom:16px;">
             <div class="label">Project</div>
-            <div class="value">${esc(projectTitle)}</div>
+            <div class="value">${esc(hoDoc.subject.title)}</div>
           </div>
 
           <div class="panel" style="margin-bottom:16px;">
@@ -3215,7 +3395,7 @@ function buildPublicationManifest({
 
       recommended_public_workflow: publishedOutputFilename
         ? "Use the included published output for public circulation."
-        : "Keep the bound source file as working source, use CERTIFICAT_FINAL.ho.json as source of truth, and publish a PDF later when a visibly marked public document is needed.",
+        : "Send the full package folder or ZIP, open HumanOrigin_PUBLISHED.html first, keep the bound source file as the linked source document, use CERTIFICAT_FINAL.ho.json as the authoritative proof file, and publish a PDF later if a visibly marked public version is needed.",
       certificate_id: certificateId,
       issued_at: issuedAt,
       verdict,
@@ -3227,10 +3407,10 @@ function buildPublicationManifest({
       },
 
       recommended_opening_order: [
-        "HumanOrigin_READ_ME_FIRST.txt",
-        "CERTIFICAT_FINAL.html",
+        "HumanOrigin_PUBLISHED.html",
         "HumanOrigin_VERIFY.txt",
         "CERTIFICAT_FINAL.ho.json",
+        documentFilename,
       ],
 
       verification_summary: {
@@ -3254,6 +3434,367 @@ function buildPublicationManifest({
     2
   );
 }
+
+function buildOpenFirstHtml({
+  projectTitle,
+  documentFilename,
+  publishedDocumentFilename,
+  publishedOutputFilename,
+  referenceProofFilename,
+  compatibilityProofFilename,
+  certificateId,
+  issuedAt,
+  verdict,
+  verifierUrl,
+  isPdf,
+}) {
+  const mainDocumentFilename = isPdf && publishedOutputFilename
+    ? publishedOutputFilename
+    : publishedDocumentFilename;
+
+  const proofFilename = referenceProofFilename || "CERTIFICAT_FINAL.v1.ho.json";
+  const compatProofFilename = compatibilityProofFilename || "CERTIFICAT_FINAL.ho.json";
+
+  function withVerifierContext(url) {
+    const base = String(url || "https://427h5dvrch-lang.github.io/humanorigin-verifier/");
+    const join = base.includes("?") ? "&" : "?";
+    return base + join
+      + "project=" + encodeURIComponent(projectTitle || "")
+      + "&expected_document=" + encodeURIComponent(mainDocumentFilename || "")
+      + "&expected_proof=" + encodeURIComponent(proofFilename || "");
+  }
+
+  const contextualVerifierUrl = withVerifierContext(verifierUrl);
+
+  const sendMessage = [
+    "Bonjour,",
+    "",
+    "Je vous transmets le document publié avec son marquage HumanOrigin.",
+    "",
+    "Document à consulter :",
+    mainDocumentFilename,
+    "",
+    "Si une vérification renforcée est nécessaire, utilisez aussi :",
+    proofFilename,
+    "",
+    "Vérificateur public :",
+    contextualVerifierUrl,
+    "",
+  ].join("\\n");
+
+  return `<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>HumanOrigin — Open First</title>
+  <style>
+    :root{
+      --navy:#08234d;
+      --ink:#0f172a;
+      --muted:#64748b;
+      --line:#dbe3ee;
+      --paper:#fffdf8;
+      --bg:#f4f7fb;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:
+        radial-gradient(circle at top left,rgba(8,35,77,.09),transparent 34%),
+        linear-gradient(135deg,#f8fafc,#eef3f9);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:var(--ink);
+    }
+    .wrap{
+      max-width:1120px;
+      margin:0 auto;
+      padding:34px 24px 46px;
+    }
+    .hero{
+      display:grid;
+      grid-template-columns:1.1fr .9fr;
+      gap:22px;
+      align-items:stretch;
+    }
+    .panel{
+      background:rgba(255,255,255,.86);
+      border:1px solid rgba(15,23,42,.10);
+      border-radius:30px;
+      box-shadow:0 24px 70px rgba(15,23,42,.10);
+      padding:30px;
+      backdrop-filter:blur(12px);
+    }
+    .kicker{
+      font-size:11px;
+      letter-spacing:.18em;
+      text-transform:uppercase;
+      font-weight:950;
+      color:var(--muted);
+      margin-bottom:10px;
+    }
+    h1{
+      margin:0;
+      font-size:44px;
+      line-height:.98;
+      letter-spacing:-.045em;
+      color:var(--ink);
+    }
+    .subtitle{
+      margin:14px 0 0;
+      max-width:680px;
+      color:#475569;
+      font-size:17px;
+      line-height:1.55;
+      font-weight:650;
+    }
+    .status{
+      margin-top:24px;
+      padding:17px 18px;
+      border-radius:20px;
+      border:1px solid rgba(8,35,77,.12);
+      background:linear-gradient(135deg,rgba(8,35,77,.055),rgba(255,255,255,.78));
+    }
+    .status strong{
+      display:block;
+      font-size:18px;
+      margin-bottom:5px;
+    }
+    .status span{
+      display:block;
+      font-size:13px;
+      color:#475569;
+      line-height:1.45;
+      font-weight:650;
+    }
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(2,minmax(0,1fr));
+      gap:12px;
+      margin-top:20px;
+    }
+    .meta{
+      border:1px solid rgba(15,23,42,.09);
+      border-radius:18px;
+      background:rgba(248,250,252,.86);
+      padding:15px;
+    }
+    .meta span{
+      display:block;
+      font-size:10px;
+      letter-spacing:.12em;
+      text-transform:uppercase;
+      font-weight:950;
+      color:var(--muted);
+      margin-bottom:7px;
+    }
+    .meta strong{
+      display:block;
+      font-size:14px;
+      line-height:1.35;
+      color:var(--ink);
+      word-break:break-word;
+    }
+    .actions{
+      display:grid;
+      gap:14px;
+    }
+    .action-card{
+      border-radius:24px;
+      border:1px solid rgba(15,23,42,.10);
+      background:#ffffff;
+      padding:22px;
+    }
+    .action-card.primary{
+      background:var(--navy);
+      color:white;
+    }
+    .action-card h2{
+      margin:0 0 8px;
+      font-size:22px;
+      letter-spacing:-.03em;
+    }
+    .action-card p{
+      margin:0 0 16px;
+      font-size:14px;
+      line-height:1.48;
+      color:#64748b;
+      font-weight:650;
+    }
+    .action-card.primary p{
+      color:rgba(255,255,255,.78);
+    }
+    .btn-row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .btn, button.btn{
+      appearance:none;
+      border:1px solid rgba(8,35,77,.18);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:42px;
+      padding:11px 15px;
+      border-radius:999px;
+      background:#ffffff;
+      color:var(--navy);
+      text-decoration:none;
+      font:inherit;
+      font-size:14px;
+      font-weight:900;
+      cursor:pointer;
+    }
+    .primary .btn{
+      background:#ffffff;
+      color:var(--navy);
+      border-color:#ffffff;
+    }
+    .btn.dark{
+      background:var(--navy);
+      color:white;
+      border-color:var(--navy);
+    }
+    .file{
+      margin-top:12px;
+      padding:12px 13px;
+      border-radius:15px;
+      background:#f8fafc;
+      border:1px solid rgba(15,23,42,.08);
+      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+      font-size:12px;
+      font-weight:800;
+      color:#334155;
+      overflow-wrap:anywhere;
+    }
+    .primary .file{
+      background:rgba(255,255,255,.10);
+      border-color:rgba(255,255,255,.16);
+      color:white;
+    }
+    .note{
+      margin-top:22px;
+      padding:18px 20px;
+      border-radius:22px;
+      border:1px dashed rgba(8,35,77,.22);
+      background:rgba(255,253,248,.76);
+      color:#334155;
+      line-height:1.55;
+      font-size:14px;
+      font-weight:650;
+    }
+    @media(max-width:900px){
+      .hero{grid-template-columns:1fr}
+      h1{font-size:36px}
+    }
+    @media(max-width:620px){
+      .grid{grid-template-columns:1fr}
+      .panel{padding:22px}
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="panel">
+        <div class="kicker">HumanOrigin Package</div>
+        <h1>Envoyez ce document.</h1>
+        <p class="subtitle">
+          Package prêt à transmettre. Cette page indique quoi envoyer, quoi ouvrir et comment vérifier la preuve HumanOrigin.
+        </p>
+
+        <div class="status">
+          <strong>Action recommandée</strong>
+          <span>Envoyez le document principal ci-dessous. La preuve technique reste disponible pour un contrôle renforcé.</span>
+        </div>
+
+        <div class="grid">
+          <div class="meta">
+            <span>Projet</span>
+            <strong>${esc(projectTitle)}</strong>
+          </div>
+          <div class="meta">
+            <span>Statut</span>
+            <strong>${esc(verdict || "UNKNOWN")}</strong>
+          </div>
+          <div class="meta">
+            <span>Document principal</span>
+            <strong>${esc(mainDocumentFilename)}</strong>
+          </div>
+          <div class="meta">
+            <span>Preuve vérifiable</span>
+            <strong>${esc(proofFilename)}</strong>
+          </div>
+          <div class="meta">
+            <span>Certificat</span>
+            <strong>${esc(certificateId)}</strong>
+          </div>
+          <div class="meta">
+            <span>Émis le</span>
+            <strong>${esc(issuedAt)}</strong>
+          </div>
+        </div>
+
+        <div class="note">
+          HumanOrigin ne certifie pas que le contenu du document est vrai.
+          Il certifie qu'un processus humain mesuré a été lié à ce document et qu'une preuve portable peut être vérifiée publiquement.
+        </div>
+      </div>
+
+      <div class="actions">
+        <div class="action-card primary">
+          <div class="kicker">Envoi standard</div>
+          <h2>Document à transmettre</h2>
+          <p>Pour une lecture simple, envoyez ce fichier. Il contient le document publié avec le marquage HumanOrigin visible.</p>
+          <div class="btn-row">
+            <a class="btn" href="${esc(mainDocumentFilename)}" target="_blank" rel="noopener">Ouvrir le document</a>
+            <button class="btn" type="button" id="copySendMessage">Copier le message d'envoi</button>
+          </div>
+          <div class="file">${esc(mainDocumentFilename)}</div>
+        </div>
+
+        <div class="action-card">
+          <div class="kicker">Contrôle renforcé</div>
+          <h2>Vérification publique</h2>
+          <p>Pour vérifier formellement, ouvrir le vérificateur public avec le fichier de preuve de référence.</p>
+          <div class="btn-row">
+            <a class="btn dark" href="${esc(contextualVerifierUrl)}" target="_blank" rel="noopener">Ouvrir le vérificateur</a>
+            <a class="btn" href="${esc(proofFilename)}" target="_blank" rel="noopener">Ouvrir la preuve</a>
+          </div>
+          <div class="file">${esc(proofFilename)}</div>
+        </div>
+
+        <div class="action-card">
+          <div class="kicker">Compatibilité</div>
+          <h2>Ancienne preuve</h2>
+          <p>Conservée pour compatibilité avec les anciens exports. La preuve v1 reste la référence.</p>
+          <div class="file">${esc(compatProofFilename)}</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const sendMessage = ${JSON.stringify(sendMessage)};
+    const btn = document.getElementById("copySendMessage");
+    if (btn) {
+      btn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(sendMessage);
+          const old = btn.textContent;
+          btn.textContent = "Message copié";
+          setTimeout(() => { btn.textContent = old; }, 1600);
+        } catch (_) {
+          alert(sendMessage);
+        }
+      });
+    }
+  </script>
+</body>
+</html>`;
+}
+
   function buildPublishedHtml({
   projectTitle,
   documentFilename,
@@ -3266,10 +3807,10 @@ function buildPublicationManifest({
 }) {
   const isPdf = mime === "application/pdf";
   const isImage = String(mime || "").startsWith("image/");
-  const packageTitle = isPdf ? "Published Document Package" : "Bound Document Package";
+  const packageTitle = isPdf ? "Published Document Package" : "Package de preuve du document lié";
   const packageSubtitle = isPdf
     ? "This package contains the bound document together with the HumanOrigin proof materials and publication assets."
-    : "This package contains the bound source document together with the HumanOrigin proof materials and circulation assets.";
+    : "Ce package contient le document source lié, la preuve HumanOrigin et les indications de circulation essentielles.";
 
   const publicationNote = isPdf
     ? `
@@ -3283,21 +3824,302 @@ function buildPublicationManifest({
     `
     : `
       <div class="meta-card" style="margin-bottom:18px;">
-        <div class="meta-label">Publication status</div>
-        <div class="meta-value">No native visibly marked published copy for this file type</div>
-        <div class="footer-note" style="margin-top:10px;">
-          This bound source file is included and linked to the HumanOrigin proof package.
-          Formal verification remains valid through <strong>CERTIFICAT_FINAL.ho.json</strong> and the bound document hash.
-          When a public visibly marked circulation version is needed, the recommended path is to publish a PDF later.
+        <style>
+          .docx-guide-toolbar{
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            flex-wrap:wrap;
+          }
+          .docx-lang-switch{
+            display:inline-flex;
+            gap:6px;
+            padding:4px;
+            border:1px solid #d7dce4;
+            border-radius:999px;
+            background:#fff;
+          }
+          .docx-lang-switch button{
+            border:0;
+            background:transparent;
+            padding:6px 10px;
+            border-radius:999px;
+            font:inherit;
+            font-weight:700;
+            color:#5b6980;
+            cursor:pointer;
+          }
+          .docx-lang-switch button.is-active{
+            background:#0f2b57;
+            color:#fff;
+          }
+          .docx-guide-actions{
+            display:flex;
+            flex-wrap:wrap;
+            gap:8px;
+            margin-top:14px;
+          }
+          .docx-guide-actions button{
+            border:1px solid #d7dce4;
+            background:#fff;
+            padding:10px 14px;
+            border-radius:999px;
+            font:inherit;
+            font-weight:700;
+            color:#12233d;
+            cursor:pointer;
+          }
+          .docx-guide-actions button.is-active{
+            background:#0f2b57;
+            border-color:#0f2b57;
+            color:#fff;
+          }
+          .docx-guide-answer{
+            margin-top:12px;
+            padding:14px 16px;
+            border:1px dashed #d7dce4;
+            border-radius:14px;
+            background:rgba(255,255,255,0.7);
+            color:#12233d;
+            font-weight:700;
+            line-height:1.45;
+          }
+        </style>
+
+        <div class="docx-guide-toolbar">
+          <div>
+            <div class="meta-label" id="docxStatusLabel">STATUT DE PUBLICATION</div>
+            <div class="meta-value" id="docxStatusValue">Aucune copie publique visiblement marquée n'est incluse pour ce type de fichier</div>
+          </div>
+
+          <div class="docx-lang-switch" aria-label="Language switch">
+            <button type="button" class="is-active" id="docxLangFrBtn" data-docx-lang="fr">FR</button>
+            <button type="button" id="docxLangEnBtn" data-docx-lang="en">EN</button>
+          </div>
         </div>
+
+        <div class="docx-guide-actions">
+          <button type="button" class="is-active" id="docxActionSend" data-docx-action="send">Que faut-il envoyer ?</button>
+          <button type="button" id="docxActionOpen" data-docx-action="open">Quel fichier ouvrir en premier ?</button>
+          <button type="button" id="docxActionProof" data-docx-action="proof">Quel fichier fait foi ?</button>
+        </div>
+
+        <div class="docx-guide-answer" id="docxGuideAnswer">
+          Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json et le document source lié. N'envoyez pas un fichier seul.
+        </div>
+
+        <script>
+          (function () {
+            const copy = {
+              fr: {
+                title: "Package de preuve du document lié",
+                subtitle: "Ce package contient le document source lié, la preuve HumanOrigin et les indications de circulation essentielles.",
+                statusLabel: "STATUT DE PUBLICATION",
+                statusValue: "Aucune copie publique visiblement marquée n'est incluse pour ce type de fichier",
+                actionSend: "Que faut-il envoyer ?",
+                actionOpen: "Quel fichier ouvrir en premier ?",
+                actionProof: "Quel fichier fait foi ?",
+                answers: {
+                  send: "Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json et le document source lié. N'envoyez pas un fichier seul.",
+                  open: "Ouvrez d'abord HumanOrigin_PUBLISHED.html.",
+                  proof: "Le fichier de référence est CERTIFICAT_FINAL.ho.json."
+                },
+                metaLabels: [
+                  "PROJET",
+                  "DOCUMENT SOURCE LIÉ",
+                  "ID CERTIFICAT",
+                  "ÉMIS LE",
+                  "VERDICT",
+                  "FICHIER DE RÉFÉRENCE",
+                  "À OUVRIR D'ABORD",
+                  "À ENVOYER"
+                ],
+                sendValue: "Le ZIP complet ou le dossier complet",
+                docTitle: "Document source lié",
+                openDoc: "Ouvrir le document source lié",
+                openTech: "Ouvrir le certificat technique",
+                openVerifier: "Ouvrir le vérificateur",
+                fallbackNote: "Ce document source lié est inclus dans ce package.",
+                bottomNote: "Cette page est l'entrée lisible principale du package. Envoyez le dossier complet ou le ZIP, pas CERTIFICAT_FINAL.html seul. Le fichier signé CERTIFICAT_FINAL.ho.json reste la preuve de référence.",
+                verifierNote: "La vérification formelle repose sur le fichier signé .ho.json et sur l'empreinte du document lié. Vérificateur :"
+              },
+              en: {
+                title: "Bound Document Proof Package",
+                subtitle: "This package contains the linked source document, the HumanOrigin proof files, and the essential circulation guidance.",
+                statusLabel: "PUBLICATION STATUS",
+                statusValue: "No visibly marked public copy is included for this file type",
+                actionSend: "What should be sent?",
+                actionOpen: "Which file should be opened first?",
+                actionProof: "Which file is authoritative?",
+                answers: {
+                  send: "Send the full HumanOrigin package ZIP. Otherwise send the full folder containing HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json, and the linked source document. Do not send a single file on its own.",
+                  open: "Open HumanOrigin_PUBLISHED.html first.",
+                  proof: "The reference proof file is CERTIFICAT_FINAL.ho.json."
+                },
+                metaLabels: [
+                  "PROJECT",
+                  "LINKED SOURCE DOCUMENT",
+                  "CERTIFICATE ID",
+                  "ISSUED AT",
+                  "VERDICT",
+                  "REFERENCE PROOF FILE",
+                  "OPEN FIRST",
+                  "WHAT TO SEND"
+                ],
+                sendValue: "The full package ZIP or full folder",
+                docTitle: "Linked source document",
+                openDoc: "Open linked source document",
+                openTech: "Open technical certificate",
+                openVerifier: "Open verifier",
+                fallbackNote: "This linked source document is included in this package.",
+                bottomNote: "This page is the main readable entry for the package. Send the full package folder or ZIP, not CERTIFICAT_FINAL.html alone. The signed file CERTIFICAT_FINAL.ho.json remains the reference proof file.",
+                verifierNote: "Formal verification is based on the signed .ho.json file and the linked document hash. Verifier:"
+              }
+            };
+
+            let currentLang = "fr";
+            let currentAction = "send";
+
+            function safeLocalStorageSet(key, value) {
+              try { localStorage.setItem(key, value); } catch (_) {}
+            }
+
+            function safeLocalStorageGet(key) {
+              try { return localStorage.getItem(key); } catch (_) { return null; }
+            }
+
+            function setActiveLangButtons(lang) {
+              const frBtn = document.getElementById("docxLangFrBtn");
+              const enBtn = document.getElementById("docxLangEnBtn");
+              if (frBtn) frBtn.classList.toggle("is-active", lang === "fr");
+              if (enBtn) enBtn.classList.toggle("is-active", lang === "en");
+            }
+
+            function setActiveActionButtons(action) {
+              const sendBtn = document.getElementById("docxActionSend");
+              const openBtn = document.getElementById("docxActionOpen");
+              const proofBtn = document.getElementById("docxActionProof");
+              if (sendBtn) sendBtn.classList.toggle("is-active", action === "send");
+              if (openBtn) openBtn.classList.toggle("is-active", action === "open");
+              if (proofBtn) proofBtn.classList.toggle("is-active", action === "proof");
+            }
+
+            function applyLang(lang) {
+              currentLang = lang;
+              safeLocalStorageSet("ho_docx_lang", lang);
+              const c = copy[lang];
+
+              const heroTitle = document.querySelector("h1");
+              if (heroTitle) heroTitle.textContent = c.title;
+
+              const heroSubtitle = heroTitle && heroTitle.nextElementSibling;
+              if (heroSubtitle) heroSubtitle.textContent = c.subtitle;
+
+              const statusLabel = document.getElementById("docxStatusLabel");
+              const statusValue = document.getElementById("docxStatusValue");
+              if (statusLabel) statusLabel.textContent = c.statusLabel;
+              if (statusValue) statusValue.textContent = c.statusValue;
+
+              const sendBtn = document.getElementById("docxActionSend");
+              const openBtn = document.getElementById("docxActionOpen");
+              const proofBtn = document.getElementById("docxActionProof");
+              if (sendBtn) sendBtn.textContent = c.actionSend;
+              if (openBtn) openBtn.textContent = c.actionOpen;
+              if (proofBtn) proofBtn.textContent = c.actionProof;
+
+              const metaLabels = document.querySelectorAll(".meta-grid .meta-card .meta-label");
+              const metaValues = document.querySelectorAll(".meta-grid .meta-card .meta-value");
+
+              if (metaLabels[0]) metaLabels[0].textContent = c.metaLabels[0];
+              if (metaLabels[1]) metaLabels[1].textContent = c.metaLabels[1];
+              if (metaLabels[2]) metaLabels[2].textContent = c.metaLabels[2];
+              if (metaLabels[3]) metaLabels[3].textContent = c.metaLabels[3];
+              if (metaLabels[4]) metaLabels[4].textContent = c.metaLabels[4];
+              if (metaLabels[5]) metaLabels[5].textContent = c.metaLabels[5];
+              if (metaLabels[6]) metaLabels[6].textContent = c.metaLabels[6];
+              if (metaLabels[7]) metaLabels[7].textContent = c.metaLabels[7];
+
+              if (metaValues[6]) metaValues[6].textContent = "HumanOrigin_PUBLISHED.html";
+              if (metaValues[7]) metaValues[7].textContent = c.sendValue;
+
+              const docTitle = document.querySelector(".doc .doc-title");
+              if (docTitle) docTitle.textContent = c.docTitle;
+
+              const topButtons = document.querySelectorAll(".doc .actions .btn");
+              if (topButtons[0]) topButtons[0].textContent = c.openDoc;
+              if (topButtons[1]) topButtons[1].textContent = c.openTech;
+              if (topButtons[2]) topButtons[2].textContent = c.openVerifier;
+
+              const fallbackNote = document.querySelector(".fallback-card p");
+              if (fallbackNote) fallbackNote.textContent = c.fallbackNote;
+
+              const openButtons = document.querySelectorAll("a.open-btn");
+              openButtons.forEach((btn) => {
+                btn.textContent = c.openDoc;
+              });
+
+              const footerNotes = Array.from(document.querySelectorAll(".footer-note"));
+              const verifierNoteEl = footerNotes.find((el) => el.textContent.includes("Formal verification") || el.textContent.includes("La vérification formelle"));
+              if (verifierNoteEl) {
+                const rawVerifierText = verifierNoteEl.textContent || "";
+                const httpIndex = rawVerifierText.indexOf("http");
+                const url = httpIndex >= 0 ? rawVerifierText.slice(httpIndex).trim() : "";
+                verifierNoteEl.textContent = c.verifierNote + (url ? " " + url : "");
+              }
+
+              const bottomNoteEl = Array.from(document.querySelectorAll(".doc .footer-note")).pop();
+              if (bottomNoteEl) bottomNoteEl.textContent = c.bottomNote;
+
+              setActiveLangButtons(lang);
+              window.__hoDocxShow(currentAction);
+            }
+
+            window.__hoDocxSetLang = function (lang) {
+              applyLang(lang === "en" ? "en" : "fr");
+            };
+
+            window.__hoDocxShow = function (action) {
+              currentAction = action;
+              const c = copy[currentLang];
+              const answer = document.getElementById("docxGuideAnswer");
+              if (answer) answer.textContent = c.answers[action] || c.answers.send;
+              setActiveActionButtons(action);
+            };
+
+            function initDocxGuide() {
+              document.querySelectorAll("[data-docx-lang]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                  window.__hoDocxSetLang(btn.getAttribute("data-docx-lang"));
+                });
+              });
+
+              document.querySelectorAll("[data-docx-action]").forEach((btn) => {
+                btn.addEventListener("click", () => {
+                  window.__hoDocxShow(btn.getAttribute("data-docx-action"));
+                });
+              });
+
+              const lang = safeLocalStorageGet("ho_docx_lang") || "fr";
+              applyLang(lang === "en" ? "en" : "fr");
+              window.__hoDocxShow("send");
+            }
+
+            if (document.readyState === "loading") {
+              document.addEventListener("DOMContentLoaded", initDocxGuide);
+            } else {
+              initDocxGuide();
+            }
+          })();
+        </script>
       </div>
     `;
 
   let previewHtml = `
     <div class="fallback-card">
-      <p>This bound document is included in this package.</p>
+      <p>Ce document source lié est inclus dans ce package.</p>
       <a class="open-btn" href="${esc(publishedDocumentFilename)}" target="_blank" rel="noopener">
-        Open bound document
+        Open linked source document
       </a>
     </div>
   `;
@@ -3516,10 +4338,10 @@ function buildPublicationManifest({
         <div class="meta">
           <div class="meta-card">
             <div class="meta-label">Project</div>
-            <div class="meta-value">${esc(projectTitle)}</div>
+            <div class="meta-value">${esc(hoDoc.subject.title)}</div>
           </div>
           <div class="meta-card">
-            <div class="meta-label">Bound document</div>
+            <div class="meta-label">${isPdf ? "Bound document" : "Document source lié"}</div>
             <div class="meta-value">${esc(documentFilename)}</div>
           </div>
           <div class="meta-card">
@@ -3538,6 +4360,15 @@ function buildPublicationManifest({
             <div class="meta-label">Source of truth</div>
             <div class="meta-value">CERTIFICAT_FINAL.ho.json</div>
           </div>
+          ${!isPdf ? `
+          <div class="meta-card">
+            <div class="meta-label">À OUVRIR D'ABORD</div>
+            <div class="meta-value">HumanOrigin_PUBLISHED.html</div>
+          </div>
+          <div class="meta-card">
+            <div class="meta-label">À ENVOYER</div>
+            <div class="meta-value">The full package folder or ZIP</div>
+          </div>` : ""}
         </div>
 
         <div class="footer-note">
@@ -3553,18 +4384,20 @@ function buildPublicationManifest({
 
     <div class="doc">
       <div class="doc-top">
-        <div class="doc-title">Bound document</div>
+        <div class="doc-title">${isPdf ? "Bound document" : "Document source lié"}</div>
         <div class="actions">
-          <a class="btn" href="${esc(publishedDocumentFilename)}" target="_blank" rel="noopener">Open bound document</a>
-          <a class="btn secondary" href="CERTIFICAT_FINAL.html" target="_blank" rel="noopener">Open certificate</a>
-          <a class="btn secondary" href="${esc(verifierUrl)}" target="_blank" rel="noopener">Open verifier</a>
+          <a class="btn" href="${esc(publishedDocumentFilename)}" target="_blank" rel="noopener">${isPdf ? "Open bound document" : "Ouvrir le document source lié"}</a>
+          <a class="btn secondary" href="CERTIFICAT_FINAL.html" target="_blank" rel="noopener">${isPdf ? "Open certificate" : "Ouvrir le certificat technique"}</a>
+          <a class="btn secondary" href="${esc(verifierUrl)}" target="_blank" rel="noopener">Ouvrir le vérificateur</a>
         </div>
       </div>
 
       ${previewHtml}
 
       <div class="footer-note">
-        This page is a readable package view. The signed file <strong>CERTIFICAT_FINAL.ho.json</strong> remains the authoritative proof object.
+        ${isPdf
+          ? `This page is a readable package view. The signed file <strong>CERTIFICAT_FINAL.ho.json</strong> remains the authoritative proof object.`
+          : `Cette page est l'entrée lisible principale du package. Envoyez le ZIP complet du package HumanOrigin ou le dossier complet, pas <strong>CERTIFICAT_FINAL.html</strong> seul. Le fichier signé <strong>CERTIFICAT_FINAL.ho.json</strong> reste la preuve de référence.`}
       </div>
     </div>
   </div>
