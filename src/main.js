@@ -4338,7 +4338,7 @@ function buildOpenFirstHtml({
         <div class="meta">
           <div class="meta-card">
             <div class="meta-label">Project</div>
-            <div class="meta-value">${esc(hoDoc.subject.title)}</div>
+            <div class="meta-value">${esc(projectTitle)}</div>
           </div>
           <div class="meta-card">
             <div class="meta-label">${isPdf ? "Bound document" : "Document source lié"}</div>
