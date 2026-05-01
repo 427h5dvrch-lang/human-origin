@@ -3297,7 +3297,7 @@ function buildShareCardHtml({
         <div>
           <div class="panel" style="margin-bottom:16px;">
             <div class="label">Project</div>
-            <div class="value">${esc(hoDoc.subject.title)}</div>
+            <div class="value">${esc(projectTitle)}</div>
           </div>
 
           <div class="panel" style="margin-bottom:16px;">
