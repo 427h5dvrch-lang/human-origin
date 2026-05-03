@@ -3791,6 +3791,236 @@ function buildOpenFirstHtml({
       });
     }
   </script>
+
+<style id="HO_OPEN_FIRST_LANG_SWITCH_V1">
+  .ho-of-lang-host {
+    position: relative !important;
+  }
+
+  .ho-of-lang-switch {
+    position: absolute;
+    top: 24px;
+    right: 24px;
+    z-index: 50;
+    display: inline-flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .ho-of-lang-btn {
+    min-width: 42px;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(11, 21, 42, 0.12);
+    background: rgba(255, 255, 255, 0.82);
+    color: #0b152a;
+    font-weight: 800;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(11, 21, 42, 0.08);
+  }
+
+  .ho-of-lang-btn.is-active {
+    background: #0b152a;
+    color: #ffffff;
+    border-color: #0b152a;
+  }
+
+  @media (max-width: 720px) {
+    .ho-of-lang-switch {
+      position: static;
+      justify-content: flex-end;
+      margin: 0 0 18px 0;
+    }
+  }
+</style>
+
+<script id="HO_OPEN_FIRST_LANG_SWITCH_V1">
+(function () {
+  var STORAGE_KEY = "humanorigin_open_first_lang";
+
+  var translations = {
+    "Envoyez ce document.": "Send this document.",
+    "Package prêt à transmettre. Cette page indique quoi envoyer, quoi ouvrir et comment vérifier la preuve HumanOrigin.": "Package ready to share. This page explains what to send, what to open, and how to verify the HumanOrigin proof.",
+    "Action recommandée": "Recommended action",
+    "Envoyez le document principal ci-dessous. La preuve technique reste disponible pour un contrôle renforcé.": "Send the main document below. The technical proof remains available for enhanced verification.",
+    "PROJET": "PROJECT",
+    "STATUT": "STATUS",
+    "DOCUMENT PRINCIPAL": "MAIN DOCUMENT",
+    "PREUVE VÉRIFIABLE": "VERIFIABLE PROOF",
+    "CERTIFICAT": "CERTIFICATE",
+    "ÉMIS LE": "ISSUED AT",
+    "HumanOrigin ne certifie pas que le contenu du document est vrai. Il certifie qu'un processus humain mesuré a été lié à ce document et qu'une preuve portable peut être vérifiée publiquement.": "HumanOrigin does not certify that the document content is true. It certifies that a measured human process was linked to this document and that a portable proof can be publicly verified.",
+    "ENVOI STANDARD": "STANDARD SEND",
+    "Document à transmettre": "Document to send",
+    "Pour une lecture simple, envoyez ce fichier. Il contient le document public avec le marquage HumanOrigin visible.": "For simple reading, send this file. It contains the public document with the visible HumanOrigin mark.",
+    "Ouvrir le document": "Open document",
+    "Copier le message d'envoi": "Copy sending message",
+    "CONTRÔLE RENFORCÉ": "ENHANCED CHECK",
+    "Vérification publique": "Public verification",
+    "Pour vérifier formellement, ouvrir le vérificateur public avec le fichier de preuve de référence.": "For formal verification, open the public verifier with the reference proof file.",
+    "Ouvrir le vérificateur": "Open verifier",
+    "Ouvrir la preuve": "Open proof",
+    "COMPATIBILITÉ": "COMPATIBILITY",
+    "Ancienne preuve": "Legacy proof",
+    "Conservée pour compatibilité avec les anciens exports. La preuve v1 reste la référence.": "Kept for compatibility with older exports. The v1 proof remains the reference.",
+    "INCOMPLETE": "INCOMPLETE"
+  };
+
+  var originalText = new WeakMap();
+  var currentLang = "fr";
+
+  function norm(s) {
+    return String(s || "").replace(/\s+/g, " ").trim();
+  }
+
+  function makeSwitch() {
+    if (document.querySelector(".ho-of-lang-switch")) return;
+
+    function findPreferredHost() {
+      var title = Array.from(document.querySelectorAll("h1, h2")).find(function (el) {
+        var t = norm(el.textContent).toLowerCase();
+        return t === "envoyez ce document." || t === "send this document.";
+      });
+
+      if (title) {
+        var current = title.parentElement;
+        for (var i = 0; i < 8 && current && current !== document.body; i++) {
+          var box = current.getBoundingClientRect ? current.getBoundingClientRect() : { width: 0, height: 0 };
+          var text = norm(current.textContent).toLowerCase();
+
+          var looksLikeMainCard =
+            box.width >= 360 &&
+            box.height >= 360 &&
+            (
+              text.indexOf("action recommandée") !== -1 ||
+              text.indexOf("recommended action") !== -1 ||
+              text.indexOf("document principal") !== -1 ||
+              text.indexOf("main document") !== -1
+            );
+
+          if (looksLikeMainCard) return current;
+
+          current = current.parentElement;
+        }
+      }
+
+      return document.querySelector("main") || document.querySelector(".shell") || document.querySelector(".container") || document.body;
+    }
+
+    var host = findPreferredHost();
+    host.classList.add("ho-of-lang-host");
+
+    var wrap = document.createElement("div");
+    wrap.className = "ho-of-lang-switch";
+    wrap.setAttribute("aria-label", "Language");
+
+    var btnEn = document.createElement("button");
+    btnEn.type = "button";
+    btnEn.className = "ho-of-lang-btn";
+    btnEn.textContent = "EN";
+    btnEn.setAttribute("data-ho-lang", "en");
+
+    var btnFr = document.createElement("button");
+    btnFr.type = "button";
+    btnFr.className = "ho-of-lang-btn";
+    btnFr.textContent = "FR";
+    btnFr.setAttribute("data-ho-lang", "fr");
+
+    wrap.appendChild(btnEn);
+    wrap.appendChild(btnFr);
+
+    if (host.firstChild) host.insertBefore(wrap, host.firstChild);
+    else host.appendChild(wrap);
+
+    wrap.addEventListener("click", function (event) {
+      var btn = event.target.closest("[data-ho-lang]");
+      if (!btn) return;
+      setLang(btn.getAttribute("data-ho-lang") || "fr");
+    });
+  }
+
+  function translateTextNode(node, lang) {
+    if (!originalText.has(node)) {
+      originalText.set(node, node.nodeValue);
+    }
+
+    var original = originalText.get(node);
+    var key = norm(original);
+
+    if (!key) return;
+
+    if (lang === "fr") {
+      node.nodeValue = original;
+      return;
+    }
+
+    if (translations[key]) {
+      node.nodeValue = original.replace(key, translations[key]);
+    }
+  }
+
+  function applyLang(lang) {
+    currentLang = lang === "en" ? "en" : "fr";
+
+    var walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: function (node) {
+          var parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          var tag = parent.tagName ? parent.tagName.toLowerCase() : "";
+          if (tag === "script" || tag === "style") return NodeFilter.FILTER_REJECT;
+          if (parent.closest && parent.closest(".ho-of-lang-switch")) return NodeFilter.FILTER_REJECT;
+          if (!norm(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    var nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (node) {
+      translateTextNode(node, currentLang);
+    });
+
+    Array.from(document.querySelectorAll(".ho-of-lang-btn")).forEach(function (btn) {
+      btn.classList.toggle("is-active", btn.getAttribute("data-ho-lang") === currentLang);
+    });
+
+    document.documentElement.setAttribute("lang", currentLang);
+  }
+
+  function setLang(lang) {
+    var clean = lang === "en" ? "en" : "fr";
+    try {
+      localStorage.setItem(STORAGE_KEY, clean);
+    } catch (e) {}
+    applyLang(clean);
+  }
+
+  function init() {
+    makeSwitch();
+
+    var saved = "fr";
+    try {
+      saved = localStorage.getItem(STORAGE_KEY) || "fr";
+    } catch (e) {}
+
+    applyLang(saved);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
+</script>
+
 </body>
 </html>`;
 }
