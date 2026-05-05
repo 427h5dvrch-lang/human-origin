@@ -1833,6 +1833,45 @@ async function runPublisherSidecar({ jobPath, fallbackInput }) {
 
   return parsed;
 }
+
+async function runConverterSidecar({ inputPath, outputDir }) {
+  const command = Command.sidecar("binaries/humanorigin-converter", [
+    "--input",
+    inputPath,
+    "--output-dir",
+    outputDir,
+  ]);
+
+  const result = await command.execute();
+
+  const stdout = String(result.stdout || "");
+  const stderr = String(result.stderr || "");
+
+  console.log("[CONVERTER] code =", result.code);
+  console.log("[CONVERTER] stdout =", stdout);
+  console.log("[CONVERTER] stderr =", stderr);
+
+  if (result.code !== 0) {
+    throw new Error(stderr || stdout || `Converter exited with code ${result.code}`);
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout || "{}");
+  } catch (e) {
+    throw new Error(`Converter returned invalid JSON: ${stdout}`);
+  }
+
+  if (!parsed?.ok) {
+    throw new Error(parsed?.message || "Converter sidecar failed");
+  }
+
+  if (!parsed.intermediate_pdf_path) {
+    throw new Error("Converter sidecar did not return intermediate_pdf_path");
+  }
+
+  return parsed;
+}
 // =========================================================
 // FINAL PROJECT CERTIFICATE (HTML + HO-JSON + PUBLICATION KIT)
 // =========================================================
@@ -2019,7 +2058,8 @@ async function exportFinalProjectCertificate() {
     const dir = dirnameAnyPath(res.html_path);
     const sep = String(res.html_path).includes("\\") ? "\\" : "/";
 
-    const publishedDocumentFilename = `BOUND_DOCUMENT.${fileExtLower(bind.filename)}`;
+    const bindExtLower = fileExtLower(bind.filename);
+    const publishedDocumentFilename = `BOUND_DOCUMENT.${bindExtLower}`;
     const publishedDocumentPath = `${dir}${sep}${publishedDocumentFilename}`;
 
     const publishedHtmlPath = `${dir}${sep}HumanOrigin_PUBLISHED.html`;
@@ -2027,6 +2067,7 @@ async function exportFinalProjectCertificate() {
     let preferredOpenPath = openFirstPath;
     const publishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
     const publishedPdfPath = `${dir}${sep}${publishedPdfFilename}`;
+    const canGeneratePublishedPdf = bind.mime === "application/pdf" || bindExtLower === "docx";
 
     const publicationJobPath = `${dir}${sep}HumanOrigin_PUBLICATION_JOB.json`;
 
@@ -2045,14 +2086,14 @@ async function exportFinalProjectCertificate() {
       projectTitle: hoDoc.subject.title,
       documentFilename: hoDoc.document.filename,
       publishedDocumentFilename,
-      publishedOutputFilename: bind.mime === "application/pdf" ? publishedPdfFilename : null,
+      publishedOutputFilename: canGeneratePublishedPdf ? publishedPdfFilename : null,
       referenceProofFilename: "CERTIFICAT_FINAL.v1.ho.json",
       compatibilityProofFilename: "CERTIFICAT_FINAL.ho.json",
       certificateId,
       issuedAt,
       verdict,
       verifierUrl,
-      isPdf: bind.mime === "application/pdf",
+      isPdf: canGeneratePublishedPdf,
     });
 
     const manifestJson = buildPublicationManifest({
@@ -2065,7 +2106,7 @@ async function exportFinalProjectCertificate() {
       verifierUrl,
       documentSha256: hoDoc.document.sha256,
       documentMime: hoDoc.document.mime,
-      publishedOutputFilename: bind.mime === "application/pdf" ? publishedPdfFilename : null,
+      publishedOutputFilename: canGeneratePublishedPdf ? publishedPdfFilename : null,
     });
 
     const badgePath = `${dir}${sep}HumanOrigin_BADGE.svg`;
@@ -2302,9 +2343,25 @@ async function exportFinalProjectCertificate() {
       stampPngPath,
     });
 
-    if (bind.mime === "application/pdf") {
+    if (canGeneratePublishedPdf) {
+      let sourcePdfForPublishing = publishedDocumentPath;
+
+      if (bindExtLower === "docx") {
+        const converterOutputDir = `${dir}${sep}HumanOrigin_CONVERTED`;
+
+        await createDir(converterOutputDir, { recursive: true });
+
+        const converterResult = await runConverterSidecar({
+          inputPath: publishedDocumentPath,
+          outputDir: converterOutputDir,
+        });
+
+        console.log("[CONVERTER RESULT]", converterResult);
+        sourcePdfForPublishing = converterResult.intermediate_pdf_path;
+      }
+
       const publicationJobJson = buildPublicationJob({
-        sourcePdfPath: publishedDocumentPath,
+        sourcePdfPath: sourcePdfForPublishing,
         outputPdfPath: publishedPdfPath,
         cartouchePngPath: cartoucheCompactPngPath,
         certificateJsonPath: hoPath,
@@ -2319,7 +2376,7 @@ async function exportFinalProjectCertificate() {
       const publishResult = await runPublisherSidecar({
         jobPath: publicationJobPath,
         fallbackInput: {
-          sourcePdfPath: publishedDocumentPath,
+          sourcePdfPath: sourcePdfForPublishing,
           outputPdfPath: publishedPdfPath,
           cartoucheCompactPngPath: cartoucheCompactPngPath,
           verifyUrl: verifierUrl,
@@ -2330,7 +2387,11 @@ async function exportFinalProjectCertificate() {
 
       console.log("[PUBLISHER RESULT]", publishResult);
 
-      toast("PDF publié HumanOrigin généré ✅");
+      toast(bindExtLower === "docx"
+        ? "DOCX converti et PDF publié HumanOrigin généré ✅"
+        : "PDF publié HumanOrigin généré ✅"
+      );
+
       const finalPdfPath = publishResult.output_pdf_path || publishedPdfPath;
       console.log("[PUBLISHED PDF PATH]", finalPdfPath);
       await invoke("open_file", { path: preferredOpenPath });

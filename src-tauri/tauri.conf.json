@@ -34,6 +34,11 @@
                 "validator": ".+"
               }
             ]
+          },
+          {
+            "name": "binaries/humanorigin-converter",
+            "sidecar": true,
+            "args": true
           }
         ],
         "sidecar": true
