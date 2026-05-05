@@ -18,7 +18,7 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/api/dialog";
-import { writeTextFile, createDir, copyFile } from "@tauri-apps/api/fs";
+import { writeTextFile, createDir, copyFile, removeDir } from "@tauri-apps/api/fs";
 import { createClient } from "@supabase/supabase-js";
 import { checkUpdate, installUpdate } from "@tauri-apps/api/updater";
 import * as app from "@tauri-apps/api/app";
@@ -2205,131 +2205,172 @@ async function exportFinalProjectCertificate() {
     preferredOpenPath = openFirstPath;
 
     try {
-      const sharePackageDir = `${dir}${sep}HumanOrigin_SHARE_PACKAGE`;
-      const shareProofDir = `${sharePackageDir}${sep}Proof`;
-      const shareOpenFirstPath = `${sharePackageDir}${sep}HumanOrigin_OPEN_FIRST.html`;
-      const shareStartHerePath = `${sharePackageDir}${sep}START_HERE.txt`;
+      const rawShareProjectName = String(hoDoc?.subject?.title || "HumanOrigin Project")
+        .replace(/[\\/:*?"<>|]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim() || "HumanOrigin Project";
 
+      const sharePackageDir = `${dir}${sep}${rawShareProjectName} — HumanOrigin Package`;
+      const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
+      const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
+      const shareOpenFirstPath = `${sharePackageDir}${sep}1_OPEN_FIRST.html`;
+      const shareStartHerePath = `${sharePackageDir}${sep}README_START_HERE.txt`;
+
+      const sendPublishedPdfFilename = `${rawShareProjectName} — HumanOrigin_PUBLISHED.pdf`;
+      const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1.ho.json`;
+      const sendPublishedPdfRelativePath = `2_SEND_TO_RECIPIENT/${sendPublishedPdfFilename}`;
+      const sendProofRelativePath = `2_SEND_TO_RECIPIENT/${sendProofFilename}`;
+
+      await removeDir(sharePackageDir, { recursive: true }).catch(() => {});
       await createDir(sharePackageDir, { recursive: true });
-      await createDir(shareProofDir, { recursive: true });
+      await createDir(sendDir, { recursive: true });
+      await createDir(technicalDir, { recursive: true });
 
-      const shareRootCopies = [
-        [publishedHtmlPath, `${sharePackageDir}${sep}HumanOrigin_PUBLISHED.html`],
-        [`${dir}${sep}${publishedDocumentFilename}`, `${sharePackageDir}${sep}${publishedDocumentFilename}`],
-      ];
-
-      const shareProofCopies = [
-        [hoPath, `${shareProofDir}${sep}CERTIFICAT_FINAL.ho.json`],
-        [hoPathV1, `${shareProofDir}${sep}CERTIFICAT_FINAL.v1.ho.json`],
-        [verifyTxtPath, `${shareProofDir}${sep}HumanOrigin_VERIFY.txt`],
-        [`${dir}${sep}CERTIFICAT_FINAL.html`, `${shareProofDir}${sep}CERTIFICAT_FINAL.html`],
-      ];
-
-      for (const [src, dst] of shareRootCopies) {
-        await copyFile(src, dst);
-      }
-
-      for (const [src, dst] of shareProofCopies) {
-        await copyFile(src, dst);
-      }
-
-      const shareOpenFirstHtml = `<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>HumanOrigin — Ouvrir en premier</title>
-  <style>
-    body{margin:0;background:#f3f6fb;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;color:#0b1220;}
-    .wrap{max-width:920px;margin:0 auto;padding:32px;}
-    .card{background:#fff;border:1px solid #dbe3ee;border-radius:24px;padding:28px;box-shadow:0 18px 48px rgba(15,23,42,0.08);}
-    .eyebrow{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#64748b;margin-bottom:10px;}
-    h1{margin:0 0 10px 0;font-size:34px;line-height:1.02;letter-spacing:-.03em;}
-    .sub{font-size:17px;line-height:1.55;color:#475569;margin:0 0 20px 0;}
-    .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0;}
-    .meta{background:#f8fbff;border:1px solid #e2e8f0;border-radius:18px;padding:16px;}
-    .meta-label{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#64748b;margin-bottom:8px;}
-    .meta-value{font-size:15px;font-weight:700;color:#0b1220;word-break:break-word;}
-    .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px;}
-    .btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 16px;border-radius:999px;background:#0f2b57;color:#fff;text-decoration:none;font-weight:800;border:1px solid #0f2b57;}
-    .btn.secondary{background:#fff;color:#0f2b57;}
-    .note{margin-top:18px;padding:16px 18px;border:1px dashed #d7dce4;border-radius:16px;background:#fcfdff;color:#334155;line-height:1.55;}
-    @media (max-width:760px){.grid{grid-template-columns:1fr;}}
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="eyebrow">HumanOrigin share package</div>
-      <h1>Ouvrir cette page en premier</h1>
-      <p class="sub">Ce package est la version simple à partager. Commencez ici, puis ouvrez le résumé lisible ou le document lié.</p>
-
-      <div class="grid">
-        <div class="meta">
-          <div class="meta-label">Projet</div>
-          <div class="meta-value">${esc(hoDoc.subject.title)}</div>
-        </div>
-        <div class="meta">
-          <div class="meta-label">Document lié</div>
-          <div class="meta-value">${esc(publishedDocumentFilename)}</div>
-        </div>
-        <div class="meta">
-          <div class="meta-label">Verdict</div>
-          <div class="meta-value">${esc(verdict || "UNKNOWN")}</div>
-        </div>
-        <div class="meta">
-          <div class="meta-label">ID certificat</div>
-          <div class="meta-value">${esc(certificateId)}</div>
-        </div>
-      </div>
-
-      <div class="actions">
-        <a class="btn" href="HumanOrigin_PUBLISHED.html" target="_blank" rel="noopener">Lire la preuve</a>
-        <a class="btn secondary" href="${esc(publishedDocumentFilename)}" target="_blank" rel="noopener">Ouvrir le document lié</a>
-        <a class="btn secondary" href="${esc(verifierUrl)}" target="_blank" rel="noopener">Vérifier en ligne</a>
-        <a class="btn secondary" href="Proof/CERTIFICAT_FINAL.v1.ho.json" target="_blank" rel="noopener">Preuve technique</a>
-      </div>
-
-      <div class="note">
-        <strong>À envoyer :</strong> ce dossier complet ou son ZIP.<br/>
-        <strong>À ouvrir en premier :</strong> cette page.<br/>
-        <strong>Preuves techniques :</strong> elles sont rangées dans le dossier <strong>Proof</strong>.
-      </div>
-    </div>
-  </div>
-</body>
-</html>`;
-
-      const shareStartHereTxt = [
-        "HUMANORIGIN — SHARE PACKAGE",
-        "",
-        "À ouvrir en premier :",
-        "- HumanOrigin_OPEN_FIRST.html",
-        "",
-        "Lecture simple :",
-        "- HumanOrigin_PUBLISHED.html",
-        "",
-        "Document lié :",
-        `- ${publishedDocumentFilename}`,
-        "",
-        "Preuves techniques :",
-        "- Proof/CERTIFICAT_FINAL.v1.ho.json",
-        "- Proof/CERTIFICAT_FINAL.ho.json",
-        "- Proof/HumanOrigin_VERIFY.txt",
-        "- Proof/CERTIFICAT_FINAL.html",
-        "",
-        "À envoyer :",
-        "- Envoyez ce dossier complet ou son ZIP.",
-        "- N'envoyez pas un fichier seul.",
-      ].join("\n");
+      const shareOpenFirstHtml = buildOpenFirstHtml({
+        projectTitle: hoDoc.subject.title,
+        documentFilename: hoDoc.document.filename,
+        publishedDocumentFilename,
+        publishedOutputFilename: canGeneratePublishedPdf ? sendPublishedPdfRelativePath : null,
+        referenceProofFilename: sendProofRelativePath,
+        compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINAL.ho.json",
+        certificateId,
+        issuedAt,
+        verdict,
+        verifierUrl,
+        isPdf: canGeneratePublishedPdf,
+      });
 
       await writeTextFile(shareOpenFirstPath, shareOpenFirstHtml);
-      await writeTextFile(shareStartHerePath, shareStartHereTxt);
-      // The main package entry remains HumanOrigin_OPEN_FIRST.html.
-      // The share package is generated as an optional secondary package.
-      preferredOpenPath = openFirstPath;
+
+      const copyIfPresent = async (src, dst, label) => {
+        try {
+          await copyFile(src, dst);
+          console.log(`[SHARE PACKAGE] copied ${label || dst}`);
+        } catch (err) {
+          console.warn(`[SHARE PACKAGE] missing optional file: ${label || src}`, err);
+        }
+      };
+
+      if (canGeneratePublishedPdf) {
+        await copyIfPresent(
+          publishedPdfPath,
+          `${sendDir}${sep}${sendPublishedPdfFilename}`,
+          sendPublishedPdfFilename,
+        );
+      } else {
+        const sendBoundFilename = `${rawShareProjectName} — ${publishedDocumentFilename}`;
+        await copyIfPresent(
+          publishedDocumentPath,
+          `${sendDir}${sep}${sendBoundFilename}`,
+          sendBoundFilename,
+        );
+      }
+
+      await copyIfPresent(
+        hoPathV1,
+        `${sendDir}${sep}${sendProofFilename}`,
+        sendProofFilename,
+      );
+
+      const sendReadme = [
+        "HUMANORIGIN — DOSSIER À ENVOYER",
+        "",
+        "Projet :",
+        rawShareProjectName,
+        "",
+        "Ce dossier contient les fichiers principaux à transmettre à un destinataire.",
+        "",
+        `1. ${canGeneratePublishedPdf ? sendPublishedPdfFilename : `${rawShareProjectName} — ${publishedDocumentFilename}`}`,
+        canGeneratePublishedPdf
+          ? "   Document publié avec marquage visible HumanOrigin."
+          : "   Document source lié à la preuve HumanOrigin.",
+        "",
+        `2. ${sendProofFilename}`,
+        "   Preuve portable signée, vérifiable publiquement.",
+        "",
+        "Pour vérifier :",
+        "- ouvrir le vérificateur public HumanOrigin ;",
+        "- importer le fichier .ho.json ;",
+        "- importer le document publié si une comparaison du document est demandée.",
+        "",
+        "Important :",
+        "HumanOrigin ne certifie pas que le contenu du document est vrai.",
+        "HumanOrigin certifie qu’un processus humain mesuré a été lié à ce document.",
+      ].join("\n");
+
+      await writeTextFile(`${sendDir}${sep}README_SEND_FIRST.txt`, sendReadme);
+
+      const technicalCopies = [
+        [hoPath, `${technicalDir}${sep}CERTIFICAT_FINAL.ho.json`, "CERTIFICAT_FINAL.ho.json"],
+        [hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`, "CERTIFICAT_FINAL.v1.ho.json"],
+        [`${dir}${sep}CERTIFICAT_FINAL.html`, `${technicalDir}${sep}CERTIFICAT_FINAL.html`, "CERTIFICAT_FINAL.html"],
+        [manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`, "HumanOrigin_MANIFEST.json"],
+        [verifyTxtPath, `${technicalDir}${sep}HumanOrigin_VERIFY.txt`, "HumanOrigin_VERIFY.txt"],
+        [readMeFirstPath, `${technicalDir}${sep}HumanOrigin_READ_ME_FIRST.txt`, "HumanOrigin_READ_ME_FIRST.txt"],
+        [publicationJobPath, `${technicalDir}${sep}HumanOrigin_PUBLICATION_JOB.json`, "HumanOrigin_PUBLICATION_JOB.json"],
+        [publishedHtmlPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.html`, "HumanOrigin_PUBLISHED.html"],
+        [shareCardPath, `${technicalDir}${sep}HumanOrigin_SHARE_CARD.html`, "HumanOrigin_SHARE_CARD.html"],
+        [publishedDocumentPath, `${technicalDir}${sep}${publishedDocumentFilename}`, publishedDocumentFilename],
+      ];
+
+      if (canGeneratePublishedPdf) {
+        technicalCopies.push([
+          publishedPdfPath,
+          `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`,
+          "HumanOrigin_PUBLISHED.pdf",
+        ]);
+      }
+
+      for (const [src, dst, label] of technicalCopies) {
+        await copyIfPresent(src, dst, label);
+      }
+
+      const technicalReadme = [
+        "HUMANORIGIN — ARCHIVE TECHNIQUE",
+        "",
+        "Projet :",
+        rawShareProjectName,
+        "",
+        "Ce dossier contient les fichiers techniques, de compatibilité, de diagnostic et d’archivage.",
+        "",
+        "Pour un destinataire non technique, privilégier :",
+        "2_SEND_TO_RECIPIENT/",
+        "",
+        "Fichier de preuve recommandé :",
+        "CERTIFICAT_FINAL.v1.ho.json",
+        "",
+        "Fichier de compatibilité legacy :",
+        "CERTIFICAT_FINAL.ho.json",
+      ].join("\n");
+
+      await writeTextFile(`${technicalDir}${sep}README_TECHNICAL_PROOF.txt`, technicalReadme);
+
+      const startHereTxt = [
+        "HUMANORIGIN — PACKAGE DU PROJET",
+        "",
+        "Projet :",
+        rawShareProjectName,
+        "",
+        "À ouvrir en premier :",
+        "1_OPEN_FIRST.html",
+        "",
+        "À envoyer à un destinataire :",
+        "2_SEND_TO_RECIPIENT/",
+        "",
+        "Archive technique :",
+        "3_TECHNICAL_PROOF_ARCHIVE/",
+        "",
+        "Important :",
+        "HumanOrigin ne certifie pas que le contenu du document est vrai.",
+        "HumanOrigin certifie qu’un processus humain mesuré a été lié à ce document.",
+      ].join("\n");
+
+      await writeTextFile(shareStartHerePath, startHereTxt);
+
+      // Le package premium devient l'entrée préférée après export.
+      preferredOpenPath = shareOpenFirstPath;
     } catch (e) {
-      console.warn("[SHARE PACKAGE] build failed", e);
+      console.warn("[SHARE PACKAGE] premium build failed", e);
     }
 
     await renderPublicationKitPngs({
