@@ -3808,7 +3808,7 @@ function buildOpenFirstHtml({
 
         <div class="status">
           <strong>Action recommandée</strong>
-          <span>Envoyez le document principal ci-dessous. La preuve technique reste disponible pour un contrôle renforcé.</span>
+          <span>Envoyez le dossier 2_SEND_TO_RECIPIENT/. Il contient le document publié et la preuve portable signée. L’archive technique reste disponible pour un contrôle renforcé.</span>
         </div>
 
         <div class="grid">
@@ -3947,7 +3947,7 @@ function buildOpenFirstHtml({
     "Envoyez ce document.": "Send this document.",
     "Package prêt à transmettre. Cette page indique quoi envoyer, quoi ouvrir et comment vérifier la preuve HumanOrigin.": "Package ready to share. This page explains what to send, what to open, and how to verify the HumanOrigin proof.",
     "Action recommandée": "Recommended action",
-    "Envoyez le document principal ci-dessous. La preuve technique reste disponible pour un contrôle renforcé.": "Send the main document below. The technical proof remains available for enhanced verification.",
+    "Envoyez le dossier 2_SEND_TO_RECIPIENT/. Il contient le document publié et la preuve portable signée. L’archive technique reste disponible pour un contrôle renforcé.": "Send the 2_SEND_TO_RECIPIENT/ folder. It contains the published document and the signed portable proof. The technical archive remains available for enhanced verification.",
     "PROJET": "PROJECT",
     "STATUT": "STATUS",
     "DOCUMENT PRINCIPAL": "MAIN DOCUMENT",
