@@ -80,7 +80,8 @@
         "icons/icon.ico"
       ],
       "externalBin": [
-        "binaries/humanorigin-publisher"
+        "binaries/humanorigin-publisher",
+        "binaries/humanorigin-converter"
       ],
       "category": "DeveloperTool",
       "macOS": {
