@@ -584,8 +584,8 @@ function applySessionScreenCopy() {
 
   const leads = root.querySelectorAll(".section-lead");
   if (leads[0]) leads[0].innerText = hoPerm(
-    "Lancez une session avant d’écrire. HumanOrigin suit le rythme de travail, puis vous permet de transformer cette présence en certificat de session.",
-    "Start a session before writing. HumanOrigin follows the work rhythm, then allows you to turn that presence into a session certificate."
+    "Associez votre document, démarrez l’enregistrement HumanOrigin, travaillez normalement, puis arrêtez pour générer une preuve liée à cette version du fichier.",
+    "Attach your document, start the HumanOrigin recording, work normally, then stop to generate proof linked to this file version."
   );
 
   const statLabels = root.querySelectorAll(".stat-lbl");
@@ -593,31 +593,36 @@ function applySessionScreenCopy() {
   if (statLabels[1]) statLabels[1].innerText = hoPerm("Clics", "Clicks");
 
   const startBtn = $("start-btn");
-  if (startBtn) startBtn.innerText = hoPerm("Démarrer Session", "Start Session");
+  if (startBtn) startBtn.innerText = hoPerm("Démarrer l’enregistrement", "Start Recording");
 
   const stopBtn = $("stop-btn");
-  if (stopBtn) stopBtn.innerText = hoPerm("Arrêter", "Stop");
+  if (stopBtn) stopBtn.innerText = hoPerm("Arrêter l’enregistrement", "Stop Recording");
 
   const finalizeBtn = $("finalize-btn");
   if (finalizeBtn) {
     const t = (finalizeBtn.innerText || "").trim();
-    if (t === "Certifier la Session" || t === "Certifier la session" || t === "Certify Session" || t === "Certify session") {
-      finalizeBtn.innerText = hoPerm("Certifier la Session", "Certify Session");
+    if (
+      t === "Certifier la Session" ||
+      t === "Certifier la session" ||
+      t === "Certify Session" ||
+      t === "Certify session"
+    ) {
+      finalizeBtn.innerText = hoPerm("Certifier la session", "Certify session");
     }
   }
 
   const sideItems = root.querySelectorAll(".session-side-list li");
   if (sideItems[0]) sideItems[0].innerText = hoPerm(
-    "Un travail humain mesuré dans le temps, et non une simple sortie produite en silence.",
-    "Human work measured over time, not a simple output produced in silence."
+    "HumanOrigin ne lit pas votre document comme un détecteur IA : il mesure un processus humain de travail.",
+    "HumanOrigin does not read your document like an AI detector: it measures a human work process."
   );
   if (sideItems[1]) sideItems[1].innerText = hoPerm(
-    "Une session qui peut devenir une preuve, puis rejoindre un historique certifié cohérent.",
-    "A session that can become proof, then join a coherent certified history."
+    "Une preuve qui sera liée à une version précise du document lors de la certification finale.",
+    "Proof that will be linked to a specific version of the document during final certification."
   );
   if (sideItems[2]) sideItems[2].innerText = hoPerm(
-    "Un chemin clair vers un export final lisible, signé, et diffusable publiquement.",
-    "A clear path toward a final export that is readable, signed, and publicly shareable."
+    "Un package final lisible, signé et prêt à envoyer avec le document publié et la preuve portable.",
+    "A final package that is readable, signed, and ready to send with the published document and portable proof."
   );
 
   const draftText = root.querySelector(".draft-banner-premium span[style*='font-size: 13px']");
@@ -963,7 +968,7 @@ async function checkSession() {
 
 async function handleLogout() {
   if (isScanningUI) {
-    if (!confirm("Un scan est en cours. Se déconnecter l'arrêtera. Continuer ?")) return;
+    if (!confirm("Un enregistrement HumanOrigin est en cours. Se déconnecter l’arrêtera. Continuer ?")) return;
     await stopScan().catch(() => {});
   }
 
@@ -1354,7 +1359,7 @@ async function quickActivateProjectByName(name) {
 
 async function changeProject() {
   if (isScanningUI) {
-    if (!confirm("Un scan est en cours. L'arrêter pour changer de projet ?")) return;
+    if (!confirm("Un enregistrement HumanOrigin est en cours. L’arrêter pour changer de projet ?")) return;
     await stopScan().catch(() => {});
   }
 
@@ -1383,13 +1388,13 @@ async function stopScan() {
     lastSnapshot = snap;
 
     updateDashboardUI("STOPPED");
-    toast("Scan arrêté. Brouillon enregistré.");
+    toast("Enregistrement arrêté. Brouillon enregistré.");
 
     const gatePassed = snap?.diag?.analysis?.gate_passed;
     const finBtn = $("finalize-btn");
     if (finBtn) {
       finBtn.disabled = false;
-      finBtn.innerText = "Certifier la Session";
+      finBtn.innerText = "Certifier la session";
       if (!gatePassed) toast("Volume insuffisant : certification TEMPORAIRE possible.");
     }
 
@@ -1406,7 +1411,7 @@ async function stopScan() {
     await checkForDrafts(true);
   } catch (e) {
     updateDashboardUI("READY");
-    alert("Erreur arrêt scan: " + e);
+    alert("Erreur arrêt enregistrement : " + e);
   } finally {
     resetPasteStats();
   }
@@ -1426,7 +1431,7 @@ function updateDashboardUI(state) {
 
   if (finBtn && state !== "STOPPED") {
     finBtn.disabled = true;
-    finBtn.innerText = "Certifier la Session";
+    finBtn.innerText = "Certifier la session";
   }
 
   if (state === "READY") {
@@ -1442,7 +1447,7 @@ function updateDashboardUI(state) {
     if (finBtn) {
       finBtn.classList.remove("hidden");
       finBtn.disabled = false;
-      if (finBtn.innerText === "Certifiée ✅") finBtn.innerText = "Certifier la Session";
+      if (finBtn.innerText === "Certifiée ✅") finBtn.innerText = "Certifier la session";
     }
   }
 }
@@ -1603,7 +1608,7 @@ async function finalizeSession() {
     alert("Erreur certification : " + (e?.message || e));
   } finally {
     if (!success && btn) {
-      btn.innerText = "Certifier la Session";
+      btn.innerText = "Certifier la session";
       btn.disabled = false;
     }
   }
@@ -1661,7 +1666,7 @@ async function startScan() {
     currentSessionId = null;
     currentSessionStartedAt = null;
     updateDashboardUI("READY");
-    alert("Impossible de démarrer le scan : " + e);
+    alert("Impossible de démarrer l’enregistrement HumanOrigin : " + e);
   }
 }
 
@@ -2735,7 +2740,7 @@ async function recoverDraft(sid) {
     const finBtn = $("finalize-btn");
     if (finBtn) {
       finBtn.disabled = false;
-      finBtn.innerText = "Certifier la Session";
+      finBtn.innerText = "Certifier la session";
     }
 
     const banner = $("draft-banner");
