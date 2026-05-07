@@ -2171,23 +2171,27 @@ async function exportFinalProjectCertificate() {
       signatures: [],
     };
 
-    const hoDocV1CanonStr = JSON.stringify(canonicalize(hoDocV1.payload));
-    const hoDocV1PayloadHashHex = await sha256Hex(hoDocV1CanonStr);
+    const signHoDocV1 = async () => {
+      const hoDocV1CanonStr = JSON.stringify(canonicalize(hoDocV1.payload));
+      const hoDocV1PayloadHashHex = await sha256Hex(hoDocV1CanonStr);
 
-    const hoDocV1SigObj = await invoke("sign_payload_hash", {
-      payloadHash: hoDocV1PayloadHashHex,
-    });
+      const hoDocV1SigObj = await invoke("sign_payload_hash", {
+        payloadHash: hoDocV1PayloadHashHex,
+      });
 
-    hoDocV1.payload_sha256 = hoDocV1PayloadHashHex;
-    hoDocV1.signatures = [
-      {
-        role: "issuer",
-        algorithm: "ed25519",
-        signed_field: "payload_sha256",
-        public_key: hoDocV1SigObj.public_key,
-        signature: hoDocV1SigObj.signature,
-      },
-    ];
+      hoDocV1.payload_sha256 = hoDocV1PayloadHashHex;
+      hoDocV1.signatures = [
+        {
+          role: "issuer",
+          algorithm: "ed25519",
+          signed_field: "payload_sha256",
+          public_key: hoDocV1SigObj.public_key,
+          signature: hoDocV1SigObj.signature,
+        },
+      ];
+    };
+
+    await signHoDocV1();
 
     await writeTextFile(badgePath, badgeSvg);
     await writeTextFile(cartouchePath, cartoucheSvg);
@@ -2433,13 +2437,82 @@ async function exportFinalProjectCertificate() {
 
       console.log("[PUBLISHER RESULT]", publishResult);
 
+      const finalPdfPath = publishResult.output_pdf_path || publishedPdfPath;
+      console.log("[PUBLISHED PDF PATH]", finalPdfPath);
+
+      const publishedOutputSha256 = await invoke("sha256_file", { path: finalPdfPath });
+
+      hoDocV1.payload.publication = {
+        status: "visible_published_copy_included",
+        relationship: bindExtLower === "docx"
+          ? "published_pdf_generated_from_bound_docx_then_marked_by_humanorigin"
+          : "published_pdf_generated_from_bound_pdf_then_marked_by_humanorigin",
+        source: {
+          role: "bound_source_document",
+          filename: hoDoc.document.filename ?? null,
+          mime: hoDoc.document.mime ?? null,
+          sha256: hoDoc.document.sha256 ?? null,
+        },
+        output: {
+          role: "published_circulation_copy",
+          filename: publishedPdfFilename,
+          mime: "application/pdf",
+          sha256: publishedOutputSha256,
+          generated_from_source_sha256: hoDoc.document.sha256 ?? null,
+          publisher_engine: publishResult.engine || "humanorigin-publisher",
+        },
+      };
+
+      await signHoDocV1();
+      await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
+
+      const manifestJsonWithPublicationHash = buildPublicationManifest({
+        projectTitle: hoDoc.subject.title,
+        documentFilename: hoDoc.document.filename,
+        publishedDocumentFilename,
+        certificateId,
+        issuedAt,
+        verdict,
+        verifierUrl,
+        documentSha256: hoDoc.document.sha256,
+        documentMime: hoDoc.document.mime,
+        publishedOutputFilename: publishedPdfFilename,
+        publishedOutputSha256,
+      });
+
+      await writeTextFile(manifestPath, manifestJsonWithPublicationHash);
+
+      try {
+        const rawShareProjectName = String(hoDoc?.subject?.title || "HumanOrigin Project")
+          .replace(/[\\/:*?"<>|]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim() || "HumanOrigin Project";
+
+        const sharePackageDir = `${dir}${sep}${rawShareProjectName} — HumanOrigin Package`;
+        const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
+        const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
+
+        const sendPublishedPdfFilename = `${rawShareProjectName} — HumanOrigin_PUBLISHED.pdf`;
+        const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1.ho.json`;
+
+        await createDir(sendDir, { recursive: true });
+        await createDir(technicalDir, { recursive: true });
+
+        await copyFile(finalPdfPath, `${sendDir}${sep}${sendPublishedPdfFilename}`);
+        await copyFile(hoPathV1, `${sendDir}${sep}${sendProofFilename}`);
+
+        await copyFile(finalPdfPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`);
+        await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`);
+        await copyFile(manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`);
+      } catch (syncErr) {
+        console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
+      }
+
       toast(bindExtLower === "docx"
         ? "DOCX converti et PDF publié HumanOrigin généré ✅"
         : "PDF publié HumanOrigin généré ✅"
       );
 
-      const finalPdfPath = publishResult.output_pdf_path || publishedPdfPath;
-      console.log("[PUBLISHED PDF PATH]", finalPdfPath);
       await invoke("open_file", { path: preferredOpenPath });
       return;
     }
@@ -3460,6 +3533,7 @@ function buildPublicationManifest({
   documentSha256,
   documentMime,
   publishedOutputFilename = null,
+  publishedOutputSha256 = null,
 }) {
   const files = [
     "CERTIFICAT_FINAL.html",
@@ -3495,6 +3569,7 @@ function buildPublicationManifest({
       bound_document_mime: documentMime,
       published_document_filename: publishedDocumentFilename,
       published_output_filename: publishedOutputFilename,
+      published_output_sha256: publishedOutputSha256,
 
       publication_status: publishedOutputFilename
         ? "visible_published_copy_included"
