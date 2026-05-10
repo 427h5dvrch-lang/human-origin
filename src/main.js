@@ -3630,20 +3630,26 @@ function buildOpenFirstHtml({
   verifierUrl,
   isPdf,
 }) {
-  const mainDocumentFilename = isPdf && publishedOutputFilename
-    ? publishedOutputFilename
-    : publishedDocumentFilename;
-
+  const mainDocumentFilename = publishedOutputFilename || publishedDocumentFilename;
   const proofFilename = referenceProofFilename || "CERTIFICAT_FINAL.v1.ho.json";
-  const compatProofFilename = compatibilityProofFilename || "CERTIFICAT_FINAL.ho.json";
+
+  const packageFolderName = "2_SEND_TO_RECIPIENT";
+  const archiveFolderName = "3_TECHNICAL_PROOF_ARCHIVE";
+
+  const mainDisplayFilename = String(mainDocumentFilename || "").split(/[\\/]/).pop();
+  const proofDisplayFilename = String(proofFilename || "").split(/[\\/]/).pop();
+
+  const sendFolderHref = `${packageFolderName}/`;
+  const sendDocumentHref = `${packageFolderName}/${mainDisplayFilename}`;
+  const archiveFolderHref = `${archiveFolderName}/`;
 
   function withVerifierContext(url) {
     const base = String(url || "https://427h5dvrch-lang.github.io/humanorigin-verifier/");
     const join = base.includes("?") ? "&" : "?";
     return base + join
       + "project=" + encodeURIComponent(projectTitle || "")
-      + "&expected_document=" + encodeURIComponent(mainDocumentFilename || "")
-      + "&expected_proof=" + encodeURIComponent(proofFilename || "");
+      + "&expected_document=" + encodeURIComponent(`${packageFolderName}/${mainDisplayFilename}`)
+      + "&expected_proof=" + encodeURIComponent(`${packageFolderName}/${proofDisplayFilename}`);
   }
 
   const contextualVerifierUrl = withVerifierContext(verifierUrl);
@@ -3651,561 +3657,373 @@ function buildOpenFirstHtml({
   const sendMessage = [
     "Bonjour,",
     "",
-    "Je vous transmets le document publié avec son marquage HumanOrigin.",
+    "Je vous transmets le dossier HumanOrigin lié au document.",
     "",
-    "Document à consulter :",
-    mainDocumentFilename,
+    "Il contient :",
+    "• le PDF publié, que vous pouvez ouvrir directement ;",
+    "• la preuve portable signée HumanOrigin, conservée pour vérification publique.",
     "",
-    "Si une vérification renforcée est nécessaire, utilisez aussi :",
-    proofFilename,
+    "Le fichier .ho.json n’est pas destiné à être lu directement : il sert au vérificateur HumanOrigin.",
     "",
     "Vérificateur public :",
     contextualVerifierUrl,
     "",
-  ].join("\\n");
+    "Bien à vous,"
+  ].join(String.fromCharCode(10));
 
   return `<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>HumanOrigin — Open First</title>
+  <title>HumanOrigin — Package prêt</title>
   <style>
     :root{
       --navy:#08234d;
       --ink:#0f172a;
       --muted:#64748b;
-      --line:#dbe3ee;
-      --paper:#fffdf8;
-      --bg:#f4f7fb;
+      --bg:#eef3f9;
     }
     *{box-sizing:border-box}
     body{
       margin:0;
+      min-height:100vh;
       background:
-        radial-gradient(circle at top left,rgba(8,35,77,.09),transparent 34%),
+        radial-gradient(circle at top left,rgba(8,35,77,.12),transparent 36%),
         linear-gradient(135deg,#f8fafc,#eef3f9);
       font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
       color:var(--ink);
     }
     .wrap{
-      max-width:1120px;
+      max-width:960px;
       margin:0 auto;
-      padding:34px 24px 46px;
+      padding:46px 24px 60px;
     }
-    .hero{
-      display:grid;
-      grid-template-columns:1.1fr .9fr;
-      gap:22px;
-      align-items:stretch;
-    }
-    .panel{
-      background:rgba(255,255,255,.86);
-      border:1px solid rgba(15,23,42,.10);
-      border-radius:30px;
-      box-shadow:0 24px 70px rgba(15,23,42,.10);
-      padding:30px;
+    .card{
+      background:rgba(255,255,255,.94);
+      border:1px solid rgba(15,23,42,.08);
+      border-radius:36px;
+      box-shadow:0 28px 76px rgba(15,23,42,.11);
+      padding:38px;
       backdrop-filter:blur(12px);
     }
     .kicker{
+      margin-bottom:14px;
+      color:var(--muted);
+      font-size:11px;
+      letter-spacing:.22em;
+      text-transform:uppercase;
+      font-weight:950;
+    }
+    h1{
+      margin:0;
+      font-size:56px;
+      line-height:.94;
+      letter-spacing:-.06em;
+    }
+    .lead{
+      margin:18px 0 0;
+      max-width:680px;
+      color:#475569;
+      font-size:18px;
+      line-height:1.5;
+      font-weight:720;
+    }
+    .hero{
+      margin-top:32px;
+      padding:32px;
+      border-radius:30px;
+      color:white;
+      background:linear-gradient(145deg,#08234d,#0d2f68);
+      box-shadow:0 26px 70px rgba(8,35,77,.25);
+    }
+    .hero h2{
+      margin:0;
+      font-size:38px;
+      line-height:1;
+      letter-spacing:-.045em;
+    }
+    .hero p{
+      margin:14px 0 0;
+      max-width:680px;
+      color:rgba(255,255,255,.84);
+      font-size:16px;
+      line-height:1.5;
+      font-weight:720;
+    }
+    .folder{
+      margin-top:22px;
+      padding:22px;
+      border-radius:22px;
+      background:rgba(255,255,255,.12);
+      border:1px solid rgba(255,255,255,.18);
+    }
+    .folder span{
+      display:block;
+      margin-bottom:8px;
+      color:rgba(255,255,255,.68);
       font-size:11px;
       letter-spacing:.18em;
       text-transform:uppercase;
       font-weight:950;
-      color:var(--muted);
-      margin-bottom:10px;
     }
-    h1{
-      margin:0;
-      font-size:44px;
-      line-height:.98;
-      letter-spacing:-.045em;
-      color:var(--ink);
-    }
-    .subtitle{
-      margin:14px 0 0;
-      max-width:680px;
-      color:#475569;
-      font-size:17px;
-      line-height:1.55;
-      font-weight:650;
-    }
-    .status{
-      margin-top:24px;
-      padding:17px 18px;
-      border-radius:20px;
-      border:1px solid rgba(8,35,77,.12);
-      background:linear-gradient(135deg,rgba(8,35,77,.055),rgba(255,255,255,.78));
-    }
-    .status strong{
+    .folder strong{
       display:block;
-      font-size:18px;
-      margin-bottom:5px;
+      color:white;
+      font-size:30px;
+      line-height:1.1;
     }
-    .status span{
+    .folder small{
       display:block;
+      margin-top:7px;
+      color:rgba(255,255,255,.70);
       font-size:13px;
-      color:#475569;
-      line-height:1.45;
-      font-weight:650;
-    }
-    .grid{
-      display:grid;
-      grid-template-columns:repeat(2,minmax(0,1fr));
-      gap:12px;
-      margin-top:20px;
-    }
-    .meta{
-      border:1px solid rgba(15,23,42,.09);
-      border-radius:18px;
-      background:rgba(248,250,252,.86);
-      padding:15px;
-    }
-    .meta span{
-      display:block;
-      font-size:10px;
-      letter-spacing:.12em;
-      text-transform:uppercase;
-      font-weight:950;
-      color:var(--muted);
-      margin-bottom:7px;
-    }
-    .meta strong{
-      display:block;
-      font-size:14px;
-      line-height:1.35;
-      color:var(--ink);
-      word-break:break-word;
+      font-weight:800;
+      overflow-wrap:anywhere;
     }
     .actions{
-      display:grid;
-      gap:14px;
-    }
-    .action-card{
-      border-radius:24px;
-      border:1px solid rgba(15,23,42,.10);
-      background:#ffffff;
-      padding:22px;
-    }
-    .action-card.primary{
-      background:var(--navy);
-      color:white;
-    }
-    .action-card h2{
-      margin:0 0 8px;
-      font-size:22px;
-      letter-spacing:-.03em;
-    }
-    .action-card p{
-      margin:0 0 16px;
-      font-size:14px;
-      line-height:1.48;
-      color:#64748b;
-      font-weight:650;
-    }
-    .action-card.primary p{
-      color:rgba(255,255,255,.78);
-    }
-    .btn-row{
       display:flex;
-      gap:10px;
       flex-wrap:wrap;
+      gap:10px;
+      margin-top:22px;
     }
-    .btn, button.btn{
+    .btn,button.btn{
       appearance:none;
-      border:1px solid rgba(8,35,77,.18);
       display:inline-flex;
       align-items:center;
       justify-content:center;
-      min-height:42px;
-      padding:11px 15px;
+      min-height:46px;
+      padding:12px 18px;
       border-radius:999px;
-      background:#ffffff;
+      border:1px solid rgba(8,35,77,.16);
+      background:white;
       color:var(--navy);
       text-decoration:none;
       font:inherit;
       font-size:14px;
-      font-weight:900;
+      font-weight:950;
       cursor:pointer;
-    }
-    .primary .btn{
-      background:#ffffff;
-      color:var(--navy);
-      border-color:#ffffff;
     }
     .btn.dark{
       background:var(--navy);
       color:white;
       border-color:var(--navy);
     }
+    .files{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+      margin-top:24px;
+    }
     .file{
-      margin-top:12px;
-      padding:12px 13px;
-      border-radius:15px;
+      padding:18px;
+      border-radius:20px;
       background:#f8fafc;
       border:1px solid rgba(15,23,42,.08);
-      font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
-      font-size:12px;
-      font-weight:800;
-      color:#334155;
+    }
+    .file span{
+      display:block;
+      margin-bottom:8px;
+      color:var(--muted);
+      font-size:10px;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      font-weight:950;
+    }
+    .file strong{
+      display:block;
+      font-size:14px;
+      line-height:1.35;
       overflow-wrap:anywhere;
     }
-    .primary .file{
-      background:rgba(255,255,255,.10);
-      border-color:rgba(255,255,255,.16);
-      color:white;
+    .file em{
+      display:block;
+      margin-top:8px;
+      color:#64748b;
+      font-style:normal;
+      font-size:12px;
+      line-height:1.4;
+      font-weight:720;
     }
-    .note{
-      margin-top:22px;
-      padding:18px 20px;
+    .below{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:16px;
+      margin-top:18px;
+    }
+    .panel{
+      padding:22px;
+      border-radius:24px;
+      background:white;
+      border:1px solid rgba(15,23,42,.08);
+      box-shadow:0 16px 42px rgba(15,23,42,.06);
+    }
+    .panel h3{
+      margin:0;
+      font-size:21px;
+      line-height:1.1;
+      letter-spacing:-.03em;
+    }
+    .panel p{
+      margin:10px 0 0;
+      color:#64748b;
+      font-size:14px;
+      line-height:1.5;
+      font-weight:720;
+    }
+    details{margin-top:14px}
+    summary{
+      cursor:pointer;
+      color:var(--navy);
+      font-size:13px;
+      font-weight:900;
+    }
+    .message{
+      margin-top:12px;
+      padding:15px 16px;
+      border-radius:16px;
+      background:#f8fafc;
+      border:1px solid rgba(15,23,42,.08);
+      color:#0f172a;
+      font-size:13px;
+      line-height:1.55;
+      font-weight:650;
+      white-space:pre-wrap;
+      max-height:230px;
+      overflow:auto;
+    }
+    .fineprint{
+      margin-top:20px;
+      padding:17px 19px;
       border-radius:22px;
       border:1px dashed rgba(8,35,77,.22);
-      background:rgba(255,253,248,.76);
+      background:rgba(255,253,248,.78);
       color:#334155;
-      line-height:1.55;
       font-size:14px;
-      font-weight:650;
+      line-height:1.55;
+      font-weight:720;
     }
-    @media(max-width:900px){
-      .hero{grid-template-columns:1fr}
-      h1{font-size:36px}
-    }
-    @media(max-width:620px){
-      .grid{grid-template-columns:1fr}
-      .panel{padding:22px}
+    @media(max-width:820px){
+      h1{font-size:42px}
+      .files,.below{grid-template-columns:1fr}
+      .card,.hero{padding:24px}
     }
   </style>
 </head>
 <body>
   <main class="wrap">
-    <section class="hero">
-      <div class="panel">
-        <div class="kicker">HumanOrigin Package</div>
-        <h1>Envoyez ce document.</h1>
-        <p class="subtitle">
-          Package prêt à transmettre. Cette page indique quoi envoyer, quoi ouvrir et comment vérifier la preuve HumanOrigin.
+    <section class="card">
+      <div class="kicker">HumanOrigin Package</div>
+      <h1>Votre package est prêt.</h1>
+      <p class="lead">
+        Un seul geste : envoyez le dossier préparé au destinataire. Il contient le document lisible et la preuve vérifiable.
+      </p>
+
+      <div class="hero">
+        <div class="kicker">Action principale</div>
+        <h2>Envoyez ce dossier.</h2>
+        <p>
+          Le destinataire ouvre le PDF. La preuve signée reste dans le dossier pour vérification publique si nécessaire.
         </p>
 
-        <div class="status">
-          <strong>Action recommandée</strong>
-          <span>Envoyez le dossier 2_SEND_TO_RECIPIENT/. Il contient le document publié et la preuve portable signée. L’archive technique reste disponible pour un contrôle renforcé.</span>
+        <div class="folder">
+          <span>Dossier à transmettre</span>
+          <strong>Dossier à envoyer</strong>
+          <small>${esc(packageFolderName)}</small>
         </div>
 
-        <div class="grid">
-          <div class="meta">
-            <span>Projet</span>
-            <strong>${esc(projectTitle)}</strong>
-          </div>
-          <div class="meta">
-            <span>Statut</span>
-            <strong>${esc(verdict || "UNKNOWN")}</strong>
-          </div>
-          <div class="meta">
-            <span>Document principal</span>
-            <strong>${esc(mainDocumentFilename)}</strong>
-          </div>
-          <div class="meta">
-            <span>Preuve vérifiable</span>
-            <strong>${esc(proofFilename)}</strong>
-          </div>
-          <div class="meta">
-            <span>Certificat</span>
-            <strong>${esc(certificateId)}</strong>
-          </div>
-          <div class="meta">
-            <span>Émis le</span>
-            <strong>${esc(issuedAt)}</strong>
-          </div>
-        </div>
-
-        <div class="note">
-          HumanOrigin ne certifie pas que le contenu du document est vrai.
-          Il certifie qu'un processus humain mesuré a été lié à ce document et qu'une preuve portable peut être vérifiée publiquement.
+        <div class="actions">
+          <a class="btn" href="${esc(sendFolderHref)}" target="_blank" rel="noopener">Ouvrir le dossier</a>
+          <button class="btn" type="button" id="copySendMessage">Copier le message</button>
+          <a class="btn" href="${esc(sendDocumentHref)}" target="_blank" rel="noopener">Voir le PDF</a>
         </div>
       </div>
 
-      <div class="actions">
-        <div class="action-card primary">
-          <div class="kicker">Envoi standard</div>
-          <h2>Document à transmettre</h2>
-          <p>Pour une lecture simple, envoyez ce fichier. Il contient le document publié avec le marquage HumanOrigin visible.</p>
-          <div class="btn-row">
-            <a class="btn" href="${esc(mainDocumentFilename)}" target="_blank" rel="noopener">Ouvrir le document</a>
-            <button class="btn" type="button" id="copySendMessage">Copier le message d'envoi</button>
+      <div class="files">
+        <div class="file">
+          <span>PDF publié</span>
+          <strong>${esc(mainDisplayFilename)}</strong>
+          <em>Document à lire normalement.</em>
+        </div>
+        <div class="file">
+          <span>Preuve incluse</span>
+          <strong>${esc(proofDisplayFilename)}</strong>
+          <em>À garder dans le dossier. Ne pas ouvrir directement.</em>
+        </div>
+      </div>
+
+      <div class="below">
+        <div class="panel">
+          <h3>Email d’accompagnement</h3>
+          <p>Copiez ce message, puis joignez le dossier ${esc(packageFolderName)}.</p>
+          <div class="actions">
+            <button class="btn dark" type="button" id="copySendMessage2">Copier le message</button>
           </div>
-          <div class="file">${esc(mainDocumentFilename)}</div>
+          <details>
+            <summary>Voir le message</summary>
+            <div class="message">${esc(sendMessage)}</div>
+          </details>
         </div>
 
-        <div class="action-card">
-          <div class="kicker">Contrôle renforcé</div>
-          <h2>Vérification publique</h2>
-          <p>Pour vérifier formellement, ouvrir le vérificateur public avec le fichier de preuve de référence.</p>
-          <div class="btn-row">
+        <div class="panel">
+          <h3>Vérification facultative</h3>
+          <p>Le fichier .ho.json n’est pas une page à lire. Il sert au vérificateur HumanOrigin.</p>
+          <div class="actions">
             <a class="btn dark" href="${esc(contextualVerifierUrl)}" target="_blank" rel="noopener">Ouvrir le vérificateur</a>
-            <a class="btn" href="${esc(proofFilename)}" target="_blank" rel="noopener">Ouvrir la preuve</a>
+            <a class="btn" href="${esc(archiveFolderHref)}" target="_blank" rel="noopener">Archive technique</a>
           </div>
-          <div class="file">${esc(proofFilename)}</div>
         </div>
+      </div>
 
-        <div class="action-card">
-          <div class="kicker">Compatibilité</div>
-          <h2>Ancienne preuve</h2>
-          <p>Conservée pour compatibilité avec les anciens exports. La preuve v1 reste la référence.</p>
-          <div class="file">${esc(compatProofFilename)}</div>
-        </div>
+      <div class="fineprint">
+        HumanOrigin ne certifie pas que le contenu du document est vrai. Il certifie qu’un processus humain mesuré a été lié à ce document et qu’une preuve portable peut être vérifiée publiquement.
       </div>
     </section>
   </main>
 
   <script>
     const sendMessage = ${JSON.stringify(sendMessage)};
-    const btn = document.getElementById("copySendMessage");
-    if (btn) {
-      btn.addEventListener("click", async () => {
+    const buttons = [
+      document.getElementById("copySendMessage"),
+      document.getElementById("copySendMessage2")
+    ].filter(Boolean);
+
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (_) {
         try {
-          await navigator.clipboard.writeText(sendMessage);
-          const old = btn.textContent;
-          btn.textContent = "Message copié";
-          setTimeout(() => { btn.textContent = old; }, 1600);
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "");
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          return ok;
         } catch (_) {
-          alert(sendMessage);
+          return false;
         }
-      });
+      }
     }
+
+    buttons.forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const ok = await copyText(sendMessage);
+        const old = btn.textContent;
+        btn.textContent = ok ? "Message copié" : "Copie impossible";
+        setTimeout(() => { btn.textContent = old; }, 1600);
+        if (!ok) alert(sendMessage);
+      });
+    });
   </script>
-
-<style id="HO_OPEN_FIRST_LANG_SWITCH_V1">
-  .ho-of-lang-host {
-    position: relative !important;
-  }
-
-  .ho-of-lang-switch {
-    position: absolute;
-    top: 24px;
-    right: 24px;
-    z-index: 50;
-    display: inline-flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .ho-of-lang-btn {
-    min-width: 42px;
-    height: 34px;
-    padding: 0 14px;
-    border-radius: 999px;
-    border: 1px solid rgba(11, 21, 42, 0.12);
-    background: rgba(255, 255, 255, 0.82);
-    color: #0b152a;
-    font-weight: 800;
-    font-size: 12px;
-    letter-spacing: 0.04em;
-    cursor: pointer;
-    box-shadow: 0 8px 20px rgba(11, 21, 42, 0.08);
-  }
-
-  .ho-of-lang-btn.is-active {
-    background: #0b152a;
-    color: #ffffff;
-    border-color: #0b152a;
-  }
-
-  @media (max-width: 720px) {
-    .ho-of-lang-switch {
-      position: static;
-      justify-content: flex-end;
-      margin: 0 0 18px 0;
-    }
-  }
-</style>
-
-<script id="HO_OPEN_FIRST_LANG_SWITCH_V1">
-(function () {
-  var STORAGE_KEY = "humanorigin_open_first_lang";
-
-  var translations = {
-    "Envoyez ce document.": "Send this document.",
-    "Package prêt à transmettre. Cette page indique quoi envoyer, quoi ouvrir et comment vérifier la preuve HumanOrigin.": "Package ready to share. This page explains what to send, what to open, and how to verify the HumanOrigin proof.",
-    "Action recommandée": "Recommended action",
-    "Envoyez le dossier 2_SEND_TO_RECIPIENT/. Il contient le document publié et la preuve portable signée. L’archive technique reste disponible pour un contrôle renforcé.": "Send the 2_SEND_TO_RECIPIENT/ folder. It contains the published document and the signed portable proof. The technical archive remains available for enhanced verification.",
-    "PROJET": "PROJECT",
-    "STATUT": "STATUS",
-    "DOCUMENT PRINCIPAL": "MAIN DOCUMENT",
-    "PREUVE VÉRIFIABLE": "VERIFIABLE PROOF",
-    "CERTIFICAT": "CERTIFICATE",
-    "ÉMIS LE": "ISSUED AT",
-    "HumanOrigin ne certifie pas que le contenu du document est vrai. Il certifie qu'un processus humain mesuré a été lié à ce document et qu'une preuve portable peut être vérifiée publiquement.": "HumanOrigin does not certify that the document content is true. It certifies that a measured human process was linked to this document and that a portable proof can be publicly verified.",
-    "ENVOI STANDARD": "STANDARD SEND",
-    "Document à transmettre": "Document to send",
-    "Pour une lecture simple, envoyez ce fichier. Il contient le document public avec le marquage HumanOrigin visible.": "For simple reading, send this file. It contains the public document with the visible HumanOrigin mark.",
-    "Ouvrir le document": "Open document",
-    "Copier le message d'envoi": "Copy sending message",
-    "CONTRÔLE RENFORCÉ": "ENHANCED CHECK",
-    "Vérification publique": "Public verification",
-    "Pour vérifier formellement, ouvrir le vérificateur public avec le fichier de preuve de référence.": "For formal verification, open the public verifier with the reference proof file.",
-    "Ouvrir le vérificateur": "Open verifier",
-    "Ouvrir la preuve": "Open proof",
-    "COMPATIBILITÉ": "COMPATIBILITY",
-    "Ancienne preuve": "Legacy proof",
-    "Conservée pour compatibilité avec les anciens exports. La preuve v1 reste la référence.": "Kept for compatibility with older exports. The v1 proof remains the reference.",
-    "INCOMPLETE": "INCOMPLETE"
-  };
-
-  var originalText = new WeakMap();
-  var currentLang = "fr";
-
-  function norm(s) {
-    return String(s || "").replace(/\s+/g, " ").trim();
-  }
-
-  function makeSwitch() {
-    if (document.querySelector(".ho-of-lang-switch")) return;
-
-    function findPreferredHost() {
-      var title = Array.from(document.querySelectorAll("h1, h2")).find(function (el) {
-        var t = norm(el.textContent).toLowerCase();
-        return t === "envoyez ce document." || t === "send this document.";
-      });
-
-      if (title) {
-        var current = title.parentElement;
-        for (var i = 0; i < 8 && current && current !== document.body; i++) {
-          var box = current.getBoundingClientRect ? current.getBoundingClientRect() : { width: 0, height: 0 };
-          var text = norm(current.textContent).toLowerCase();
-
-          var looksLikeMainCard =
-            box.width >= 360 &&
-            box.height >= 360 &&
-            (
-              text.indexOf("action recommandée") !== -1 ||
-              text.indexOf("recommended action") !== -1 ||
-              text.indexOf("document principal") !== -1 ||
-              text.indexOf("main document") !== -1
-            );
-
-          if (looksLikeMainCard) return current;
-
-          current = current.parentElement;
-        }
-      }
-
-      return document.querySelector("main") || document.querySelector(".shell") || document.querySelector(".container") || document.body;
-    }
-
-    var host = findPreferredHost();
-    host.classList.add("ho-of-lang-host");
-
-    var wrap = document.createElement("div");
-    wrap.className = "ho-of-lang-switch";
-    wrap.setAttribute("aria-label", "Language");
-
-    var btnEn = document.createElement("button");
-    btnEn.type = "button";
-    btnEn.className = "ho-of-lang-btn";
-    btnEn.textContent = "EN";
-    btnEn.setAttribute("data-ho-lang", "en");
-
-    var btnFr = document.createElement("button");
-    btnFr.type = "button";
-    btnFr.className = "ho-of-lang-btn";
-    btnFr.textContent = "FR";
-    btnFr.setAttribute("data-ho-lang", "fr");
-
-    wrap.appendChild(btnEn);
-    wrap.appendChild(btnFr);
-
-    if (host.firstChild) host.insertBefore(wrap, host.firstChild);
-    else host.appendChild(wrap);
-
-    wrap.addEventListener("click", function (event) {
-      var btn = event.target.closest("[data-ho-lang]");
-      if (!btn) return;
-      setLang(btn.getAttribute("data-ho-lang") || "fr");
-    });
-  }
-
-  function translateTextNode(node, lang) {
-    if (!originalText.has(node)) {
-      originalText.set(node, node.nodeValue);
-    }
-
-    var original = originalText.get(node);
-    var key = norm(original);
-
-    if (!key) return;
-
-    if (lang === "fr") {
-      node.nodeValue = original;
-      return;
-    }
-
-    if (translations[key]) {
-      node.nodeValue = original.replace(key, translations[key]);
-    }
-  }
-
-  function applyLang(lang) {
-    currentLang = lang === "en" ? "en" : "fr";
-
-    var walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-      {
-        acceptNode: function (node) {
-          var parent = node.parentElement;
-          if (!parent) return NodeFilter.FILTER_REJECT;
-          var tag = parent.tagName ? parent.tagName.toLowerCase() : "";
-          if (tag === "script" || tag === "style") return NodeFilter.FILTER_REJECT;
-          if (parent.closest && parent.closest(".ho-of-lang-switch")) return NodeFilter.FILTER_REJECT;
-          if (!norm(node.nodeValue)) return NodeFilter.FILTER_REJECT;
-          return NodeFilter.FILTER_ACCEPT;
-        }
-      }
-    );
-
-    var nodes = [];
-    while (walker.nextNode()) nodes.push(walker.currentNode);
-    nodes.forEach(function (node) {
-      translateTextNode(node, currentLang);
-    });
-
-    Array.from(document.querySelectorAll(".ho-of-lang-btn")).forEach(function (btn) {
-      btn.classList.toggle("is-active", btn.getAttribute("data-ho-lang") === currentLang);
-    });
-
-    document.documentElement.setAttribute("lang", currentLang);
-  }
-
-  function setLang(lang) {
-    var clean = lang === "en" ? "en" : "fr";
-    try {
-      localStorage.setItem(STORAGE_KEY, clean);
-    } catch (e) {}
-    applyLang(clean);
-  }
-
-  function init() {
-    makeSwitch();
-
-    var saved = "fr";
-    try {
-      saved = localStorage.getItem(STORAGE_KEY) || "fr";
-    } catch (e) {}
-
-    applyLang(saved);
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init);
-  } else {
-    init();
-  }
-})();
-</script>
-
 </body>
 </html>`;
 }
+
 
   function buildPublishedHtml({
   projectTitle,
