@@ -916,8 +916,8 @@
   }
 
   .ho-ux-technical-dim {
-    opacity: .45 !important;
-    filter: saturate(.8);
+    opacity: .96 !important;
+    filter: none;
   }
 
   .ho-ux-hidden-technical {
@@ -1014,6 +1014,8 @@
   ];
 
   const TEXT_REPLACEMENTS = new Map([
+    ["Travail enregistré ✅", "Travail enregistré ✅"],
+    ["Travail enregistré ✅", "Travail enregistré ✅"],
     ["Durée", "Temps actif"],
     ["Frappes", "Activité clavier"],
     ["Clics", "Activité souris"],
@@ -1023,9 +1025,6 @@
     ["Hash", "Détail technique"],
     ["hash", "détail technique"],
     ["SHA-256", "empreinte technique"],
-    [".ho.json", "fichier de vérification"],
-    ["Certificat", "Package"],
-    ["certificat", "package"]
   ]);
 
   function norm(s) {
@@ -1390,7 +1389,7 @@
           <div class="workspace-head">
             <div>
               <div class="ritual-kicker">HumanOrigin Workspace</div>
-              <h1 class="workspace-title">Un espace de certification humaine</h1>
+              <h1 class="workspace-title">Un espace de preuve humaine</h1>
               <p class="workspace-sub">
                 Ici, le travail humain ne se contente pas d’être produit : il est mesuré, certifié, puis préparé pour circuler comme une preuve lisible, signée et liée à un document précis.
               </p>
@@ -1540,5 +1539,253 @@
     <div id="toast">Message</div>
 
     <script type="module" src="/src/main.js"></script>
-  </body>
+  
+<!-- HO_APP_UX_FINAL_CLEAN_RUNTIME_V1 -->
+<style>
+  .ho-final-primary {
+    min-height: 52px !important;
+    padding: 0 24px !important;
+    border-radius: 999px !important;
+    font-weight: 850 !important;
+    box-shadow: 0 16px 38px rgba(7,26,47,.18) !important;
+    outline: 2px solid rgba(199,154,59,.20) !important;
+  }
+
+  .ho-final-primary::after {
+    content: " →";
+    font-weight: 900;
+  }
+
+  .ho-final-secondary {
+    opacity: .58 !important;
+    transform: scale(.96);
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  .ho-final-status {
+    pointer-events: none !important;
+    cursor: default !important;
+    opacity: 1 !important;
+    background: rgba(15,118,110,.11) !important;
+    color: #0f766e !important;
+    border: 1px solid rgba(15,118,110,.24) !important;
+    box-shadow: none !important;
+  }
+
+  .ho-final-know-panel {
+    opacity: 1 !important;
+    filter: none !important;
+  }
+
+  .ho-final-know-panel,
+  .ho-final-know-panel * {
+    opacity: 1 !important;
+    filter: none !important;
+  }
+
+  .ho-final-know-panel h1,
+  .ho-final-know-panel h2,
+  .ho-final-know-panel h3 {
+    font-size: 22px !important;
+    line-height: 1.15 !important;
+  }
+
+  .ho-final-know-panel .ho-ux-technical-dim {
+    opacity: 1 !important;
+    filter: none !important;
+  }
+
+  .ho-final-hide {
+    display: none !important;
+  }
+</style>
+
+<script>
+(function () {
+  function norm(s) {
+    return (s || "").replace(/\s+/g, " ").trim();
+  }
+
+  function isVisible(el) {
+    if (!el || !el.isConnected) return false;
+    const st = window.getComputedStyle(el);
+    return st.display !== "none" && st.visibility !== "hidden" && el.getClientRects().length > 0;
+  }
+
+  function text(el) {
+    if (!el) return "";
+    return norm(el.innerText || el.textContent || el.value || el.placeholder || "");
+  }
+
+  function buttons() {
+    return Array.from(document.querySelectorAll("button, a, [role='button'], input[type='button'], input[type='submit']"))
+      .filter(isVisible);
+  }
+
+  function walkText(root, fn) {
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          const p = node.parentElement;
+          if (!p) return NodeFilter.FILTER_REJECT;
+          if (["SCRIPT","STYLE","TEXTAREA","CODE","PRE"].includes(p.tagName)) return NodeFilter.FILTER_REJECT;
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(fn);
+  }
+
+  function fixBrokenWords() {
+    walkText(document.body, node => {
+      let v = node.nodeValue;
+      let n = v;
+
+      n = n.replaceAll("packageion", "certification");
+      n = n.replaceAll("Packageion", "Certification");
+      n = n.replaceAll("Un espace de certification humaine", "Un espace de preuve humaine");
+      n = n.replaceAll("Certifiée ✅", "Travail enregistré ✅");
+      n = n.replaceAll("Certifié ✅", "Travail enregistré ✅");
+      n = n.replaceAll("Aucune moment de travail certifiée", "Aucun moment de travail validé");
+      n = n.replaceAll("Aucune moment de travail certifié", "Aucun moment de travail validé");
+      n = n.replaceAll("Aucun moment de travail certifiée", "Aucun moment de travail validé");
+      n = n.replaceAll("PROOF.v1fichier de vérification", "PROOF.v1.ho.json");
+      n = n.replaceAll("CERTIFICAT_FINAL.v1fichier de vérification", "CERTIFICAT_FINAL.v1.ho.json");
+
+      if (n !== v) node.nodeValue = n;
+    });
+  }
+
+  function nearestCard(el) {
+    return el.closest("section, article, .card, .panel, div") || el.parentElement;
+  }
+
+  function setWorkTitle(active) {
+    const headings = Array.from(document.querySelectorAll("h1,h2,h3"))
+      .filter(isVisible);
+
+    const title = headings.find(h => text(h).includes("Prêt à travailler"));
+    if (!title) return;
+
+    if (active) {
+      title.textContent = "HumanOrigin est actif";
+      const card = nearestCard(title);
+      if (card) {
+        const ps = Array.from(card.querySelectorAll("p, .subtitle, .lead, small")).filter(isVisible);
+        const p = ps.find(x => text(x).includes("travaillez normalement") || text(x).includes("préparer votre dossier"));
+        if (p) {
+          p.textContent = "Continuez votre travail normalement. Vous pourrez terminer lorsque ce moment de travail est fini.";
+        }
+      }
+    }
+  }
+
+  function findByText(terms) {
+    return buttons().filter(b => terms.some(t => text(b).includes(t)));
+  }
+
+  function styleCTA() {
+    const bs = buttons();
+
+    bs.forEach(b => {
+      b.classList.remove("ho-final-primary", "ho-final-secondary", "ho-final-status", "ho-final-hide");
+    });
+
+    const stop = findByText(["Terminer ce moment de travail"])[0];
+    const validate = findByText(["Valider ce moment de travail"])[0];
+    const launch = findByText(["Lancer HumanOrigin"])[0];
+    const packageBtn = findByText(["Créer le package final"])[0];
+    const recorded = findByText(["Travail enregistré ✅"])[0];
+
+    let primary = null;
+
+    if (stop) {
+      primary = stop;
+      setWorkTitle(true);
+    } else if (validate) {
+      primary = validate;
+      if (launch) launch.classList.add("ho-final-secondary");
+    } else if (packageBtn) {
+      primary = packageBtn;
+    } else if (launch) {
+      primary = launch;
+    }
+
+    if (primary) primary.classList.add("ho-final-primary");
+
+    if (recorded) {
+      recorded.classList.remove("ho-final-primary");
+      recorded.classList.add("ho-final-status");
+    }
+
+    bs.forEach(b => {
+      const t = text(b);
+      if (b === primary || b === recorded) return;
+
+      if (
+        t.includes("Mise à jour") ||
+        t.includes("Changer") ||
+        t.includes("Sortir") ||
+        t.includes("Actualiser") ||
+        t.includes("Voir les travaux enregistrés") ||
+        t.includes("Détails") ||
+        t.includes("fichier de vérification")
+      ) {
+        b.classList.add("ho-final-secondary");
+      }
+    });
+  }
+
+  function fixKnowPanel() {
+    const headings = Array.from(document.querySelectorAll("h1,h2,h3")).filter(isVisible);
+    const h = headings.find(x => text(x).includes("Ce que HumanOrigin rend visible"));
+    if (!h) return;
+
+    h.textContent = "À savoir";
+
+    const card = nearestCard(h);
+    if (card) {
+      card.classList.add("ho-final-know-panel");
+      card.classList.remove("ho-ux-technical-dim");
+      Array.from(card.querySelectorAll("*")).forEach(el => {
+        el.classList.remove("ho-ux-technical-dim");
+      });
+    }
+  }
+
+  function run() {
+    if (!document.body) return;
+    fixBrokenWords();
+    styleCTA();
+    fixKnowPanel();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+
+  let queued = false;
+  const obs = new MutationObserver(() => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      run();
+    });
+  });
+  obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
+  setInterval(run, 1000);
+})();
+</script>
+
+</body>
 </html>

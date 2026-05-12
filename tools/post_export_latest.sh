@@ -15,7 +15,7 @@ python3 tools/elevate_open_first_scope_latest.py
 echo "=== CLEAN LATEST EXPORT PACKAGE (POST) ==="
 python3 tools/clean_latest_export_package.py
 
-LATEST_DIR="$(python3 -c 'from pathlib import Path; root=Path.home()/"Documents"/"HumanOrigin"/"Projects"; c=list(root.glob("*/CERTIFICAT_FINAL.v1fichier de vérification")); print(max(c, key=lambda p: p.stat().st_mtime).parent if c else "")')"
+LATEST_DIR="$(python3 -c 'from pathlib import Path; root=Path.home()/"Documents"/"HumanOrigin"/"Projects"; c=list(root.glob("*/CERTIFICAT_FINAL.v1.ho.json")); print(max(c, key=lambda p: p.stat().st_mtime).parent if c else "")')"
 
 if [ -z "$LATEST_DIR" ]; then
   echo "Aucun export v1 trouvé."

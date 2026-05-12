@@ -486,7 +486,7 @@ function applyProjectScreenCopy() {
 
   const workspaceTitle = appRoot.querySelector(".workspace-title");
   if (workspaceTitle) workspaceTitle.innerText = hoPerm(
-    "Un espace de certification humaine",
+    "Un espace de preuve humaine",
     "A human certification workspace"
   );
 
@@ -1447,7 +1447,7 @@ function updateDashboardUI(state) {
     if (finBtn) {
       finBtn.classList.remove("hidden");
       finBtn.disabled = false;
-      if (finBtn.innerText === "Certifiée ✅") finBtn.innerText = "Valider ce moment de travail";
+      if (finBtn.innerText === "Travail enregistré ✅") finBtn.innerText = "Valider ce moment de travail";
     }
   }
 }
@@ -1588,7 +1588,7 @@ async function finalizeSession() {
     success = true;
 
     if (btn) {
-      btn.innerText = cloudOk ? "Certifiée ✅" : "Travail enregistré ✅";
+      btn.innerText = cloudOk ? "Travail enregistré ✅" : "Travail enregistré ✅";
       btn.disabled = true;
     }
 
@@ -2092,7 +2092,7 @@ async function exportFinalProjectCertificate() {
       documentFilename: hoDoc.document.filename,
       publishedDocumentFilename,
       publishedOutputFilename: canGeneratePublishedPdf ? publishedPdfFilename : null,
-      referenceProofFilename: "CERTIFICAT_FINAL.v1fichier de vérification",
+      referenceProofFilename: "CERTIFICAT_FINAL.v1.ho.json",
       compatibilityProofFilename: "CERTIFICAT_FINALfichier de vérification",
       certificateId,
       issuedAt,
@@ -2226,7 +2226,7 @@ async function exportFinalProjectCertificate() {
       const shareStartHerePath = `${sharePackageDir}${sep}README_START_HERE.txt`;
 
       const sendPublishedPdfFilename = `${rawShareProjectName} — HumanOrigin_PUBLISHED.pdf`;
-      const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1fichier de vérification`;
+      const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1.ho.json`;
       const sendPublishedPdfRelativePath = `2_SEND_TO_RECIPIENT/${sendPublishedPdfFilename}`;
       const sendProofRelativePath = `2_SEND_TO_RECIPIENT/${sendProofFilename}`;
 
@@ -2299,7 +2299,7 @@ async function exportFinalProjectCertificate() {
         "",
         "Pour vérifier :",
         "- ouvrir le vérificateur public HumanOrigin ;",
-        "- importer le fichier fichier de vérification ;",
+        "- importer le fichier de vérification ;",
         "- importer le document publié si une comparaison du document est demandée.",
         "",
         "Important :",
@@ -2311,7 +2311,7 @@ async function exportFinalProjectCertificate() {
 
       const technicalCopies = [
         [hoPath, `${technicalDir}${sep}CERTIFICAT_FINALfichier de vérification`, "CERTIFICAT_FINALfichier de vérification"],
-        [hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1fichier de vérification`, "CERTIFICAT_FINAL.v1fichier de vérification"],
+        [hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`, "CERTIFICAT_FINAL.v1.ho.json"],
         [`${dir}${sep}CERTIFICAT_FINAL.html`, `${technicalDir}${sep}CERTIFICAT_FINAL.html`, "CERTIFICAT_FINAL.html"],
         [manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`, "HumanOrigin_MANIFEST.json"],
         [verifyTxtPath, `${technicalDir}${sep}HumanOrigin_VERIFY.txt`, "HumanOrigin_VERIFY.txt"],
@@ -2346,7 +2346,7 @@ async function exportFinalProjectCertificate() {
         "2_SEND_TO_RECIPIENT/",
         "",
         "Fichier de preuve recommandé :",
-        "CERTIFICAT_FINAL.v1fichier de vérification",
+        "CERTIFICAT_FINAL.v1.ho.json",
         "",
         "Fichier de compatibilité legacy :",
         "CERTIFICAT_FINALfichier de vérification",
@@ -2493,7 +2493,7 @@ async function exportFinalProjectCertificate() {
         const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
 
         const sendPublishedPdfFilename = `${rawShareProjectName} — HumanOrigin_PUBLISHED.pdf`;
-        const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1fichier de vérification`;
+        const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1.ho.json`;
 
         await createDir(sendDir, { recursive: true });
         await createDir(technicalDir, { recursive: true });
@@ -2502,7 +2502,7 @@ async function exportFinalProjectCertificate() {
         await copyFile(hoPathV1, `${sendDir}${sep}${sendProofFilename}`);
 
         await copyFile(finalPdfPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`);
-        await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1fichier de vérification`);
+        await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`);
         await copyFile(manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`);
       } catch (syncErr) {
         console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
@@ -3631,7 +3631,7 @@ function buildOpenFirstHtml({
   isPdf,
 }) {
   const mainDocumentFilename = publishedOutputFilename || publishedDocumentFilename;
-  const proofFilename = referenceProofFilename || "CERTIFICAT_FINAL.v1fichier de vérification";
+  const proofFilename = referenceProofFilename || "CERTIFICAT_FINAL.v1.ho.json";
 
   const packageFolderName = "2_SEND_TO_RECIPIENT";
   const archiveFolderName = "3_TECHNICAL_PROOF_ARCHIVE";
@@ -3663,7 +3663,7 @@ function buildOpenFirstHtml({
     "• le PDF publié, que vous pouvez ouvrir directement ;",
     "• la preuve portable signée HumanOrigin, conservée pour vérification publique.",
     "",
-    "Le fichier fichier de vérification n’est pas destiné à être lu directement : il sert au vérificateur HumanOrigin.",
+    "Le fichier de vérification n’est pas destiné à être lu directement : il sert au vérificateur HumanOrigin.",
     "",
     "Vérificateur public :",
     contextualVerifierUrl,
@@ -3967,7 +3967,7 @@ function buildOpenFirstHtml({
 
         <div class="panel">
           <h3>Vérification facultative</h3>
-          <p>Le fichier fichier de vérification n’est pas une page à lire. Il sert au vérificateur HumanOrigin.</p>
+          <p>Le fichier de vérification n’est pas une page à lire. Il sert au vérificateur HumanOrigin.</p>
           <div class="actions">
             <a class="btn dark" href="${esc(contextualVerifierUrl)}" target="_blank" rel="noopener">Ouvrir le vérificateur</a>
             <a class="btn" href="${esc(archiveFolderHref)}" target="_blank" rel="noopener">Détails avancés</a>
