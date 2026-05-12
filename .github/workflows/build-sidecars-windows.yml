@@ -11,7 +11,7 @@ on:
       - "src/converter/**"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-windows-sidecars:
@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -41,23 +43,48 @@ jobs:
         run: |
           cargo build --manifest-path src/converter/Cargo.toml --release
 
-      - name: Prepare Windows sidecar artifacts
+      - name: Copy Windows sidecars into Tauri binaries
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist-sidecars | Out-Null
+          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
 
           Copy-Item `
             src/publisher/target/release/humanorigin-publisher.exe `
-            dist-sidecars/humanorigin-publisher-x86_64-pc-windows-msvc.exe
+            src-tauri/binaries/humanorigin-publisher-x86_64-pc-windows-msvc.exe `
+            -Force
 
           Copy-Item `
             src/converter/target/release/humanorigin-converter.exe `
-            dist-sidecars/humanorigin-converter-x86_64-pc-windows-msvc.exe
+            src-tauri/binaries/humanorigin-converter-x86_64-pc-windows-msvc.exe `
+            -Force
 
-          Get-ChildItem dist-sidecars | Format-Table Name, Length
+          Get-ChildItem src-tauri/binaries | Format-Table Name, Length
 
-      - name: Upload Windows sidecars
+      - name: Commit Windows sidecars
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git status --short src-tauri/binaries
+
+          git add `
+            src-tauri/binaries/humanorigin-publisher-x86_64-pc-windows-msvc.exe `
+            src-tauri/binaries/humanorigin-converter-x86_64-pc-windows-msvc.exe
+
+          git diff --cached --stat
+
+          if (git diff --cached --quiet) {
+            Write-Host "No sidecar changes to commit."
+          } else {
+            git commit -m "Add Windows sidecar binaries"
+            git push
+          }
+
+      - name: Upload Windows sidecars artifact
         uses: actions/upload-artifact@v4
         with:
           name: humanorigin-windows-sidecars
-          path: dist-sidecars/*
+          path: |
+            src-tauri/binaries/humanorigin-publisher-x86_64-pc-windows-msvc.exe
+            src-tauri/binaries/humanorigin-converter-x86_64-pc-windows-msvc.exe
