@@ -1,0 +1,85 @@
+name: Build Windows App Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/build-windows-app-test.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "index.html"
+      - "src/**"
+      - "src-tauri/**"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-app-test:
+    name: Build Windows Tauri app without release
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Show versions
+        shell: pwsh
+        run: |
+          node --version
+          npm --version
+          rustc --version
+          cargo --version
+
+      - name: Verify Windows sidecars are present
+        shell: pwsh
+        run: |
+          $publisher = "src-tauri/binaries/humanorigin-publisher-x86_64-pc-windows-msvc.exe"
+          $converter = "src-tauri/binaries/humanorigin-converter-x86_64-pc-windows-msvc.exe"
+
+          if (!(Test-Path $publisher)) {
+            Write-Error "Missing $publisher"
+          }
+
+          if (!(Test-Path $converter)) {
+            Write-Error "Missing $converter"
+          }
+
+          Get-ChildItem src-tauri/binaries | Format-Table Name, Length
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Windows Tauri app test
+        shell: pwsh
+        env:
+          # Test build only. Do not use updater signing secrets here.
+          CI: true
+        run: |
+          npm run tauri -- build --debug
+
+      - name: Show generated bundles
+        shell: pwsh
+        run: |
+          Write-Host "Generated target folders:"
+          Get-ChildItem src-tauri/target/debug/bundle -Recurse -ErrorAction SilentlyContinue | Select-Object FullName, Length | Format-Table -AutoSize
+
+      - name: Upload Windows app test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: humanorigin-windows-app-test
+          path: |
+            src-tauri/target/debug/bundle/**/*
