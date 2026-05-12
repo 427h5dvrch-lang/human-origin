@@ -63,10 +63,18 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Disable updater for CI test build
+        shell: pwsh
+        run: |
+          $path = "src-tauri/tauri.conf.json"
+          $json = Get-Content $path -Raw | ConvertFrom-Json
+          $json.tauri.updater.active = $false
+          $json | ConvertTo-Json -Depth 100 | Set-Content $path -Encoding UTF8
+          Write-Host "Updater disabled for CI test build only."
+
       - name: Build Windows Tauri app test
         shell: pwsh
         env:
-          # Test build only. Do not use updater signing secrets here.
           CI: true
         run: |
           npm run tauri -- build --debug
