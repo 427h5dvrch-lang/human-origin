@@ -1,14 +1,14 @@
 // /src/main.js — V3.2.1 FULL + PUBLICATION KIT V1
 // Flow: Boot -> Permissions Mac -> (Tuto bypass) -> Login -> Dashboard
 // Key rules restored:
-// - 1 certificat TEMP par session (même volume faible, confirmation)
+// - 1 certificat BROUILLON par session (même volume faible, confirmation)
 // - 1 certificat FINAL par session si gate OK
 // - 1 certificat FINAL projet via finalize_project (toujours accessible)
 // - Historique affiche CERTIFIED + CERTIFIED_TEMP
 // - DeepLink macOS fiable via `tauri://open-url` + buffer pending
 // Publication Kit V1:
 // - CERTIFICAT_FINAL.html
-// - CERTIFICAT_FINAL.ho.json
+// - CERTIFICAT_FINALfichier de vérification
 // - HumanOrigin_STAMP.svg / .png
 // - HumanOrigin_BADGE.svg / .png
 // - HumanOrigin_CARTOUCHE.svg / .png
@@ -233,7 +233,7 @@ function showScreen(screenName) {
     case "PROJECT_SELECT":
       if (appScreen) appScreen.style.display = "block";
       if (projectSec) projectSec.style.display = "block";
-      safeText("current-project-title", "Sélection du projet");
+      safeText("current-project-title", "Que voulez-vous certifier ?");
       break;
 
     case "DASHBOARD":
@@ -511,8 +511,8 @@ function applyProjectScreenCopy() {
   const currentTitle = $("current-project-title");
   if (currentTitle) {
     const t = (currentTitle.innerText || "").trim();
-    if (t === "Projet" || t === "Sélection du projet" || t === "Project" || t === "Project selection") {
-      currentTitle.innerText = hoPerm("Sélection du projet", "Project selection");
+    if (t === "Projet" || t === "Que voulez-vous certifier ?" || t === "Project" || t === "Project selection") {
+      currentTitle.innerText = hoPerm("Que voulez-vous certifier ?", "Project selection");
     }
   }
 
@@ -521,13 +521,13 @@ function applyProjectScreenCopy() {
 
   const title = projectRoot.querySelector(".section-title");
   if (title) title.innerText = hoPerm(
-    "Ouvrir un dossier de travail",
+    "Choisissez votre projet",
     "Open a working folder"
   );
 
   const lead = projectRoot.querySelector(".section-lead");
   if (lead) lead.innerText = hoPerm(
-    "Chaque projet devient un cadre vivant pour vos sessions certifiées, vos brouillons, votre historique, et votre export final.",
+    "Reprenez un projet existant ou créez un nouvel espace de travail.",
     "Each project becomes a structured space for your certified sessions, drafts, history, and final export."
   );
 
@@ -552,7 +552,7 @@ function applyProjectScreenCopy() {
   );
 
   const btn = $("init-btn");
-  if (btn) btn.innerText = hoPerm("Charger", "Load");
+  if (btn) btn.innerText = hoPerm("Continuer avec ce projet", "Load");
 
   const sel = $("project-selector");
   if (sel) {
@@ -574,7 +574,7 @@ function applySessionScreenCopy() {
 
   const titles = root.querySelectorAll(".section-title");
   if (titles[0]) titles[0].innerText = hoPerm(
-    "Mesurer un moment réel de travail humain",
+    "Prêt à travailler",
     "Measure a real moment of human work"
   );
   if (titles[1]) titles[1].innerText = hoPerm(
@@ -584,7 +584,7 @@ function applySessionScreenCopy() {
 
   const leads = root.querySelectorAll(".section-lead");
   if (leads[0]) leads[0].innerText = hoPerm(
-    "Associez votre document, démarrez l’enregistrement HumanOrigin, travaillez normalement, puis arrêtez pour générer une preuve liée à cette version du fichier.",
+    "Associez votre document, lancez HumanOrigin, travaillez normalement, puis terminez pour préparer votre dossier vérifiable.",
     "Attach your document, start the HumanOrigin recording, work normally, then stop to generate proof linked to this file version."
   );
 
@@ -593,41 +593,41 @@ function applySessionScreenCopy() {
   if (statLabels[1]) statLabels[1].innerText = hoPerm("Clics", "Clicks");
 
   const startBtn = $("start-btn");
-  if (startBtn) startBtn.innerText = hoPerm("Démarrer l’enregistrement", "Start Recording");
+  if (startBtn) startBtn.innerText = hoPerm("Lancer HumanOrigin", "Start Recording");
 
   const stopBtn = $("stop-btn");
-  if (stopBtn) stopBtn.innerText = hoPerm("Arrêter l’enregistrement", "Stop Recording");
+  if (stopBtn) stopBtn.innerText = hoPerm("Terminer ce moment de travail", "Stop Recording");
 
   const finalizeBtn = $("finalize-btn");
   if (finalizeBtn) {
     const t = (finalizeBtn.innerText || "").trim();
     if (
       t === "Certifier la Session" ||
-      t === "Certifier la session" ||
+      t === "Valider ce moment de travail" ||
       t === "Certify Session" ||
       t === "Certify session"
     ) {
-      finalizeBtn.innerText = hoPerm("Certifier la session", "Certify session");
+      finalizeBtn.innerText = hoPerm("Valider ce moment de travail", "Certify session");
     }
   }
 
   const sideItems = root.querySelectorAll(".session-side-list li");
   if (sideItems[0]) sideItems[0].innerText = hoPerm(
-    "HumanOrigin ne lit pas votre document comme un détecteur IA : il mesure un processus humain de travail.",
+    "HumanOrigin ne lit pas votre document : il associe votre travail à une version précise du fichier.",
     "HumanOrigin does not read your document like an AI detector: it measures a human work process."
   );
   if (sideItems[1]) sideItems[1].innerText = hoPerm(
-    "Une preuve qui sera liée à une version précise du document lors de la certification finale.",
+    "Un fichier de vérification sera associé à cette version du document.",
     "Proof that will be linked to a specific version of the document during final certification."
   );
   if (sideItems[2]) sideItems[2].innerText = hoPerm(
-    "Un package final lisible, signé et prêt à envoyer avec le document publié et la preuve portable.",
+    "Un dossier final sera préparé avec le PDF lisible et le fichier de vérification.",
     "A final package that is readable, signed, and ready to send with the published document and portable proof."
   );
 
   const draftText = root.querySelector(".draft-banner-premium span[style*='font-size: 13px']");
   if (draftText) draftText.innerText = hoPerm(
-    "Session non sauvegardée trouvée",
+    "Un travail interrompu peut être repris",
     "Unsaved session found"
   );
 
@@ -635,11 +635,11 @@ function applySessionScreenCopy() {
   if (recoverBtn) recoverBtn.innerText = hoPerm("Restaurer", "Restore");
 
   const histTitle = root.querySelector(".history-head-left h3");
-  if (histTitle) histTitle.innerText = hoPerm("Historique certifié", "Certified history");
+  if (histTitle) histTitle.innerText = hoPerm("Travaux enregistrés", "Certified history");
 
   const histLead = root.querySelector(".history-head-left p");
   if (histLead) histLead.innerText = hoPerm(
-    "Retrouvez ici les sessions déjà certifiées pour ce projet, ainsi que l’accès à l’export final lorsqu’il est disponible.",
+    "Retrouvez ici les moments de travail enregistrés pour ce projet, puis préparez le dossier final à envoyer.",
     "Find here the sessions already certified for this project, as well as access to the final export when available."
   );
 
@@ -647,12 +647,12 @@ function applySessionScreenCopy() {
   if (syncBtn) syncBtn.innerText = hoPerm("🔄", "🔄");
 
   const finalBtn = $("close-project-btn");
-  if (finalBtn) finalBtn.innerText = hoPerm("📜 Certificat Final", "📜 Final Certificate");
+  if (finalBtn) finalBtn.innerText = hoPerm("📜 Créer le package final", "📜 Final Certificate");
 
   const ths = root.querySelectorAll(".history-table thead th");
-  if (ths[0]) ths[0].innerText = hoPerm("Date/Heure", "Date/Time");
-  if (ths[1]) ths[1].innerText = hoPerm("Statut", "Status");
-  if (ths[2]) ths[2].innerText = hoPerm("Preuve (Hash)", "Proof (Hash)");
+  if (ths[0]) ths[0].innerText = hoPerm("Moment", "Date/Time");
+  if (ths[1]) ths[1].innerText = hoPerm("État", "Status");
+  if (ths[2]) ths[2].innerText = hoPerm("Détails techniques", "Proof (Hash)");
 }
 
 function ensureLoginLangToggle() {
@@ -1333,7 +1333,7 @@ async function initProject() {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerText = "Charger";
+      btn.innerText = "Continuer avec ce projet";
     }
   }
 }
@@ -1394,7 +1394,7 @@ async function stopScan() {
     const finBtn = $("finalize-btn");
     if (finBtn) {
       finBtn.disabled = false;
-      finBtn.innerText = "Certifier la session";
+      finBtn.innerText = "Valider ce moment de travail";
       if (!gatePassed) toast("Volume insuffisant : certification TEMPORAIRE possible.");
     }
 
@@ -1431,7 +1431,7 @@ function updateDashboardUI(state) {
 
   if (finBtn && state !== "STOPPED") {
     finBtn.disabled = true;
-    finBtn.innerText = "Certifier la session";
+    finBtn.innerText = "Valider ce moment de travail";
   }
 
   if (state === "READY") {
@@ -1447,13 +1447,13 @@ function updateDashboardUI(state) {
     if (finBtn) {
       finBtn.classList.remove("hidden");
       finBtn.disabled = false;
-      if (finBtn.innerText === "Certifiée ✅") finBtn.innerText = "Certifier la session";
+      if (finBtn.innerText === "Certifiée ✅") finBtn.innerText = "Valider ce moment de travail";
     }
   }
 }
 
 // =========================================================
-// CERTIFICATION (SESSION) — TEMP always possible
+// CERTIFICATION (TRAVAIL) — BROUILLON always possible
 // =========================================================
 async function finalizeSession() {
   if (!currentSessionId) {
@@ -1588,15 +1588,15 @@ async function finalizeSession() {
     success = true;
 
     if (btn) {
-      btn.innerText = cloudOk ? "Certifiée ✅" : "Certifiée locale ✅";
+      btn.innerText = cloudOk ? "Certifiée ✅" : "Travail enregistré ✅";
       btn.disabled = true;
     }
 
     if (cloudOk) {
-      toast(isTemporary ? "Session TEMP certifiée ✅" : "Session certifiée ✅");
+      toast(isTemporary ? "Session BROUILLON certifiée ✅" : "Session certifiée ✅");
       await refreshHistory().catch(() => {});
     } else {
-      toast(isTemporary ? "Session TEMP certifiée en local ✅" : "Session certifiée en local ✅");
+      toast(isTemporary ? "Session BROUILLON certifiée en local ✅" : "Session certifiée en local ✅");
       setTimeout(() => {
         toast("Mode local actif — synchronisation cloud différée");
       }, 900);
@@ -1608,7 +1608,7 @@ async function finalizeSession() {
     alert("Erreur certification : " + (e?.message || e));
   } finally {
     if (!success && btn) {
-      btn.innerText = "Certifier la session";
+      btn.innerText = "Valider ce moment de travail";
       btn.disabled = false;
     }
   }
@@ -1759,7 +1759,7 @@ async function refreshHistory() {
       const scp = typeof s.scp_score === "number" ? Math.round(s.scp_score) : 0;
       const isTemp = s.status === "CERTIFIED_TEMP";
       const v = verdictFromScp(scp);
-      const label = isTemp ? "TEMP" : v.label;
+      const label = isTemp ? "BROUILLON" : v.label;
       const color = isTemp ? "#60a5fa" : v.color;
       const hash = s.cert_id ? hashById.get(s.cert_id) || "" : "";
       const proof = hash ? `${hash.substring(0, 8)}...` : "—";
@@ -1906,11 +1906,11 @@ async function exportFinalProjectCertificate() {
     const projectValid = Boolean(res?.project_valid);
     const scp = Number(res?.scp_score ?? 0);
 
-    let verdict = "INCOMPLETE";
+    let verdict = "PREUVE LIMITÉE";
     let reasons = [];
 
     if (!projectValid) {
-      verdict = "INCOMPLETE";
+      verdict = "PREUVE LIMITÉE";
       reasons = [String(res?.validation_reason || "VOLUME INSUFFISANT")];
     } else {
       verdict = scp >= 80 ? "COHERENT" : scp >= 50 ? "ATYPIQUE" : "SUSPECT";
@@ -1920,7 +1920,7 @@ async function exportFinalProjectCertificate() {
     const appVersion = await app.getVersion().catch(() => "unknown");
     const certificateId = crypto.randomUUID();
     const issuedAt = new Date().toISOString();
-    const verifierUrl = "https://427h5dvrch-lang.github.io/humanorigin-verifier/";
+    const verifierUrl = "le vérificateur public HumanOrigin";
 
     const hoDoc = {
       ho: {
@@ -2092,8 +2092,8 @@ async function exportFinalProjectCertificate() {
       documentFilename: hoDoc.document.filename,
       publishedDocumentFilename,
       publishedOutputFilename: canGeneratePublishedPdf ? publishedPdfFilename : null,
-      referenceProofFilename: "CERTIFICAT_FINAL.v1.ho.json",
-      compatibilityProofFilename: "CERTIFICAT_FINAL.ho.json",
+      referenceProofFilename: "CERTIFICAT_FINAL.v1fichier de vérification",
+      compatibilityProofFilename: "CERTIFICAT_FINALfichier de vérification",
       certificateId,
       issuedAt,
       verdict,
@@ -2131,8 +2131,8 @@ async function exportFinalProjectCertificate() {
     const shareCardPath = `${dir}${sep}HumanOrigin_SHARE_CARD.html`;
     const manifestPath = `${dir}${sep}HumanOrigin_MANIFEST.json`;
 
-    const hoPath = String(res.html_path).replace(/\.html$/i, ".ho.json");
-    const hoPathV1 = String(res.html_path).replace(/\.html$/i, ".v1.ho.json");
+    const hoPath = String(res.html_path).replace(/\.html$/i, "fichier de vérification");
+    const hoPathV1 = String(res.html_path).replace(/\.html$/i, ".v1fichier de vérification");
 
     const hoDocV1 = {
       format: "humanorigin-hojson",
@@ -2226,7 +2226,7 @@ async function exportFinalProjectCertificate() {
       const shareStartHerePath = `${sharePackageDir}${sep}README_START_HERE.txt`;
 
       const sendPublishedPdfFilename = `${rawShareProjectName} — HumanOrigin_PUBLISHED.pdf`;
-      const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1.ho.json`;
+      const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1fichier de vérification`;
       const sendPublishedPdfRelativePath = `2_SEND_TO_RECIPIENT/${sendPublishedPdfFilename}`;
       const sendProofRelativePath = `2_SEND_TO_RECIPIENT/${sendProofFilename}`;
 
@@ -2241,7 +2241,7 @@ async function exportFinalProjectCertificate() {
         publishedDocumentFilename,
         publishedOutputFilename: canGeneratePublishedPdf ? sendPublishedPdfRelativePath : null,
         referenceProofFilename: sendProofRelativePath,
-        compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINAL.ho.json",
+        compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINALfichier de vérification",
         certificateId,
         issuedAt,
         verdict,
@@ -2299,7 +2299,7 @@ async function exportFinalProjectCertificate() {
         "",
         "Pour vérifier :",
         "- ouvrir le vérificateur public HumanOrigin ;",
-        "- importer le fichier .ho.json ;",
+        "- importer le fichier fichier de vérification ;",
         "- importer le document publié si une comparaison du document est demandée.",
         "",
         "Important :",
@@ -2310,8 +2310,8 @@ async function exportFinalProjectCertificate() {
       await writeTextFile(`${sendDir}${sep}README_SEND_FIRST.txt`, sendReadme);
 
       const technicalCopies = [
-        [hoPath, `${technicalDir}${sep}CERTIFICAT_FINAL.ho.json`, "CERTIFICAT_FINAL.ho.json"],
-        [hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`, "CERTIFICAT_FINAL.v1.ho.json"],
+        [hoPath, `${technicalDir}${sep}CERTIFICAT_FINALfichier de vérification`, "CERTIFICAT_FINALfichier de vérification"],
+        [hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1fichier de vérification`, "CERTIFICAT_FINAL.v1fichier de vérification"],
         [`${dir}${sep}CERTIFICAT_FINAL.html`, `${technicalDir}${sep}CERTIFICAT_FINAL.html`, "CERTIFICAT_FINAL.html"],
         [manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`, "HumanOrigin_MANIFEST.json"],
         [verifyTxtPath, `${technicalDir}${sep}HumanOrigin_VERIFY.txt`, "HumanOrigin_VERIFY.txt"],
@@ -2346,10 +2346,10 @@ async function exportFinalProjectCertificate() {
         "2_SEND_TO_RECIPIENT/",
         "",
         "Fichier de preuve recommandé :",
-        "CERTIFICAT_FINAL.v1.ho.json",
+        "CERTIFICAT_FINAL.v1fichier de vérification",
         "",
         "Fichier de compatibilité legacy :",
-        "CERTIFICAT_FINAL.ho.json",
+        "CERTIFICAT_FINALfichier de vérification",
       ].join("\n");
 
       await writeTextFile(`${technicalDir}${sep}README_TECHNICAL_PROOF.txt`, technicalReadme);
@@ -2366,7 +2366,7 @@ async function exportFinalProjectCertificate() {
         "À envoyer à un destinataire :",
         "2_SEND_TO_RECIPIENT/",
         "",
-        "Archive technique :",
+        "Détails avancés :",
         "3_TECHNICAL_PROOF_ARCHIVE/",
         "",
         "Important :",
@@ -2493,7 +2493,7 @@ async function exportFinalProjectCertificate() {
         const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
 
         const sendPublishedPdfFilename = `${rawShareProjectName} — HumanOrigin_PUBLISHED.pdf`;
-        const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1.ho.json`;
+        const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1fichier de vérification`;
 
         await createDir(sendDir, { recursive: true });
         await createDir(technicalDir, { recursive: true });
@@ -2502,7 +2502,7 @@ async function exportFinalProjectCertificate() {
         await copyFile(hoPathV1, `${sendDir}${sep}${sendProofFilename}`);
 
         await copyFile(finalPdfPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`);
-        await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`);
+        await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1fichier de vérification`);
         await copyFile(manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`);
       } catch (syncErr) {
         console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
@@ -2521,7 +2521,7 @@ async function exportFinalProjectCertificate() {
     await invoke("open_file", { path: preferredOpenPath });
   } catch (e) {
     console.error("exportFinalProjectCertificate failed", e);
-    alert("Erreur export final projet : " + (e?.message || e));
+    alert("Erreur package final projet : " + (e?.message || e));
   }
 }
 
@@ -2762,7 +2762,7 @@ async function checkForDrafts(forceRefresh = false) {
     }
 
     banner.style.display = "flex";
-    btnRecover.innerText = "Reprendre · " + (d0.project_name || "");
+    btnRecover.innerText = "Reprendre ce travail · " + (d0.project_name || "");
     btnRecover.onclick = async () => {
       if (!currentProjectName && d0.project_name) {
         await quickActivateProjectByName(d0.project_name);
@@ -2773,7 +2773,7 @@ async function checkForDrafts(forceRefresh = false) {
     if (!$("btn-drafts-all")) {
       const btnAll = document.createElement("button");
       btnAll.id = "btn-drafts-all";
-      btnAll.innerText = "Bibliothèque";
+      btnAll.innerText = "Voir les travaux enregistrés";
       btnAll.className = "btn btn-ghost btn-mini";
       banner.appendChild(btnAll);
 
@@ -2813,7 +2813,7 @@ async function recoverDraft(sid) {
     const finBtn = $("finalize-btn");
     if (finBtn) {
       finBtn.disabled = false;
-      finBtn.innerText = "Certifier la session";
+      finBtn.innerText = "Valider ce moment de travail";
     }
 
     const banner = $("draft-banner");
@@ -2912,7 +2912,7 @@ function getVisualVerdictMeta(verdict) {
   }
 
   return {
-    label: "INCOMPLETE",
+    label: "PREUVE LIMITÉE",
     color: "#475569",
     bg: "#f8fafc",
     border: "#cbd5e1",
@@ -3184,16 +3184,16 @@ ${fullHash}
 WHAT THIS PACKAGE CONTAINS
 
 This export may include:
-- CERTIFICAT_FINAL.ho.json  -> signed proof file
+- CERTIFICAT_FINALfichier de vérification  -> signed proof file
 - CERTIFICAT_FINAL.html     -> human-readable certificate
 - HumanOrigin_PUBLISHED.pdf -> published marked document (when PDF publication is used)
 - HumanOrigin_CARTOUCHE*.svg/.png -> visible public mark assets
 
 SOURCE OF TRUTH
 
-The signed file CERTIFICAT_FINAL.ho.json is the source of truth.
+The signed file CERTIFICAT_FINALfichier de vérification is the source of truth.
 The visible cartouche, badge, stamp, or PDF marking are public-facing markers,
-but the signed .ho.json file is the authoritative proof object.
+but the signed fichier de vérification file is the authoritative proof object.
 
 HOW TO VERIFY
 
@@ -3201,7 +3201,7 @@ HOW TO VERIFY
 ${verifierUrl}
 
 2. Drag and drop:
-CERTIFICAT_FINAL.ho.json
+CERTIFICAT_FINALfichier de vérification
 
 3. Confirm that the verifier reports:
 - VALID signature
@@ -3217,7 +3217,7 @@ HUMANORIGIN SUMMARY
 
 HumanOrigin certifies a human creation process through a signed portable proof object.
 The visible mark helps circulation.
-The signed .ho.json file remains the authoritative verification artifact.
+The signed fichier de vérification file remains the authoritative verification artifact.
 `;
 }
 function buildReadMeFirstTxt({
@@ -3252,7 +3252,7 @@ ${documentFilename || "BOUND_DOCUMENT"}
 
 Current recommended workflow
 - keep the original bound working file
-- use CERTIFICAT_FINAL.ho.json as the source of truth
+- use CERTIFICAT_FINALfichier de vérification as the source of truth
 - use the exported visible assets for circulation
 - publish a PDF version later when a visible marked public document is needed`;
 
@@ -3283,16 +3283,16 @@ OPEN IN THIS ORDER
 3. HumanOrigin_VERIFY.txt
    Verification instructions
 
-4. CERTIFICAT_FINAL.ho.json
+4. CERTIFICAT_FINALfichier de vérification
    Signed proof object (source of truth)
 
 SOURCE OF TRUTH
 
 The authoritative proof file is:
-CERTIFICAT_FINAL.ho.json
+CERTIFICAT_FINALfichier de vérification
 
 The cartouche, badge, stamp, HTML certificate, and published PDF are visibility and presentation assets.
-Formal verification is based on the signed .ho.json file and the bound document hash.
+Formal verification is based on the signed fichier de vérification file and the bound document hash.
 
 ${publicationStatus}
 
@@ -3302,7 +3302,7 @@ HOW TO VERIFY
 ${verifierUrl}
 
 2. Load:
-CERTIFICAT_FINAL.ho.json
+CERTIFICAT_FINALfichier de vérification
 
 3. Confirm:
 - VALID signature
@@ -3443,10 +3443,10 @@ function buildShareCardHtml({
 
       <div class="panel" style="margin-bottom:16px;background:#fffdf8;">
         <div class="label">Source of truth</div>
-        <div class="value" style="margin-bottom:8px;">CERTIFICAT_FINAL.ho.json</div>
+        <div class="value" style="margin-bottom:8px;">CERTIFICAT_FINALfichier de vérification</div>
         <div style="font-size:14px;line-height:1.55;color:#475569;">
           The HTML views and visible marks help circulation and reading.
-          Formal verification is based on the signed <strong>.ho.json</strong> proof file and the bound document hash.
+          Formal verification is based on the signed <strong>fichier de vérification</strong> proof file and the bound document hash.
         </div>
       </div>
 
@@ -3457,18 +3457,18 @@ function buildShareCardHtml({
 
         <div style="font-size:15px;line-height:1.55;color:#0b1220;margin-bottom:10px;">
           This HTML certificate is a readable presentation of the HumanOrigin package.
-          The signed file <strong>CERTIFICAT_FINAL.ho.json</strong> is the authoritative proof object.
+          The signed file <strong>CERTIFICAT_FINALfichier de vérification</strong> is the authoritative proof object.
         </div>
 
         <div style="font-size:14px;line-height:1.55;color:#475569;margin-bottom:12px;">
           Visible assets such as the cartouche, badge, stamp, or published PDF help circulation and recognition,
-          but formal verification is based on the signed <strong>.ho.json</strong> artifact and the bound document hash.
+          but formal verification is based on the signed <strong>fichier de vérification</strong> artifact and the bound document hash.
         </div>
 
         <div style="font-size:14px;line-height:1.6;color:#0b1220;">
           <strong>How to verify:</strong><br/>
           1. Open the verifier: <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${esc(verifierUrl)}</span><br/>
-          2. Load <strong>CERTIFICAT_FINAL.ho.json</strong><br/>
+          2. Load <strong>CERTIFICAT_FINALfichier de vérification</strong><br/>
           3. Confirm a valid signature and a matching bound document hash
         </div>
       </div>
@@ -3510,7 +3510,7 @@ function buildShareCardHtml({
             <div class="label">How to verify</div>
             <ul>
               <li>Open the verifier page</li>
-              <li>Load <strong>CERTIFICAT_FINAL.ho.json</strong></li>
+              <li>Load <strong>CERTIFICAT_FINALfichier de vérification</strong></li>
               <li>Use <strong>HumanOrigin_VERIFY.txt</strong> for quick reference</li>
             </ul>
             <div class="footer">Verifier: ${esc(verifierUrl)}</div>
@@ -3537,7 +3537,7 @@ function buildPublicationManifest({
 }) {
   const files = [
     "CERTIFICAT_FINAL.html",
-    "CERTIFICAT_FINAL.ho.json",
+    "CERTIFICAT_FINALfichier de vérification",
     "HumanOrigin_BADGE.svg",
     "HumanOrigin_BADGE.png",
     "HumanOrigin_CARTOUCHE.svg",
@@ -3577,21 +3577,21 @@ function buildPublicationManifest({
 
       recommended_public_workflow: publishedOutputFilename
         ? "Use the included published output for public circulation."
-        : "Send the full package folder or ZIP, open HumanOrigin_PUBLISHED.html first, keep the bound source file as the linked source document, use CERTIFICAT_FINAL.ho.json as the authoritative proof file, and publish a PDF later if a visibly marked public version is needed.",
+        : "Send the full package folder or ZIP, open HumanOrigin_PUBLISHED.html first, keep the bound source file as the linked source document, use CERTIFICAT_FINALfichier de vérification as the authoritative proof file, and publish a PDF later if a visibly marked public version is needed.",
       certificate_id: certificateId,
       issued_at: issuedAt,
       verdict,
       verifier_url: verifierUrl,
 
       source_of_truth: {
-        primary_file: "CERTIFICAT_FINAL.ho.json",
+        primary_file: "CERTIFICAT_FINALfichier de vérification",
         description: "Signed HumanOrigin proof object",
       },
 
       recommended_opening_order: [
         "HumanOrigin_PUBLISHED.html",
         "HumanOrigin_VERIFY.txt",
-        "CERTIFICAT_FINAL.ho.json",
+        "CERTIFICAT_FINALfichier de vérification",
         documentFilename,
       ],
 
@@ -3599,7 +3599,7 @@ function buildPublicationManifest({
         verifier_url: verifierUrl,
         steps: [
           "Open the verifier",
-          "Load CERTIFICAT_FINAL.ho.json",
+          "Load CERTIFICAT_FINALfichier de vérification",
           "Confirm VALID signature",
           "Confirm matching bound document hash",
         ],
@@ -3631,7 +3631,7 @@ function buildOpenFirstHtml({
   isPdf,
 }) {
   const mainDocumentFilename = publishedOutputFilename || publishedDocumentFilename;
-  const proofFilename = referenceProofFilename || "CERTIFICAT_FINAL.v1.ho.json";
+  const proofFilename = referenceProofFilename || "CERTIFICAT_FINAL.v1fichier de vérification";
 
   const packageFolderName = "2_SEND_TO_RECIPIENT";
   const archiveFolderName = "3_TECHNICAL_PROOF_ARCHIVE";
@@ -3644,7 +3644,7 @@ function buildOpenFirstHtml({
   const archiveFolderHref = `${archiveFolderName}/`;
 
   function withVerifierContext(url) {
-    const base = String(url || "https://427h5dvrch-lang.github.io/humanorigin-verifier/");
+    const base = String(url || "le vérificateur public HumanOrigin");
     const join = base.includes("?") ? "&" : "?";
     return base + join
       + "project=" + encodeURIComponent(projectTitle || "")
@@ -3663,7 +3663,7 @@ function buildOpenFirstHtml({
     "• le PDF publié, que vous pouvez ouvrir directement ;",
     "• la preuve portable signée HumanOrigin, conservée pour vérification publique.",
     "",
-    "Le fichier .ho.json n’est pas destiné à être lu directement : il sert au vérificateur HumanOrigin.",
+    "Le fichier fichier de vérification n’est pas destiné à être lu directement : il sert au vérificateur HumanOrigin.",
     "",
     "Vérificateur public :",
     contextualVerifierUrl,
@@ -3933,8 +3933,8 @@ function buildOpenFirstHtml({
         </div>
 
         <div class="actions">
-          <a class="btn" href="${esc(sendFolderHref)}" target="_blank" rel="noopener">Ouvrir le dossier</a>
-          <button class="btn" type="button" id="copySendMessage">Copier le message</button>
+          <a class="btn" href="${esc(sendFolderHref)}" target="_blank" rel="noopener">Ouvrir le dossier à envoyer</a>
+          <button class="btn" type="button" id="copySendMessage">Copier le message d’accompagnement</button>
           <a class="btn" href="${esc(sendDocumentHref)}" target="_blank" rel="noopener">Voir le PDF</a>
         </div>
       </div>
@@ -3946,7 +3946,7 @@ function buildOpenFirstHtml({
           <em>Document à lire normalement.</em>
         </div>
         <div class="file">
-          <span>Preuve incluse</span>
+          <span>Fichier de vérification inclus</span>
           <strong>${esc(proofDisplayFilename)}</strong>
           <em>À garder dans le dossier. Ne pas ouvrir directement.</em>
         </div>
@@ -3957,7 +3957,7 @@ function buildOpenFirstHtml({
           <h3>Email d’accompagnement</h3>
           <p>Copiez ce message, puis joignez le dossier ${esc(packageFolderName)}.</p>
           <div class="actions">
-            <button class="btn dark" type="button" id="copySendMessage2">Copier le message</button>
+            <button class="btn dark" type="button" id="copySendMessage2">Copier le message d’accompagnement</button>
           </div>
           <details>
             <summary>Voir le message</summary>
@@ -3967,10 +3967,10 @@ function buildOpenFirstHtml({
 
         <div class="panel">
           <h3>Vérification facultative</h3>
-          <p>Le fichier .ho.json n’est pas une page à lire. Il sert au vérificateur HumanOrigin.</p>
+          <p>Le fichier fichier de vérification n’est pas une page à lire. Il sert au vérificateur HumanOrigin.</p>
           <div class="actions">
             <a class="btn dark" href="${esc(contextualVerifierUrl)}" target="_blank" rel="noopener">Ouvrir le vérificateur</a>
-            <a class="btn" href="${esc(archiveFolderHref)}" target="_blank" rel="noopener">Archive technique</a>
+            <a class="btn" href="${esc(archiveFolderHref)}" target="_blank" rel="noopener">Détails avancés</a>
           </div>
         </div>
       </div>
@@ -4037,7 +4037,7 @@ function buildOpenFirstHtml({
 }) {
   const isPdf = mime === "application/pdf";
   const isImage = String(mime || "").startsWith("image/");
-  const packageTitle = isPdf ? "Published Document Package" : "Package de preuve du document lié";
+  const packageTitle = isPdf ? "Published Document Package" : "Package de preuve du document associé";
   const packageSubtitle = isPdf
     ? "This package contains the bound document together with the HumanOrigin proof materials and publication assets."
     : "Ce package contient le document source lié, la preuve HumanOrigin et les indications de circulation essentielles.";
@@ -4136,14 +4136,14 @@ function buildOpenFirstHtml({
         </div>
 
         <div class="docx-guide-answer" id="docxGuideAnswer">
-          Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json et le document source lié. N'envoyez pas un fichier seul.
+          Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINALfichier de vérification et le document source lié. N'envoyez pas un fichier seul.
         </div>
 
         <script>
           (function () {
             const copy = {
               fr: {
-                title: "Package de preuve du document lié",
+                title: "Package de preuve du document associé",
                 subtitle: "Ce package contient le document source lié, la preuve HumanOrigin et les indications de circulation essentielles.",
                 statusLabel: "STATUT DE PUBLICATION",
                 statusValue: "Aucune copie publique visiblement marquée n'est incluse pour ce type de fichier",
@@ -4151,9 +4151,9 @@ function buildOpenFirstHtml({
                 actionOpen: "Quel fichier ouvrir en premier ?",
                 actionProof: "Quel fichier fait foi ?",
                 answers: {
-                  send: "Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json et le document source lié. N'envoyez pas un fichier seul.",
+                  send: "Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINALfichier de vérification et le document source lié. N'envoyez pas un fichier seul.",
                   open: "Ouvrez d'abord HumanOrigin_PUBLISHED.html.",
-                  proof: "Le fichier de référence est CERTIFICAT_FINAL.ho.json."
+                  proof: "Le fichier de référence est CERTIFICAT_FINALfichier de vérification."
                 },
                 metaLabels: [
                   "PROJET",
@@ -4171,8 +4171,8 @@ function buildOpenFirstHtml({
                 openTech: "Ouvrir le certificat technique",
                 openVerifier: "Ouvrir le vérificateur",
                 fallbackNote: "Ce document source lié est inclus dans ce package.",
-                bottomNote: "Cette page est l'entrée lisible principale du package. Envoyez le dossier complet ou le ZIP, pas CERTIFICAT_FINAL.html seul. Le fichier signé CERTIFICAT_FINAL.ho.json reste la preuve de référence.",
-                verifierNote: "La vérification formelle repose sur le fichier signé .ho.json et sur l'empreinte du document lié. Vérificateur :"
+                bottomNote: "Cette page est l'entrée lisible principale du package. Envoyez le dossier complet ou le ZIP, pas CERTIFICAT_FINAL.html seul. Le fichier signé CERTIFICAT_FINALfichier de vérification reste la preuve de référence.",
+                verifierNote: "La vérification formelle repose sur le fichier signé fichier de vérification et sur l'empreinte du document associé. Vérificateur :"
               },
               en: {
                 title: "Bound Document Proof Package",
@@ -4183,9 +4183,9 @@ function buildOpenFirstHtml({
                 actionOpen: "Which file should be opened first?",
                 actionProof: "Which file is authoritative?",
                 answers: {
-                  send: "Send the full HumanOrigin package ZIP. Otherwise send the full folder containing HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json, and the linked source document. Do not send a single file on its own.",
+                  send: "Send the full HumanOrigin package ZIP. Otherwise send the full folder containing HumanOrigin_PUBLISHED.html, CERTIFICAT_FINALfichier de vérification, and the linked source document. Do not send a single file on its own.",
                   open: "Open HumanOrigin_PUBLISHED.html first.",
-                  proof: "The reference proof file is CERTIFICAT_FINAL.ho.json."
+                  proof: "The reference proof file is CERTIFICAT_FINALfichier de vérification."
                 },
                 metaLabels: [
                   "PROJECT",
@@ -4203,8 +4203,8 @@ function buildOpenFirstHtml({
                 openTech: "Open technical certificate",
                 openVerifier: "Open verifier",
                 fallbackNote: "This linked source document is included in this package.",
-                bottomNote: "This page is the main readable entry for the package. Send the full package folder or ZIP, not CERTIFICAT_FINAL.html alone. The signed file CERTIFICAT_FINAL.ho.json remains the reference proof file.",
-                verifierNote: "Formal verification is based on the signed .ho.json file and the linked document hash. Verifier:"
+                bottomNote: "This page is the main readable entry for the package. Send the full package folder or ZIP, not CERTIFICAT_FINAL.html alone. The signed file CERTIFICAT_FINALfichier de vérification remains the reference proof file.",
+                verifierNote: "Formal verification is based on the signed fichier de vérification file and the linked document hash. Verifier:"
               }
             };
 
@@ -4588,7 +4588,7 @@ function buildOpenFirstHtml({
           </div>
           <div class="meta-card">
             <div class="meta-label">Source of truth</div>
-            <div class="meta-value">CERTIFICAT_FINAL.ho.json</div>
+            <div class="meta-value">CERTIFICAT_FINALfichier de vérification</div>
           </div>
           ${!isPdf ? `
           <div class="meta-card">
@@ -4602,7 +4602,7 @@ function buildOpenFirstHtml({
         </div>
 
         <div class="footer-note">
-          Formal verification is based on the signed <strong>.ho.json</strong> proof file and the bound document hash.
+          Formal verification is based on the signed <strong>fichier de vérification</strong> proof file and the bound document hash.
           Verifier: ${esc(verifierUrl)}
         </div>
       </div>
@@ -4626,8 +4626,8 @@ function buildOpenFirstHtml({
 
       <div class="footer-note">
         ${isPdf
-          ? `This page is a readable package view. The signed file <strong>CERTIFICAT_FINAL.ho.json</strong> remains the authoritative proof object.`
-          : `Cette page est l'entrée lisible principale du package. Envoyez le ZIP complet du package HumanOrigin ou le dossier complet, pas <strong>CERTIFICAT_FINAL.html</strong> seul. Le fichier signé <strong>CERTIFICAT_FINAL.ho.json</strong> reste la preuve de référence.`}
+          ? `This page is a readable package view. The signed file <strong>CERTIFICAT_FINALfichier de vérification</strong> remains the authoritative proof object.`
+          : `Cette page est l'entrée lisible principale du package. Envoyez le ZIP complet du package HumanOrigin ou le dossier complet, pas <strong>CERTIFICAT_FINAL.html</strong> seul. Le fichier signé <strong>CERTIFICAT_FINALfichier de vérification</strong> reste la preuve de référence.`}
       </div>
     </div>
   </div>

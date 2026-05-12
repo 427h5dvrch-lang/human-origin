@@ -15,7 +15,7 @@ python3 tools/elevate_open_first_scope_latest.py
 echo "=== CLEAN LATEST EXPORT PACKAGE (POST) ==="
 python3 tools/clean_latest_export_package.py
 
-LATEST_DIR="$(python3 -c 'from pathlib import Path; root=Path.home()/"Documents"/"HumanOrigin"/"Projects"; c=list(root.glob("*/CERTIFICAT_FINAL.v1.ho.json")); print(max(c, key=lambda p: p.stat().st_mtime).parent if c else "")')"
+LATEST_DIR="$(python3 -c 'from pathlib import Path; root=Path.home()/"Documents"/"HumanOrigin"/"Projects"; c=list(root.glob("*/CERTIFICAT_FINAL.v1fichier de vérification")); print(max(c, key=lambda p: p.stat().st_mtime).parent if c else "")')"
 
 if [ -z "$LATEST_DIR" ]; then
   echo "Aucun export v1 trouvé."
@@ -129,3 +129,18 @@ python3 "/Users/dazeasphilippe/Desktop/human-origin/tools/enhance_latest_open_fi
 echo
 echo "=== REDIRECTION PUBLISHED.HTML VERS OPEN_FIRST ==="
 python3 "/Users/dazeasphilippe/Desktop/human-origin/tools/redirect_published_html_to_open_first.py" || true
+
+# UX final pass: Open First + message d'accompagnement + dossier destinataire
+if [ -f "./tools/ux_finalize_latest_package.py" ]; then
+  python3 ./tools/ux_finalize_latest_package.py || true
+fi
+
+# UX send pass: crée un ZIP unique prêt à envoyer
+if [ -f "./tools/ux_create_send_zip_latest.py" ]; then
+  python3 ./tools/ux_create_send_zip_latest.py || true
+fi
+
+# UX recipient pass: ajoute un guide clair directement dans le dossier envoyé
+if [ -f "./tools/ux_add_recipient_guide_latest.py" ]; then
+  python3 ./tools/ux_add_recipient_guide_latest.py || true
+fi

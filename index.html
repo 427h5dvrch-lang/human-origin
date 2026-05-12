@@ -825,7 +825,442 @@
 
     </style>
 
-  </head>
+  
+<!-- HO_APP_UX_HIERARCHY_PATCH_V1 -->
+<style>
+  :root {
+    --ho-ux-navy: #071a2f;
+    --ho-ux-blue: #12375c;
+    --ho-ux-soft: rgba(255,255,255,.08);
+    --ho-ux-line: rgba(255,255,255,.16);
+    --ho-ux-gold: #d7b56d;
+  }
+
+  #ho-ux-guidance {
+    margin: 14px auto 18px auto;
+    width: min(1040px, calc(100% - 28px));
+    border-radius: 24px;
+    padding: 22px 24px;
+    background:
+      radial-gradient(circle at top left, rgba(215,181,109,.18), transparent 34%),
+      linear-gradient(135deg, rgba(7,26,47,.96), rgba(12,42,70,.96));
+    border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 22px 60px rgba(7,26,47,.22);
+    color: white;
+    animation: hoUxIn .35s ease both;
+  }
+
+  #ho-ux-guidance .ho-ux-kicker {
+    font-size: 11px;
+    line-height: 1;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    opacity: .64;
+    font-weight: 800;
+    margin-bottom: 10px;
+  }
+
+  #ho-ux-guidance .ho-ux-title {
+    font-size: 25px;
+    line-height: 1.1;
+    font-weight: 820;
+    letter-spacing: -.035em;
+    margin: 0 0 8px 0;
+  }
+
+  #ho-ux-guidance .ho-ux-subtitle {
+    font-size: 15px;
+    line-height: 1.5;
+    max-width: 760px;
+    opacity: .78;
+    margin: 0;
+  }
+
+  .ho-ux-main-cta {
+    transform: translateZ(0);
+    min-height: 52px !important;
+    padding: 0 24px !important;
+    border-radius: 999px !important;
+    font-size: 15px !important;
+    font-weight: 820 !important;
+    letter-spacing: -.01em !important;
+    box-shadow: 0 16px 40px rgba(7,26,47,.22) !important;
+    border: 1px solid rgba(255,255,255,.32) !important;
+    outline: 3px solid rgba(215,181,109,.18) !important;
+    position: relative !important;
+    z-index: 3 !important;
+  }
+
+  .ho-ux-main-cta::after {
+    content: "  →";
+    font-weight: 900;
+  }
+
+  .ho-ux-secondary-action {
+    opacity: .68 !important;
+    transform: scale(.96);
+    box-shadow: none !important;
+  }
+
+  .ho-ux-secondary-action:hover {
+    opacity: .95 !important;
+  }
+
+  .ho-ux-status-badge {
+    pointer-events: none !important;
+    cursor: default !important;
+    background: rgba(15,118,110,.12) !important;
+    color: #0f766e !important;
+    border: 1px solid rgba(15,118,110,.22) !important;
+    box-shadow: none !important;
+  }
+
+  .ho-ux-technical-dim {
+    opacity: .45 !important;
+    filter: saturate(.8);
+  }
+
+  .ho-ux-hidden-technical {
+    display: none !important;
+  }
+
+  .ho-ux-soft-panel {
+    border: 1px solid rgba(215,181,109,.18) !important;
+    box-shadow: 0 18px 50px rgba(7,26,47,.10) !important;
+  }
+
+  @keyframes hoUxIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 720px) {
+    #ho-ux-guidance {
+      width: calc(100% - 20px);
+      padding: 18px;
+      border-radius: 20px;
+    }
+
+    #ho-ux-guidance .ho-ux-title {
+      font-size: 21px;
+    }
+  }
+</style>
+
+<script>
+(function () {
+  const UX_MARK = "ho-app-ux-hierarchy-runtime-v1";
+
+  const COPY = {
+    chooseProject: {
+      title: "Choisissez le travail à certifier",
+      subtitle: "Reprenez un projet existant ou créez un nouvel espace. Le reste du parcours sera guidé étape par étape."
+    },
+    chooseDocument: {
+      title: "Associez le document",
+      subtitle: "Sélectionnez le fichier à certifier. HumanOrigin l’associe à votre travail sans lire son contenu."
+    },
+    launch: {
+      title: "Prêt à travailler",
+      subtitle: "Lancez HumanOrigin, puis travaillez normalement. Vous pourrez terminer lorsque ce moment de travail est fini."
+    },
+    active: {
+      title: "HumanOrigin est actif",
+      subtitle: "Continuez votre travail normalement. Les indicateurs servent seulement à confirmer qu’un moment de travail est en cours."
+    },
+    validate: {
+      title: "Validez ce moment de travail",
+      subtitle: "Votre travail vient d’être terminé. Validez-le pour pouvoir préparer le package final."
+    },
+    package: {
+      title: "Préparez le package final",
+      subtitle: "Créez le dossier prêt à envoyer, avec le PDF lisible et le fichier de vérification inclus."
+    },
+    send: {
+      title: "Envoyez le dossier préparé",
+      subtitle: "Le destinataire ouvre le PDF normalement. La vérification reste disponible en cas de besoin."
+    }
+  };
+
+  const PRIMARY_RULES = [
+    { key: "active", terms: ["Terminer ce moment de travail"] },
+    { key: "validate", terms: ["Valider ce moment de travail"] },
+    { key: "package", terms: ["Créer le package final"] },
+    { key: "chooseDocument", terms: ["Choisir le document à certifier", "Associer votre document"] },
+    { key: "launch", terms: ["Lancer HumanOrigin"] },
+    { key: "send", terms: ["Ouvrir le dossier à envoyer"] },
+    { key: "chooseProject", terms: ["Continuer avec ce projet", "Créer ce projet"] }
+  ];
+
+  const SECONDARY_TERMS = [
+    "Mise à jour",
+    "Vérifier les mises à jour",
+    "Changer",
+    "Changer de projet",
+    "Sortir",
+    "Se déconnecter",
+    "Actualiser",
+    "Détails techniques",
+    "Détails avancés",
+    "Voir les travaux enregistrés",
+    "Voir le fichier de vérification"
+  ];
+
+  const STATUS_TERMS = [
+    "Travail enregistré ✅",
+    "Moment de travail validé",
+    "Package prêt",
+    "Document associé"
+  ];
+
+  const TEXT_REPLACEMENTS = new Map([
+    ["Durée", "Temps actif"],
+    ["Frappes", "Activité clavier"],
+    ["Clics", "Activité souris"],
+    ["SESSION", "TRAVAIL"],
+    ["Session", "Moment de travail"],
+    ["session", "moment de travail"],
+    ["Hash", "Détail technique"],
+    ["hash", "détail technique"],
+    ["SHA-256", "empreinte technique"],
+    [".ho.json", "fichier de vérification"],
+    ["Certificat", "Package"],
+    ["certificat", "package"]
+  ]);
+
+  function norm(s) {
+    return (s || "").replace(/\s+/g, " ").trim();
+  }
+
+  function isVisible(el) {
+    if (!el || !el.isConnected) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return false;
+    return el.getClientRects().length > 0;
+  }
+
+  function textOf(el) {
+    if (!el) return "";
+    if (el.tagName === "INPUT") return norm(el.value || el.placeholder || "");
+    return norm(el.innerText || el.textContent || el.getAttribute("aria-label") || "");
+  }
+
+  function actionableElements() {
+    return Array.from(document.querySelectorAll(
+      "button, a, label, [role='button'], input[type='button'], input[type='submit']"
+    )).filter(isVisible);
+  }
+
+  function matchesAny(text, terms) {
+    return terms.some(t => text.includes(t));
+  }
+
+  function findPrimaryAction() {
+    const els = actionableElements();
+
+    const allText = norm(document.body.innerText || "");
+    const hasRecorded = allText.includes("Travail enregistré");
+    const hasPackage = els.some(el => textOf(el).includes("Créer le package final"));
+
+    if (hasRecorded && hasPackage) {
+      const btn = els.find(el => textOf(el).includes("Créer le package final"));
+      if (btn) return { key: "package", el: btn };
+    }
+
+    for (const rule of PRIMARY_RULES) {
+      const el = els.find(e => matchesAny(textOf(e), rule.terms));
+      if (el) return { key: rule.key, el };
+    }
+
+    return null;
+  }
+
+  function ensureGuide(primary) {
+    let guide = document.getElementById("ho-ux-guidance");
+
+    if (!primary || !COPY[primary.key]) {
+      if (guide) guide.remove();
+      return;
+    }
+
+    if (!guide) {
+      guide = document.createElement("section");
+      guide.id = "ho-ux-guidance";
+      guide.setAttribute("data-ho-ux", UX_MARK);
+      guide.innerHTML = `
+        <div class="ho-ux-kicker">Étape recommandée</div>
+        <div class="ho-ux-title"></div>
+        <p class="ho-ux-subtitle"></p>
+      `;
+
+      const mount =
+        document.querySelector("#app") ||
+        document.querySelector("main") ||
+        document.body.firstElementChild ||
+        document.body;
+
+      if (mount === document.body) {
+        document.body.insertBefore(guide, document.body.firstChild);
+      } else {
+        mount.insertBefore(guide, mount.firstChild);
+      }
+    }
+
+    guide.querySelector(".ho-ux-title").textContent = COPY[primary.key].title;
+    guide.querySelector(".ho-ux-subtitle").textContent = COPY[primary.key].subtitle;
+  }
+
+  function styleActions(primary) {
+    const els = actionableElements();
+
+    els.forEach(el => {
+      el.classList.remove("ho-ux-main-cta", "ho-ux-secondary-action", "ho-ux-status-badge");
+    });
+
+    if (primary && primary.el) {
+      primary.el.classList.add("ho-ux-main-cta");
+      const parent = primary.el.closest("section, article, .card, .panel, div");
+      if (parent) parent.classList.add("ho-ux-soft-panel");
+    }
+
+    els.forEach(el => {
+      const t = textOf(el);
+
+      if (primary && el === primary.el) return;
+
+      if (matchesAny(t, SECONDARY_TERMS)) {
+        el.classList.add("ho-ux-secondary-action");
+      }
+
+      if (matchesAny(t, STATUS_TERMS)) {
+        el.classList.add("ho-ux-status-badge");
+      }
+    });
+  }
+
+  function replaceSurfaceText(root) {
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          const tag = parent.tagName;
+          if (["SCRIPT", "STYLE", "CODE", "PRE", "TEXTAREA"].includes(tag)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+
+    nodes.forEach(node => {
+      let v = node.nodeValue;
+      let next = v;
+      for (const [oldText, newText] of TEXT_REPLACEMENTS.entries()) {
+        next = next.split(oldText).join(newText);
+      }
+      if (next !== v) node.nodeValue = next;
+    });
+  }
+
+  function hideTechnicalTableColumns() {
+    const tables = Array.from(document.querySelectorAll("table"));
+    tables.forEach(table => {
+      const rows = Array.from(table.querySelectorAll("tr"));
+      if (!rows.length) return;
+
+      let indexes = new Set();
+
+      rows.forEach(row => {
+        Array.from(row.children).forEach((cell, idx) => {
+          const t = norm(cell.innerText || cell.textContent || "");
+          if (
+            t.includes("Détails techniques") ||
+            t.includes("Preuve (Hash)") ||
+            t.includes("Détail technique") ||
+            /^[a-f0-9]{16,}$/i.test(t)
+          ) {
+            indexes.add(idx);
+          }
+        });
+      });
+
+      if (!indexes.size) return;
+
+      rows.forEach(row => {
+        Array.from(row.children).forEach((cell, idx) => {
+          if (indexes.has(idx)) cell.classList.add("ho-ux-hidden-technical");
+        });
+      });
+    });
+  }
+
+  function dimTechnicalBlocks() {
+    const patterns = [
+      "empreinte technique",
+      "Détails techniques",
+      "fichier de vérification",
+      "payload",
+      "signature",
+      "clé publique"
+    ];
+
+    Array.from(document.querySelectorAll("body *")).forEach(el => {
+      if (!isVisible(el)) return;
+      const t = norm(el.innerText || el.textContent || "");
+      if (!t) return;
+
+      if (patterns.some(p => t.includes(p)) && t.length < 280) {
+        if (!el.closest("#ho-ux-guidance")) {
+          el.classList.add("ho-ux-technical-dim");
+        }
+      }
+    });
+  }
+
+  function run() {
+    if (!document.body) return;
+
+    replaceSurfaceText(document.body);
+
+    const primary = findPrimaryAction();
+
+    ensureGuide(primary);
+    styleActions(primary);
+    hideTechnicalTableColumns();
+    dimTechnicalBlocks();
+  }
+
+  let scheduled = false;
+  function scheduleRun() {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      run();
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run);
+  } else {
+    run();
+  }
+
+  const obs = new MutationObserver(scheduleRun);
+  obs.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+
+  setInterval(run, 1200);
+})();
+</script>
+
+</head>
 
   <body>
     <!-- =========================
@@ -980,16 +1415,16 @@
         <div id="project-section" style="display: none;">
           <div class="app-card project-picker-card">
             <div class="ritual-kicker">Projet</div>
-            <h3 class="section-title">Ouvrir un dossier de travail</h3>
+            <h3 class="section-title">Choisissez votre projet</h3>
             <p class="section-lead">
-              Chaque projet devient un cadre vivant pour vos sessions certifiées, vos brouillons, votre historique, et votre export final.
+              Reprenez un projet existant ou créez un nouvel espace de travail.
             </p>
 
             <div class="project-picker-grid">
               <div class="project-picker-block">
                 <div class="project-picker-label">Projet existant</div>
                 <select id="project-selector" class="login-input" style="margin:0"></select>
-                <button id="init-btn" class="btn btn-primary" style="margin-top: 10px;">Charger</button>
+                <button id="init-btn" class="btn btn-primary" style="margin-top: 10px;">Continuer avec ce projet</button>
                 <div class="project-picker-note">Rouvrez un projet déjà lié à une trajectoire de travail et à un historique certifié.</div>
               </div>
 
@@ -1008,7 +1443,7 @@
           <div class="session-stage">
             <div class="app-card session-core">
               <div class="ritual-kicker">Session</div>
-              <h3 class="section-title">Mesurer un moment réel de travail humain</h3>
+              <h3 class="section-title">Prêt à travailler</h3>
               <p class="section-lead">
                 Lancez une session avant d’écrire. HumanOrigin suit le rythme de travail, puis vous permet de transformer cette présence en certificat de session.
               </p>
@@ -1038,7 +1473,7 @@
               <ul class="session-side-list">
                 <li>Un travail humain mesuré dans le temps, et non une simple sortie produite en silence.</li>
                 <li>Une session qui peut devenir une preuve, puis rejoindre un historique certifié cohérent.</li>
-                <li>Un chemin clair vers un export final lisible, signé, et diffusable publiquement.</li>
+                <li>Un chemin clair vers un package final lisible, signé, et diffusable publiquement.</li>
               </ul>
             </div>
           </div>
@@ -1050,7 +1485,7 @@
           >
             <div style="display: flex; align-items: center; gap: 10px;">
               <span style="font-size: 20px;">💾</span>
-              <span style="font-size: 13px; color: #9a3412; font-weight: 700;">Session non sauvegardée trouvée</span>
+              <span style="font-size: 13px; color: #9a3412; font-weight: 700;">Un travail interrompu peut être repris</span>
             </div>
             <button id="btn-recover-draft" class="btn btn-mini btn-ghost">Restaurer</button>
           </div>
@@ -1059,22 +1494,22 @@
             <div class="history-head">
               <div class="history-head-left">
                 <div class="ritual-kicker">Historique</div>
-                <h3 style="margin: 0; font-size: 22px;">Historique certifié</h3>
-                <p>Retrouvez ici les sessions déjà certifiées pour ce projet, ainsi que l’accès à l’export final lorsqu’il est disponible.</p>
+                <h3 style="margin: 0; font-size: 22px;">Travaux enregistrés</h3>
+                <p>Retrouvez ici les moments de travail enregistrés pour ce projet, puis préparez le dossier final à envoyer.</p>
               </div>
 
               <div class="history-actions">
                 <button id="sync-btn" class="btn btn-ghost btn-mini">🔄</button>
-                <button id="close-project-btn" class="btn btn-ghost btn-mini" style="display: none;">📜 Certificat Final</button>
+                <button id="close-project-btn" class="btn btn-ghost btn-mini" style="display: none;">📜 Créer le package final</button>
               </div>
             </div>
 
             <table class="history-table">
               <thead>
                 <tr style="text-align: left; color: #888; font-size: 11px; text-transform: uppercase;">
-                  <th>Date/Heure</th>
-                  <th>Statut</th>
-                  <th>Preuve (Hash)</th>
+                  <th>Moment</th>
+                  <th>État</th>
+                  <th>Détails techniques</th>
                 </tr>
               </thead>
               <tbody id="certs-tbody"></tbody>
