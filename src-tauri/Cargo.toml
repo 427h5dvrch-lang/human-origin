@@ -43,7 +43,7 @@ aes-gcm = "0.10"
 keyring = "2"
 
 # ✅ MAC PERMISSIONS (Accessibilité / AX)
-macos-accessibility-client = "0.0.2"
+# Dépendance déplacée dans la section macOS-only plus bas.
 
 # --- HASH (document binding / verifier) ---
 sha2 = "0.10"
@@ -53,6 +53,10 @@ resvg = "0.44"
 
 # --- PUBLICATION PDF NATIVE ---
 
+
+
+[target.'cfg(target_os = "macos")'.dependencies]
+macos-accessibility-client = "0.0.2"
 
 [features]
 default = ["custom-protocol"]
