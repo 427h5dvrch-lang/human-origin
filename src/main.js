@@ -1896,6 +1896,25 @@ async function exportFinalProjectCertificate() {
     return;
   }
 
+  let __hoExportDebugPath = null;
+  const __hoExportDebugLines = [];
+
+  const __hoExportMark = async (stage, extra = "") => {
+    const line = `[${new Date().toISOString()}] ${stage}${extra ? " — " + extra : ""}`;
+    __hoExportDebugLines.push(line);
+    console.log("[HO EXPORT DEBUG]", line);
+
+    if (__hoExportDebugPath) {
+      try {
+        await writeTextFile(__hoExportDebugPath, __hoExportDebugLines.join("\n") + "\n");
+      } catch (debugErr) {
+        console.warn("[HO EXPORT DEBUG] write failed", debugErr);
+      }
+    }
+  };
+
+  await __hoExportMark("start", `projectPath=${currentProjectPath}`);
+
   const bind = await pickDocumentToBind();
   if (!bind) {
     alert("Sélection annulée. Aucun document certifié.");
@@ -1905,7 +1924,9 @@ async function exportFinalProjectCertificate() {
   toast("Génération du certificat final projet...");
 
   try {
+    await __hoExportMark("before-finalize_project");
     const res = await invoke("finalize_project", { projectPath: currentProjectPath });
+    await __hoExportMark("after-finalize_project-raw", JSON.stringify(res || {}));
     console.log("[FINALIZE_PROJECT]", res);
 
     if (!res?.html_path) {
@@ -2072,6 +2093,8 @@ async function exportFinalProjectCertificate() {
 
     const dir = dirnameAnyPath(res.html_path);
     const sep = String(res.html_path).includes("\\") ? "\\" : "/";
+      __hoExportDebugPath = `${dir}${sep}HumanOrigin_WINDOWS_EXPORT_DEBUG.txt`;
+      await __hoExportMark("after-finalize_project", `html_path=${res.html_path}`);
 
     const bindExtLower = fileExtLower(bind.filename);
     const publishedDocumentFilename = `BOUND_DOCUMENT.${bindExtLower}`;
@@ -2269,6 +2292,8 @@ async function exportFinalProjectCertificate() {
           console.warn(`[SHARE PACKAGE] missing optional file: ${label || src}`, err);
         }
       };
+
+      await __hoExportMark("after-renderPublicationKitPngs");
 
       if (canGeneratePublishedPdf) {
         await copyIfPresent(
