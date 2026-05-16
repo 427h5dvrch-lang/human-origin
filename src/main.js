@@ -1896,7 +1896,8 @@ async function exportFinalProjectCertificate() {
     return;
   }
 
-  let __hoExportDebugPath = null;
+  const __hoProjectSep = String(currentProjectPath).includes("\\") ? "\\" : "/";
+  let __hoExportDebugPath = `${currentProjectPath}${__hoProjectSep}HumanOrigin_WINDOWS_EXPORT_DEBUG.txt`;
   const __hoExportDebugLines = [];
 
   const __hoExportMark = async (stage, extra = "") => {
@@ -1915,7 +1916,14 @@ async function exportFinalProjectCertificate() {
 
   await __hoExportMark("start", `projectPath=${currentProjectPath}`);
 
+  await __hoExportMark("before-pickDocumentToBind");
   const bind = await pickDocumentToBind();
+  await __hoExportMark("after-pickDocumentToBind", JSON.stringify({
+    filename: bind?.filename || null,
+    mime: bind?.mime || null,
+    path: bind?.path || null,
+    sha256: bind?.sha256 || null,
+  }));
   if (!bind) {
     alert("Sélection annulée. Aucun document certifié.");
     return;
