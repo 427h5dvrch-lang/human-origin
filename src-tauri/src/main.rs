@@ -152,6 +152,9 @@ struct AppState {
 
     // ✅ Watchdog : dernière fois qu'on a VRAIMENT vu un input
     last_input_seen: Arc<AtomicU64>,
+
+    // ✅ Windows deep link buffer: l'URL peut arriver avant que le front JS écoute les events.
+    pending_deep_link: Arc<Mutex<Option<serde_json::Value>>>,
 }
 
 // --- UTILS ---
@@ -1295,6 +1298,14 @@ fn get_input_status(state: State<AppState>) -> u64 {
     state.last_input_seen.load(Ordering::Relaxed)
 }
 
+#[tauri::command]
+fn take_pending_deep_link(state: State<AppState>) -> Option<serde_json::Value> {
+    match state.pending_deep_link.lock() {
+        Ok(mut guard) => guard.take(),
+        Err(_) => None,
+    }
+}
+
 fn main() {
     let is_scanning = Arc::new(Mutex::new(false));
     let active_project_path = Arc::new(Mutex::new(None));
@@ -1309,6 +1320,7 @@ fn main() {
     }));
 
     let last_input_seen = Arc::new(AtomicU64::new(0));
+    let pending_deep_link: Arc<Mutex<Option<serde_json::Value>>> = Arc::new(Mutex::new(None));
 
     let _ = tauri_plugin_deep_link::prepare("com.humanorigin.app");
 
@@ -1371,12 +1383,22 @@ thread::spawn(move || {
             runtime,
             scan_gen: AtomicU64::new(0),
             last_input_seen,
+            pending_deep_link: pending_deep_link.clone(),
         })
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle();
+            let pending_for_deep_link = pending_deep_link.clone();
+
             let _ = tauri_plugin_deep_link::register("humanorigin", move |request| {
-                let _ = handle.emit_all("scheme-request", request);
+                let payload = serde_json::to_value(&request).unwrap_or(serde_json::Value::Null);
+
+                if let Ok(mut guard) = pending_for_deep_link.lock() {
+                    *guard = Some(payload.clone());
+                }
+
+                let _ = handle.emit_all("scheme-request", payload);
             });
+
             Ok(())
         })
               .invoke_handler(tauri::generate_handler![
@@ -1397,6 +1419,7 @@ thread::spawn(move || {
             is_accessibility_trusted,
             open_mac_settings,
             get_input_status,
+            take_pending_deep_link,
             sha256_file,
             copy_file,
             publish_pdf_native,

@@ -1181,6 +1181,16 @@ async function setupDeepLinkListeners() {
   await listen("scheme-request", handler).catch(() => {});
   await listen("scheme-request-received", handler).catch(() => {});
   await listen("deep-link://open-url", handler).catch(() => {});
+
+  try {
+    const pending = await invoke("take_pending_deep_link");
+    if (pending) {
+      console.log("[DEEPLINK] pending from Rust =", pending);
+      await handler({ payload: pending });
+    }
+  } catch (e) {
+    console.warn("[DEEPLINK] take_pending_deep_link failed", e);
+  }
 }
 
 // =========================================================
