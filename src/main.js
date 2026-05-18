@@ -1896,8 +1896,9 @@ async function exportFinalProjectCertificate() {
     return;
   }
 
-  const __hoProjectSep = String(currentProjectPath).includes("\\") ? "\\" : "/";
-  let __hoExportDebugPath = `${currentProjectPath}${__hoProjectSep}HumanOrigin_WINDOWS_EXPORT_DEBUG.txt`;
+  // Windows diagnostic: do not write the debug file before document selection.
+  // On Windows, early fs writes from the frontend can crash the debug build.
+  let __hoExportDebugPath = null;
   const __hoExportDebugLines = [];
 
   const __hoExportMark = async (stage, extra = "") => {
