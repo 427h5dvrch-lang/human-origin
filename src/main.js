@@ -1916,8 +1916,21 @@ async function exportFinalProjectCertificate() {
 
   await __hoExportMark("start", `projectPath=${currentProjectPath}`);
 
+  if (navigator.platform?.toLowerCase().includes("win")) {
+    alert("WINDOWS_EXPORT_VISIBLE_DIAG 1/4 — entrée dans exportFinalProjectCertificate");
+  }
+
   await __hoExportMark("before-pickDocumentToBind");
+
+  if (navigator.platform?.toLowerCase().includes("win")) {
+    alert("WINDOWS_EXPORT_VISIBLE_DIAG 2/4 — avant sélection du document");
+  }
+
   const bind = await pickDocumentToBind();
+
+  if (navigator.platform?.toLowerCase().includes("win")) {
+    alert("WINDOWS_EXPORT_VISIBLE_DIAG 3/4 — après sélection du document");
+  }
   await __hoExportMark("after-pickDocumentToBind", JSON.stringify({
     filename: bind?.filename || null,
     mime: bind?.mime || null,
@@ -1933,6 +1946,11 @@ async function exportFinalProjectCertificate() {
 
   try {
     await __hoExportMark("before-finalize_project");
+
+    if (navigator.platform?.toLowerCase().includes("win")) {
+      alert("WINDOWS_EXPORT_VISIBLE_DIAG 4/4 — avant finalize_project Rust");
+    }
+
     const res = await invoke("finalize_project", { projectPath: currentProjectPath });
     await __hoExportMark("after-finalize_project-raw", JSON.stringify(res || {}));
     console.log("[FINALIZE_PROJECT]", res);
