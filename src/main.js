@@ -2137,7 +2137,8 @@ async function exportFinalProjectCertificate() {
     let preferredOpenPath = openFirstPath;
     const publishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
     const publishedPdfPath = `${dir}${sep}${publishedPdfFilename}`;
-      const canGeneratePublishedPdf = bind.mime === "application/pdf" || bindExtLower === "docx";
+      const isWindowsExport = (navigator.platform || "").toLowerCase().includes("win");
+      const canGeneratePublishedPdf = !isWindowsExport && (bind.mime === "application/pdf" || bindExtLower === "docx");
 
     const publicationJobPath = `${dir}${sep}HumanOrigin_PUBLICATION_JOB.json`;
 
@@ -2576,8 +2577,8 @@ async function exportFinalProjectCertificate() {
       }
 
       toast(bindExtLower === "docx"
-        ? "DOCX converti et PDF publié HumanOrigin généré ✅"
-        : "PDF publié HumanOrigin généré ✅"
+        ? "DOCX converti et Document transmis HumanOrigin généré ✅"
+        : "Document transmis HumanOrigin généré ✅"
       );
 
       await invoke("open_file", { path: preferredOpenPath });
@@ -3727,7 +3728,7 @@ function buildOpenFirstHtml({
     "Je vous transmets le dossier HumanOrigin lié au document.",
     "",
     "Il contient :",
-    "• le PDF publié, que vous pouvez ouvrir directement ;",
+    "• le Document transmis, que vous pouvez ouvrir directement ;",
     "• la preuve portable signée HumanOrigin, conservée pour vérification publique.",
     "",
     "Le fichier de vérification n’est pas destiné à être lu directement : il sert au vérificateur HumanOrigin.",
@@ -3990,7 +3991,7 @@ function buildOpenFirstHtml({
         <div class="kicker">Action principale</div>
         <h2>Envoyez ce dossier.</h2>
         <p>
-          Le destinataire ouvre le PDF. La preuve signée reste dans le dossier pour vérification publique si nécessaire.
+          Le destinataire ouvre le document transmis. La preuve signée reste dans le dossier pour vérification publique si nécessaire.
         </p>
 
         <div class="folder">
@@ -4008,7 +4009,7 @@ function buildOpenFirstHtml({
 
       <div class="files">
         <div class="file">
-          <span>PDF publié</span>
+          <span>Document transmis</span>
           <strong>${esc(mainDisplayFilename)}</strong>
           <em>Document à lire normalement.</em>
         </div>
