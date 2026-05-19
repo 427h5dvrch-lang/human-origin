@@ -844,6 +844,104 @@ fn start_scan(state: State<AppState>, session_id: String) -> Result<String, Stri
     Ok("Started".into())
 }
 
+
+#[tauri::command]
+fn pick_document_to_bind_windows() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+
+        let output = Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-STA",
+                "-Command",
+                r#"
+Add-Type -AssemblyName System.Windows.Forms
+$dialog = New-Object System.Windows.Forms.OpenFileDialog
+$dialog.Title = "Choisir le document à certifier avec HumanOrigin"
+$dialog.Multiselect = $false
+$dialog.Filter = "Documents|*.pdf;*.docx;*.doc;*.txt;*.md;*.html;*.htm;*.png;*.jpg;*.jpeg;*.webp;*.gif|Tous les fichiers|*.*"
+$result = $dialog.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+  [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+  Write-Output $dialog.FileName
+}
+"#,
+            ])
+            .output()
+            .map_err(|e| format!("Windows file picker failed: {e}"))?;
+
+        if !output.status.success() {
+            let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(format!("Windows file picker exited with error: {err}"));
+        }
+
+        let selected = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if selected.is_empty() {
+            return Ok(serde_json::json!({
+                "cancelled": true
+            }));
+        }
+
+        let path = PathBuf::from(&selected);
+        let filename = path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "document".to_string());
+
+        let ext = path
+            .extension()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+
+        let mime = match ext.as_str() {
+            "pdf" => "application/pdf",
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "webp" => "image/webp",
+            "gif" => "image/gif",
+            "txt" => "text/plain",
+            "md" => "text/markdown",
+            "html" | "htm" => "text/html",
+            "doc" => "application/msword",
+            "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            _ => "application/octet-stream",
+        };
+
+        let mut file = File::open(&path).map_err(|e| format!("open failed: {e}"))?;
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 1024 * 64];
+
+        loop {
+            let n = file.read(&mut buffer).map_err(|e| format!("read failed: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buffer[..n]);
+        }
+
+        let sha256 = format!("{:x}", hasher.finalize());
+
+        Ok(serde_json::json!({
+            "cancelled": false,
+            "path": selected,
+            "filename": filename,
+            "mime": mime,
+            "sha256": sha256
+        }))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(serde_json::json!({
+            "cancelled": true,
+            "unsupported": true
+        }))
+    }
+}
+
 #[tauri::command]
 fn sha256_file(path: String) -> Result<String, String> {
     let file = File::open(&path).map_err(|e| format!("open failed: {e}"))?;
@@ -1420,6 +1518,7 @@ thread::spawn(move || {
             open_mac_settings,
             get_input_status,
             take_pending_deep_link,
+            pick_document_to_bind_windows,
             sha256_file,
             copy_file,
             publish_pdf_native,

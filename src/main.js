@@ -176,6 +176,31 @@ function fileExtLower(filename) {
 }
 
 async function pickDocumentToBind() {
+  const isWindows = (navigator.platform || "").toLowerCase().includes("win");
+
+  if (isWindows) {
+    try {
+      const picked = await invoke("pick_document_to_bind_windows");
+
+      if (!picked || picked.cancelled) return null;
+
+      if (!picked.path || !picked.filename || !picked.sha256) {
+        throw new Error("Sélection Windows incomplète.");
+      }
+
+      return {
+        path: picked.path,
+        filename: picked.filename,
+        mime: picked.mime || guessMime(picked.filename),
+        sha256: picked.sha256,
+      };
+    } catch (e) {
+      console.error("pick_document_to_bind_windows failed", e);
+      alert("Erreur sélection document Windows : " + (e?.message || e));
+      return null;
+    }
+  }
+
   const selected = await open({
     multiple: false,
     directory: false,
@@ -1915,11 +1940,6 @@ async function exportFinalProjectCertificate() {
     }
   };
 
-  if (navigator.platform?.toLowerCase().includes("win")) {
-    alert("WINDOWS_EXPORT_VISIBLE_DIAG 1/4 — entrée dans exportFinalProjectCertificate");
-    alert("WINDOWS_EXPORT_VISIBLE_DIAG 2/4 — avant sélection du document");
-  }
-
   const bind = await pickDocumentToBind();
 
   if (navigator.platform?.toLowerCase().includes("win")) {
@@ -1940,10 +1960,6 @@ async function exportFinalProjectCertificate() {
 
   try {
     await __hoExportMark("before-finalize_project");
-
-    if (navigator.platform?.toLowerCase().includes("win")) {
-      alert("WINDOWS_EXPORT_VISIBLE_DIAG 4/4 — avant finalize_project Rust");
-    }
 
     const res = await invoke("finalize_project", { projectPath: currentProjectPath });
     await __hoExportMark("after-finalize_project-raw", JSON.stringify(res || {}));
