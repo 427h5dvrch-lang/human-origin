@@ -1915,15 +1915,8 @@ async function exportFinalProjectCertificate() {
     }
   };
 
-  await __hoExportMark("start", `projectPath=${currentProjectPath}`);
-
   if (navigator.platform?.toLowerCase().includes("win")) {
     alert("WINDOWS_EXPORT_VISIBLE_DIAG 1/4 — entrée dans exportFinalProjectCertificate");
-  }
-
-  await __hoExportMark("before-pickDocumentToBind");
-
-  if (navigator.platform?.toLowerCase().includes("win")) {
     alert("WINDOWS_EXPORT_VISIBLE_DIAG 2/4 — avant sélection du document");
   }
 
