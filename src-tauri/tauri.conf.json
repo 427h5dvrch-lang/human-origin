@@ -60,7 +60,16 @@
           "$DOCUMENT/**",
           "$RESOURCE/**",
           "$TEMP/**",
-          "$DOWNLOAD/**"
+          "$DOWNLOAD/**",
+          "$HOME/**",
+          "$APPDATA/**",
+          "$LOCALDATA/**",
+          "C:\\Mac\\Home\\Documents\\**",
+          "C:\\Mac\\Home\\Downloads\\**",
+          "C:\\Mac\\Home\\Desktop\\**",
+          "C:\\Users\\**\\Documents\\**",
+          "C:\\Users\\**\\Downloads\\**",
+          "C:\\Users\\**\\Desktop\\**"
         ]
       },
       "path": {
