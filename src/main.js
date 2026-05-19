@@ -1941,10 +1941,6 @@ async function exportFinalProjectCertificate() {
   };
 
   const bind = await pickDocumentToBind();
-
-  if (navigator.platform?.toLowerCase().includes("win")) {
-    alert("WINDOWS_EXPORT_VISIBLE_DIAG 3/4 — après sélection du document");
-  }
   await __hoExportMark("after-pickDocumentToBind", JSON.stringify({
     filename: bind?.filename || null,
     mime: bind?.mime || null,
@@ -2141,8 +2137,7 @@ async function exportFinalProjectCertificate() {
     let preferredOpenPath = openFirstPath;
     const publishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
     const publishedPdfPath = `${dir}${sep}${publishedPdfFilename}`;
-    const isWindowsExport = (navigator.platform || "").toLowerCase().includes("win");
-    const canGeneratePublishedPdf = !isWindowsExport && (bind.mime === "application/pdf" || bindExtLower === "docx");
+      const canGeneratePublishedPdf = bind.mime === "application/pdf" || bindExtLower === "docx";
 
     const publicationJobPath = `${dir}${sep}HumanOrigin_PUBLICATION_JOB.json`;
 
@@ -2295,8 +2290,8 @@ async function exportFinalProjectCertificate() {
       const shareOpenFirstPath = `${sharePackageDir}${sep}1_OPEN_FIRST.html`;
       const shareStartHerePath = `${sharePackageDir}${sep}README_START_HERE.txt`;
 
-      const sendPublishedPdfFilename = `${rawShareProjectName} — HumanOrigin_PUBLISHED.pdf`;
-      const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1.ho.json`;
+      const sendPublishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
+      const sendProofFilename = "HumanOrigin_PROOF.v1.ho.json";
       const sendPublishedPdfRelativePath = `2_SEND_TO_RECIPIENT/${sendPublishedPdfFilename}`;
       const sendProofRelativePath = `2_SEND_TO_RECIPIENT/${sendProofFilename}`;
 
@@ -2363,7 +2358,7 @@ async function exportFinalProjectCertificate() {
         "",
         `1. ${canGeneratePublishedPdf ? sendPublishedPdfFilename : `${rawShareProjectName} — ${publishedDocumentFilename}`}`,
         canGeneratePublishedPdf
-          ? "   Document publié avec marquage visible HumanOrigin."
+          ? "   Document publié avec marquage visible HumanOrigin, lorsque disponible."
           : "   Document source lié à la preuve HumanOrigin.",
         "",
         `2. ${sendProofFilename}`,
@@ -2564,8 +2559,8 @@ async function exportFinalProjectCertificate() {
         const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
         const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
 
-        const sendPublishedPdfFilename = `${rawShareProjectName} — HumanOrigin_PUBLISHED.pdf`;
-        const sendProofFilename = `${rawShareProjectName} — HumanOrigin_PROOF.v1.ho.json`;
+        const sendPublishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
+        const sendProofFilename = "HumanOrigin_PROOF.v1.ho.json";
 
         await createDir(sendDir, { recursive: true });
         await createDir(technicalDir, { recursive: true });
