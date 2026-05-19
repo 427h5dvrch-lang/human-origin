@@ -158,9 +158,32 @@ struct AppState {
 }
 
 // --- UTILS ---
+
+fn humanorigin_root_dir() -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let base = dirs::data_local_dir().ok_or("Err LocalAppData")?;
+        return Ok(base.join("HumanOrigin"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let doc_path = dirs::document_dir().ok_or("Err Documents")?;
+        return Ok(doc_path.join("HumanOrigin"));
+    }
+}
+
 fn key_storage_path() -> Result<PathBuf, String> {
-    let doc_path = dirs::document_dir().ok_or("Err Documents")?;
-    let base = doc_path.join(KEY_DIR_NAME);
+    #[cfg(target_os = "windows")]
+    let base = dirs::data_local_dir()
+        .ok_or("Err LocalAppData")?
+        .join(KEY_DIR_NAME);
+
+    #[cfg(not(target_os = "windows"))]
+    let base = dirs::document_dir()
+        .ok_or("Err Documents")?
+        .join(KEY_DIR_NAME);
+
     fs::create_dir_all(&base).map_err(|e| e.to_string())?;
     Ok(base.join(KEY_FILE_NAME))
 }
@@ -788,8 +811,8 @@ fn get_projects() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn initialize_project(project_name: String) -> Result<String, String> {
-    let doc_path = dirs::document_dir().ok_or("Err Documents")?;
-    let project_path = doc_path.join("HumanOrigin").join("Projects").join(&project_name);
+    let root = humanorigin_root_dir()?;
+    let project_path = root.join("Projects").join(&project_name);
     fs::create_dir_all(project_path.join("certificats")).map_err(|e| e.to_string())?;
 
     let pj = project_path.join("project.json");
@@ -811,8 +834,8 @@ fn initialize_project(project_name: String) -> Result<String, String> {
 
 #[tauri::command]
 fn activate_project(project_name: String, state: State<AppState>) -> Result<String, String> {
-    let doc_path = dirs::document_dir().ok_or("Err Documents")?;
-    let project_path = doc_path.join("HumanOrigin").join("Projects").join(&project_name);
+    let root = humanorigin_root_dir()?;
+    let project_path = root.join("Projects").join(&project_name);
 
     if !project_path.exists() {
         return Err("Projet introuvable".into());
