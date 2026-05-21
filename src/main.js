@@ -1846,31 +1846,6 @@ function buildPublicationJob({
   };
 
   return JSON.stringify(job, null, 2);
-}) {
-  return JSON.stringify(
-    {
-      job_version: "1.0",
-      job_type: "pdf_publication",
-      source_pdf_path: sourcePdfPath,
-      output_pdf_path: outputPdfPath,
-      cartouche_png_path: cartouchePngPath,
-      certificate_json_path: certificateJsonPath,
-      verify_txt_path: verifyTxtPath,
-      certificate_id: certificateId,
-      verify_url: verifyUrl,
-      verdict,
-      render: {
-        mode: "premium_compact",
-        pages: "all",
-       first_page_scale: 1.28,
-other_pages_scale: 1.12,
-        anchor: "bottom_right",
-        margin_pt: 24,
-      },
-    },
-    null,
-    2
-  );
 }
 
 async function runPublisherSidecar({ jobPath, fallbackInput } = {}) {
@@ -1899,33 +1874,6 @@ async function runPublisherSidecar({ jobPath, fallbackInput } = {}) {
 
   if (!parsed?.ok) {
     throw new Error(parsed?.message || parsed?.error_code || "Publisher sidecar failed");
-  }
-
-  return parsed;
-}) {
-  const command = Command.sidecar("binaries/humanorigin-publisher", ["--job", jobPath]);
-  const result = await command.execute();
-
-  const stdout = String(result.stdout || "");
-  const stderr = String(result.stderr || "");
-
-  console.log("[PUBLISHER] code =", result.code);
-  console.log("[PUBLISHER] stdout =", stdout);
-  console.log("[PUBLISHER] stderr =", stderr);
-
-  if (result.code !== 0) {
-    throw new Error(stderr || stdout || `Publisher exited with code ${result.code}`);
-  }
-
-  let parsed;
-  try {
-    parsed = JSON.parse(stdout || "{}");
-  } catch (e) {
-    throw new Error(`Publisher returned invalid JSON: ${stdout}`);
-  }
-
-  if (!parsed?.ok) {
-    throw new Error(parsed?.message || "Publisher sidecar failed");
   }
 
   return parsed;
