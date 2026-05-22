@@ -2142,7 +2142,8 @@ async function exportFinalProjectCertificate() {
     let preferredOpenPath = openFirstPath;
     const publishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
     const publishedPdfPath = `${dir}${sep}${publishedPdfFilename}`;
-      const canGeneratePublishedPdf = bind.mime === "application/pdf" || bindExtLower === "docx";
+      const isWindowsExport = (navigator.platform || "").toLowerCase().includes("win");
+      const canGeneratePublishedPdf = !isWindowsExport && (bind.mime === "application/pdf" || bindExtLower === "docx");
 
     const publicationJobPath = `${dir}${sep}HumanOrigin_PUBLICATION_JOB.json`;
 
