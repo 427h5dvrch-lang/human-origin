@@ -3,6 +3,8 @@
     windows_subsystem = "windows"
 )]
 
+mod publication_core;
+
 use chrono::Utc;
 use device_query::{DeviceQuery, DeviceState, Keycode};
 use serde::{Deserialize, Serialize};
