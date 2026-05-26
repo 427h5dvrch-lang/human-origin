@@ -10,7 +10,7 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -1273,6 +1273,73 @@ fn open_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn publish_pdf_from_job_probe(job_path: String) -> Result<serde_json::Value, String> {
+    let exe = std::env::current_exe().map_err(|e| format!("current_exe error: {e}"))?;
+    let exe_dir = exe.parent().ok_or("Unable to resolve app executable directory")?;
+
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        candidates.push(exe_dir.join("humanorigin-publisher.exe"));
+        candidates.push(exe_dir.join("humanorigin-publisher-x86_64-pc-windows-msvc.exe"));
+        candidates.push(exe_dir.join("binaries").join("humanorigin-publisher.exe"));
+        candidates.push(exe_dir.join("binaries").join("humanorigin-publisher-x86_64-pc-windows-msvc.exe"));
+
+        if let Ok(program_files) = std::env::var("ProgramFiles") {
+            let base = PathBuf::from(program_files).join("HumanOrigin");
+            candidates.push(base.join("humanorigin-publisher.exe"));
+            candidates.push(base.join("humanorigin-publisher-x86_64-pc-windows-msvc.exe"));
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        candidates.push(exe_dir.join("humanorigin-publisher"));
+        candidates.push(exe_dir.join("humanorigin-publisher-aarch64-apple-darwin"));
+        candidates.push(exe_dir.join("../Resources/humanorigin-publisher"));
+        candidates.push(exe_dir.join("../Resources/humanorigin-publisher-aarch64-apple-darwin"));
+        candidates.push(exe_dir.join("../Resources/binaries/humanorigin-publisher"));
+        candidates.push(exe_dir.join("../Resources/binaries/humanorigin-publisher-aarch64-apple-darwin"));
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        candidates.push(exe_dir.join("humanorigin-publisher"));
+    }
+
+    let publisher = candidates
+        .into_iter()
+        .find(|p| p.exists())
+        .ok_or_else(|| "HumanOrigin publisher executable not found".to_string())?;
+
+    let output = Command::new(&publisher)
+        .arg("--job")
+        .arg(&job_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("Publisher probe launch failed: {e}"))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let raw = if !stdout.is_empty() { stdout.clone() } else { stderr.clone() };
+
+    let parsed: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|e| format!("Publisher probe returned invalid JSON: {e}; raw={raw}"))?;
+
+    Ok(serde_json::json!({
+        "ok": parsed.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
+        "publisher_path": publisher.to_string_lossy().to_string(),
+        "job_path": job_path,
+        "exit_code": output.status.code(),
+        "stdout": stdout,
+        "stderr": stderr,
+        "parsed": parsed
+    }))
+}
+
+#[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
 }
@@ -1531,6 +1598,7 @@ thread::spawn(move || {
             finalize_project,
             open_file,
             read_text_file,
+            publish_pdf_from_job_probe,
             get_live_stats,
             sign_payload_hash,
             render_svg_to_png,
