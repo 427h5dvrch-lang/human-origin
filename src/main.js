@@ -2493,6 +2493,40 @@ async function exportFinalProjectCertificate() {
 
           await writeTextFile(externalJobPath, externalJobJson);
 
+          // Diagnostic contrôlé Option A :
+          // tester le moteur PDF intégré au Core Rust, sans lancer d'exe externe
+          // et sans modifier le dossier destinataire.
+          try {
+            const coreJob = JSON.parse(externalJobJson);
+            const coreProbeOutputPath = `${dir}${sep}HumanOrigin_CORE_PDF_PROBE.pdf`;
+            coreJob.output_pdf_path = coreProbeOutputPath;
+
+            const coreProbeResult = await invoke("publish_pdf_core", {
+              input: coreJob,
+            });
+
+            await writeTextFile(
+              `${dir}${sep}HumanOrigin_CORE_PDF_PROBE_RESULT.json`,
+              JSON.stringify({
+                ok: true,
+                at: new Date().toISOString(),
+                output_pdf_path: coreProbeOutputPath,
+                result: coreProbeResult,
+              }, null, 2),
+            );
+          } catch (coreProbeErr) {
+            await writeTextFile(
+              `${dir}${sep}HumanOrigin_CORE_PDF_PROBE_RESULT.json`,
+              JSON.stringify({
+                ok: false,
+                at: new Date().toISOString(),
+                error: String(coreProbeErr?.message || coreProbeErr),
+              }, null, 2),
+            ).catch(() => {});
+
+            console.warn("[CORE PDF PROBE] failed", coreProbeErr);
+          }
+
           const bat = [
             "@echo off",
             "setlocal",
@@ -2530,6 +2564,14 @@ async function exportFinalProjectCertificate() {
             await createDir(technicalDir, { recursive: true });
             await copyFile(externalJobPath, `${technicalDir}${sep}HumanOrigin_PUBLICATION_JOB_WINDOWS_EXTERNAL.json`);
             await copyFile(externalBatPath, `${technicalDir}${sep}GENERATE_PUBLISHED_PDF_WINDOWS.bat`);
+            await copyFile(
+              `${dir}${sep}HumanOrigin_CORE_PDF_PROBE_RESULT.json`,
+              `${technicalDir}${sep}HumanOrigin_CORE_PDF_PROBE_RESULT.json`,
+            ).catch(() => {});
+            await copyFile(
+              `${dir}${sep}HumanOrigin_CORE_PDF_PROBE.pdf`,
+              `${technicalDir}${sep}HumanOrigin_CORE_PDF_PROBE.pdf`,
+            ).catch(() => {});
 
             const helperReadme = [
               "HUMANORIGIN — WINDOWS PDF PUBLICATION HELPER",
