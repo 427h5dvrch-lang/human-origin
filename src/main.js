@@ -2466,6 +2466,98 @@ async function exportFinalProjectCertificate() {
       stampPngPath,
     });
 
+
+      // Windows safe bridge:
+      // Do not launch the publisher inside the Windows app yet.
+      // Instead, generate a complete job + BAT helper so the marked PDF can be
+      // produced externally, using the publisher already validated on Windows.
+      try {
+        const isWindowsForExternalHelper = (navigator.platform || "").toLowerCase().includes("win");
+        const canExternalPublishPdf = isWindowsForExternalHelper && bind.mime === "application/pdf";
+
+        if (canExternalPublishPdf) {
+          const externalJobPath = `${dir}${sep}HumanOrigin_PUBLICATION_JOB_WINDOWS_EXTERNAL.json`;
+          const externalOutputPdfPath = `${dir}${sep}HumanOrigin_PUBLISHED_EXTERNAL.pdf`;
+          const externalBatPath = `${dir}${sep}GENERATE_PUBLISHED_PDF_WINDOWS.bat`;
+
+          const externalJobJson = buildPublicationJob({
+            sourcePdfPath: publishedDocumentPath,
+            outputPdfPath: externalOutputPdfPath,
+            cartouchePngPath: cartoucheCompactPngPath,
+            certificateJsonPath: hoPath,
+            verifyTxtPath,
+            certificateId,
+            verifyUrl: verifierUrl,
+            verdict,
+          });
+
+          await writeTextFile(externalJobPath, externalJobJson);
+
+          const bat = [
+            "@echo off",
+            "setlocal",
+            "echo HumanOrigin - Windows PDF publication helper",
+            "echo.",
+            "set PUBLISHER=%ProgramFiles%\\HumanOrigin\\humanorigin-publisher.exe",
+            "if not exist \"%PUBLISHER%\" set PUBLISHER=%ProgramFiles%\\HumanOrigin\\humanorigin-publisher-x86_64-pc-windows-msvc.exe",
+            "if not exist \"%PUBLISHER%\" (",
+            "  echo ERROR: HumanOrigin publisher not found in Program Files.",
+            "  pause",
+            "  exit /b 1",
+            ")",
+            "\"%PUBLISHER%\" --job \"%~dp0HumanOrigin_PUBLICATION_JOB_WINDOWS_EXTERNAL.json\"",
+            "echo.",
+            "if exist \"%~dp0HumanOrigin_PUBLISHED_EXTERNAL.pdf\" (",
+            "  echo OK: HumanOrigin_PUBLISHED_EXTERNAL.pdf generated.",
+            "  start \"\" \"%~dp0HumanOrigin_PUBLISHED_EXTERNAL.pdf\"",
+            ") else (",
+            "  echo ERROR: published PDF was not generated.",
+            ")",
+            "pause"
+          ].join("\r\n");
+
+          await writeTextFile(externalBatPath, bat);
+
+          try {
+            const rawShareProjectName = String(hoDoc?.subject?.title || "HumanOrigin Project")
+              .replace(/[\\/:*?"<>|]/g, " ")
+              .replace(/\s+/g, " ")
+              .trim() || "HumanOrigin Project";
+
+            const sharePackageDir = `${dir}${sep}${rawShareProjectName} — HumanOrigin Package`;
+            const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
+
+            await createDir(technicalDir, { recursive: true });
+            await copyFile(externalJobPath, `${technicalDir}${sep}HumanOrigin_PUBLICATION_JOB_WINDOWS_EXTERNAL.json`);
+            await copyFile(externalBatPath, `${technicalDir}${sep}GENERATE_PUBLISHED_PDF_WINDOWS.bat`);
+
+            const helperReadme = [
+              "HUMANORIGIN — WINDOWS PDF PUBLICATION HELPER",
+              "",
+              "FR",
+              "Le package Windows safe reste stable.",
+              "Pour générer le PDF cartouché HumanOrigin hors de l'application :",
+              "1. ouvrez ce dossier technique ;",
+              "2. double-cliquez sur GENERATE_PUBLISHED_PDF_WINDOWS.bat ;",
+              "3. le fichier HumanOrigin_PUBLISHED_EXTERNAL.pdf sera généré.",
+              "",
+              "EN",
+              "The Windows safe package remains stable.",
+              "To generate the marked HumanOrigin PDF outside the app:",
+              "1. open this technical folder;",
+              "2. double-click GENERATE_PUBLISHED_PDF_WINDOWS.bat;",
+              "3. HumanOrigin_PUBLISHED_EXTERNAL.pdf will be generated."
+            ].join("\n");
+
+            await writeTextFile(`${technicalDir}${sep}README_WINDOWS_PDF_HELPER.txt`, helperReadme);
+          } catch (copyHelperErr) {
+            console.warn("[WINDOWS EXTERNAL PDF HELPER] package copy failed", copyHelperErr);
+          }
+        }
+      } catch (externalHelperErr) {
+        console.warn("[WINDOWS EXTERNAL PDF HELPER] failed", externalHelperErr);
+      }
+
     if (canGeneratePublishedPdf) {
       let sourcePdfForPublishing = publishedDocumentPath;
 
