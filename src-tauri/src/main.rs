@@ -1535,6 +1535,7 @@ thread::spawn(move || {
             get_live_stats,
             sign_payload_hash,
             render_svg_to_png,
+            publication_core::publish_pdf_core,
             list_local_drafts,
             load_local_draft,
             delete_local_draft,
