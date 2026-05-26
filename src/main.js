@@ -2493,6 +2493,34 @@ async function exportFinalProjectCertificate() {
 
           await writeTextFile(externalJobPath, externalJobJson);
 
+          // Diagnostic contrôlé : vérifier si l'app Windows peut lancer le publisher
+          // via Rust sans modifier le package destinataire.
+          // Résultat écrit dans un fichier technique, jamais exposé au destinataire.
+          try {
+            const probeResult = await invoke("publish_pdf_from_job_probe", {
+              jobPath: externalJobPath,
+            });
+
+            await writeTextFile(
+              `${dir}${sep}HumanOrigin_PUBLISHER_PROBE_RESULT.json`,
+              JSON.stringify({
+                ok: true,
+                at: new Date().toISOString(),
+                probe: probeResult,
+              }, null, 2),
+            );
+          } catch (probeErr) {
+            await writeTextFile(
+              `${dir}${sep}HumanOrigin_PUBLISHER_PROBE_RESULT.json`,
+              JSON.stringify({
+                ok: false,
+                at: new Date().toISOString(),
+                error: String(probeErr?.message || probeErr),
+              }, null, 2),
+            ).catch(() => {});
+            console.warn("[WINDOWS PUBLISHER PROBE] failed", probeErr);
+          }
+
           const bat = [
             "@echo off",
             "setlocal",
@@ -2530,6 +2558,10 @@ async function exportFinalProjectCertificate() {
             await createDir(technicalDir, { recursive: true });
             await copyFile(externalJobPath, `${technicalDir}${sep}HumanOrigin_PUBLICATION_JOB_WINDOWS_EXTERNAL.json`);
             await copyFile(externalBatPath, `${technicalDir}${sep}GENERATE_PUBLISHED_PDF_WINDOWS.bat`);
+            await copyFile(
+              `${dir}${sep}HumanOrigin_PUBLISHER_PROBE_RESULT.json`,
+              `${technicalDir}${sep}HumanOrigin_PUBLISHER_PROBE_RESULT.json`,
+            ).catch(() => {});
 
             const helperReadme = [
               "HUMANORIGIN — WINDOWS PDF PUBLICATION HELPER",
