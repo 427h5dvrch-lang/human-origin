@@ -1853,11 +1853,24 @@ async function runPublisherSidecar({ jobPath, fallbackInput } = {}) {
     throw new Error("Publisher sidecar requires jobPath");
   }
 
-  console.log("[PUBLISHER] run Rust bridge with --job", jobPath);
+  console.log("[PUBLISHER] run sidecar with --job", jobPath);
 
-  const parsed = await invoke("run_publisher_job", { jobPath });
+  const command = Command.sidecar("binaries/humanorigin-publisher", ["--job", jobPath]);
+  const output = await command.execute();
 
-  console.log("[PUBLISHER RESULT]", parsed);
+  const stdout = String(output?.stdout || "").trim();
+  const stderr = String(output?.stderr || "").trim();
+  const raw = stdout || stderr;
+
+  console.log("[PUBLISHER STDOUT]", stdout);
+  if (stderr) console.warn("[PUBLISHER STDERR]", stderr);
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw || "{}");
+  } catch (e) {
+    throw new Error(`Publisher returned invalid JSON: ${raw}`);
+  }
 
   if (!parsed?.ok) {
     throw new Error(parsed?.message || parsed?.error_code || "Publisher sidecar failed");
@@ -2129,7 +2142,8 @@ async function exportFinalProjectCertificate() {
     let preferredOpenPath = openFirstPath;
     const publishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
     const publishedPdfPath = `${dir}${sep}${publishedPdfFilename}`;
-      const canGeneratePublishedPdf = bind.mime === "application/pdf" || bindExtLower === "docx";
+      const isWindowsExport = (navigator.platform || "").toLowerCase().includes("win");
+      const canGeneratePublishedPdf = !isWindowsExport && (bind.mime === "application/pdf" || bindExtLower === "docx");
 
     const publicationJobPath = `${dir}${sep}HumanOrigin_PUBLICATION_JOB.json`;
 
