@@ -2514,6 +2514,130 @@ async function exportFinalProjectCertificate() {
                 result: coreProbeResult,
               }, null, 2),
             );
+
+            // WINDOWS CORE PDF FINAL PACKAGE
+            // Le moteur PDF Core a réussi : on promeut ce PDF en vraie sortie destinataire.
+            try {
+              const rawShareProjectName = String(hoDoc?.subject?.title || "HumanOrigin Project")
+                .replace(/[\\/:*?"<>|]/g, " ")
+                .replace(/\s+/g, " ")
+                .trim() || "HumanOrigin Project";
+
+              const sharePackageDir = `${dir}${sep}${rawShareProjectName} — HumanOrigin Package`;
+              const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
+              const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
+              const shareOpenFirstPath = `${sharePackageDir}${sep}1_OPEN_FIRST.html`;
+
+              const sendPublishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
+              const sendProofFilename = "HumanOrigin_PROOF.v1.ho.json";
+              const sendPublishedPdfRelativePath = `2_SEND_TO_RECIPIENT/${sendPublishedPdfFilename}`;
+              const sendProofRelativePath = `2_SEND_TO_RECIPIENT/${sendProofFilename}`;
+
+              const publishedOutputSha256 = await invoke("sha256_file", { path: coreProbeOutputPath });
+
+              hoDocV1.payload.publication = {
+                status: "visible_published_copy_included",
+                relationship: "published_pdf_generated_from_bound_pdf_then_marked_by_humanorigin",
+                source: {
+                  role: "bound_source_document",
+                  filename: hoDoc.document.filename ?? null,
+                  mime: hoDoc.document.mime ?? null,
+                  sha256: hoDoc.document.sha256 ?? null,
+                },
+                output: {
+                  role: "published_circulation_copy",
+                  filename: sendPublishedPdfFilename,
+                  mime: "application/pdf",
+                  sha256: publishedOutputSha256,
+                  generated_from_source_sha256: hoDoc.document.sha256 ?? null,
+                  publisher_engine: coreProbeResult?.engine || "pdfium-auto-core",
+                },
+              };
+
+              await signHoDocV1();
+              await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
+
+              const manifestJsonWithCorePublication = buildPublicationManifest({
+                projectTitle: hoDoc.subject.title,
+                documentFilename: hoDoc.document.filename,
+                publishedDocumentFilename,
+                certificateId,
+                issuedAt,
+                verdict,
+                verifierUrl,
+                documentSha256: hoDoc.document.sha256,
+                documentMime: hoDoc.document.mime,
+                publishedOutputFilename: sendPublishedPdfFilename,
+                publishedOutputSha256,
+              });
+
+              await writeTextFile(manifestPath, manifestJsonWithCorePublication);
+
+              await removeDir(sendDir, { recursive: true }).catch(() => {});
+              await createDir(sendDir, { recursive: true });
+              await createDir(technicalDir, { recursive: true });
+
+              await copyFile(coreProbeOutputPath, `${sendDir}${sep}${sendPublishedPdfFilename}`);
+              await copyFile(hoPathV1, `${sendDir}${sep}${sendProofFilename}`);
+
+              const sendReadme = [
+                "HUMANORIGIN — DOSSIER À ENVOYER / RECIPIENT PACKAGE",
+                "",
+                "FR",
+                "Envoyez ce dossier complet au destinataire.",
+                "",
+                "1. HumanOrigin_PUBLISHED.pdf",
+                "   Document publié avec marquage visible HumanOrigin.",
+                "",
+                "2. HumanOrigin_PROOF.v1.ho.json",
+                "   Preuve portable signée, vérifiable publiquement.",
+                "",
+                "HumanOrigin ne certifie pas que le contenu du document est vrai.",
+                "HumanOrigin certifie qu’un processus humain mesuré a été lié à ce document.",
+                "",
+                "EN",
+                "Send this complete folder to the recipient.",
+                "",
+                "1. HumanOrigin_PUBLISHED.pdf",
+                "   Published document with visible HumanOrigin mark.",
+                "",
+                "2. HumanOrigin_PROOF.v1.ho.json",
+                "   Portable signed proof, publicly verifiable.",
+                "",
+                "HumanOrigin does not certify that the document content is true.",
+                "HumanOrigin certifies that a measured human process was linked to this document.",
+              ].join("\n");
+
+              await writeTextFile(`${sendDir}${sep}README_SEND_FIRST.txt`, sendReadme);
+
+              await copyFile(coreProbeOutputPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`).catch(() => {});
+              await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`).catch(() => {});
+              await copyFile(manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`).catch(() => {});
+
+              const shareOpenFirstHtml = buildOpenFirstHtml({
+                projectTitle: hoDoc.subject.title,
+                documentFilename: hoDoc.document.filename,
+                publishedDocumentFilename,
+                publishedOutputFilename: sendPublishedPdfRelativePath,
+                referenceProofFilename: sendProofRelativePath,
+                compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINALfichier de vérification",
+                certificateId,
+                issuedAt,
+                verdict,
+                verifierUrl,
+                isPdf: true,
+              });
+
+              await writeTextFile(shareOpenFirstPath, shareOpenFirstHtml);
+              preferredOpenPath = shareOpenFirstPath;
+
+              console.log("[WINDOWS CORE PDF FINAL PACKAGE] ready", {
+                pdf: `${sendDir}${sep}${sendPublishedPdfFilename}`,
+                proof: `${sendDir}${sep}${sendProofFilename}`,
+              });
+            } catch (coreFinalPackageErr) {
+              console.warn("[WINDOWS CORE PDF FINAL PACKAGE] failed", coreFinalPackageErr);
+            }
           } catch (coreProbeErr) {
             await writeTextFile(
               `${dir}${sep}HumanOrigin_CORE_PDF_PROBE_RESULT.json`,
