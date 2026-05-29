@@ -4842,6 +4842,69 @@ function buildOpenFirstHtml({
 </html>`;
 }
 
+async function syncWindowsCorePdfToSendPackage({
+  dir,
+  sep,
+  hoDoc,
+  hoPathV1,
+  corePdfPath,
+}) {
+  const rawShareProjectName = String(hoDoc?.subject?.title || "HumanOrigin Project")
+    .replace(/[\\/:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "HumanOrigin Project";
+
+  const sharePackageDir = `${dir}${sep}${rawShareProjectName} — HumanOrigin Package`;
+  const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
+
+  await removeDir(sendDir, { recursive: true }).catch(() => {});
+  await createDir(sendDir, { recursive: true });
+
+  await copyFile(corePdfPath, `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`);
+  await copyFile(hoPathV1, `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`);
+
+  const sendReadmeFinal = [
+    "HUMANORIGIN — DOSSIER À ENVOYER / RECIPIENT PACKAGE",
+    "",
+    "FR",
+    "Envoyez ce dossier complet au destinataire.",
+    "",
+    "1. HumanOrigin_PUBLISHED.pdf",
+    "   Document publié avec marquage visible HumanOrigin.",
+    "",
+    "2. HumanOrigin_PROOF.v1.ho.json",
+    "   Preuve portable signée, vérifiable publiquement.",
+    "",
+    "HumanOrigin ne certifie pas que le contenu du document est vrai.",
+    "HumanOrigin certifie qu’un processus humain mesuré a été lié à ce document.",
+    "",
+    "EN",
+    "Send this complete folder to the recipient.",
+    "",
+    "1. HumanOrigin_PUBLISHED.pdf",
+    "   Published document with visible HumanOrigin mark.",
+    "",
+    "2. HumanOrigin_PROOF.v1.ho.json",
+    "   Portable signed proof, publicly verifiable.",
+    "",
+    "HumanOrigin does not certify that the document content is true.",
+    "HumanOrigin certifies that a measured human process was linked to this document.",
+  ].join("\n");
+
+  await writeTextFile(`${sendDir}${sep}README_SEND_FIRST.txt`, sendReadmeFinal);
+
+  console.log("[WINDOWS CORE PDF SEND SYNC HELPER] ready", {
+    pdf: `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`,
+    proof: `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`,
+  });
+
+  return {
+    sendDir,
+    publishedPdfPath: `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`,
+    proofPath: `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`,
+  };
+}
+
 async function renderPublicationKitPngs({
   badgeSvg,
   badgePngPath,
