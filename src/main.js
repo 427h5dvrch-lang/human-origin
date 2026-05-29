@@ -2514,6 +2514,18 @@ async function exportFinalProjectCertificate() {
                 result: coreProbeResult,
               }, null, 2),
             );
+
+            try {
+              await syncWindowsCorePdfToSendPackage({
+                dir,
+                sep,
+                hoDoc,
+                hoPathV1,
+                corePdfPath: coreProbeOutputPath,
+              });
+            } catch (syncErr) {
+              console.warn("[WINDOWS CORE PDF SEND SYNC CALL] failed", syncErr);
+            }
           } catch (coreProbeErr) {
             await writeTextFile(
               `${dir}${sep}HumanOrigin_CORE_PDF_PROBE_RESULT.json`,
