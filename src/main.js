@@ -2516,13 +2516,20 @@ async function exportFinalProjectCertificate() {
             );
 
             try {
-              await syncWindowsCorePdfToSendPackage({
+              const syncResult = await syncWindowsCorePdfToSendPackage({
                 dir,
                 sep,
                 hoDoc,
                 hoPathV1,
                 corePdfPath: coreProbeOutputPath,
+                publishedDocumentFilename,
+                certificateId,
+                issuedAt,
+                verdict,
+                verifierUrl,
               });
+
+              preferredOpenPath = syncResult?.openFirstPath || preferredOpenPath;
             } catch (syncErr) {
               console.warn("[WINDOWS CORE PDF SEND SYNC CALL] failed", syncErr);
             }
@@ -4860,6 +4867,11 @@ async function syncWindowsCorePdfToSendPackage({
   hoDoc,
   hoPathV1,
   corePdfPath,
+  publishedDocumentFilename,
+  certificateId,
+  issuedAt,
+  verdict,
+  verifierUrl,
 }) {
   const rawShareProjectName = String(hoDoc?.subject?.title || "HumanOrigin Project")
     .replace(/[\\/:*?"<>|]/g, " ")
@@ -4868,6 +4880,7 @@ async function syncWindowsCorePdfToSendPackage({
 
   const sharePackageDir = `${dir}${sep}${rawShareProjectName} — HumanOrigin Package`;
   const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
+  const shareOpenFirstPath = `${sharePackageDir}${sep}1_OPEN_FIRST.html`;
 
   await removeDir(sendDir, { recursive: true }).catch(() => {});
   await createDir(sendDir, { recursive: true });
@@ -4905,6 +4918,24 @@ async function syncWindowsCorePdfToSendPackage({
 
   await writeTextFile(`${sendDir}${sep}README_SEND_FIRST.txt`, sendReadmeFinal);
 
+  // WINDOWS CORE PDF OPEN_FIRST SYNC
+  // La page publique doit pointer vers le vrai PDF publié dans le dossier destinataire.
+  const shareOpenFirstHtml = buildOpenFirstHtml({
+    projectTitle: hoDoc.subject.title,
+    documentFilename: hoDoc.document.filename,
+    publishedDocumentFilename,
+    publishedOutputFilename: "2_SEND_TO_RECIPIENT/HumanOrigin_PUBLISHED.pdf",
+    referenceProofFilename: "2_SEND_TO_RECIPIENT/HumanOrigin_PROOF.v1.ho.json",
+    compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINALfichier de vérification",
+    certificateId,
+    issuedAt,
+    verdict,
+    verifierUrl,
+    isPdf: true,
+  });
+
+  await writeTextFile(shareOpenFirstPath, shareOpenFirstHtml);
+
   console.log("[WINDOWS CORE PDF SEND SYNC HELPER] ready", {
     pdf: `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`,
     proof: `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`,
@@ -4912,6 +4943,7 @@ async function syncWindowsCorePdfToSendPackage({
 
   return {
     sendDir,
+    openFirstPath: shareOpenFirstPath,
     publishedPdfPath: `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`,
     proofPath: `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`,
   };
