@@ -549,21 +549,21 @@ open_first_html = f"""<!doctype html>
       </div>
 
       <div class="status-strip">
-        <div class="status-card {'good' if verdict == 'CERTIFIED' else 'warn' if verdict == 'INCOMPLETE' else 'bad'}">
+        <div class="status-card {'good' if verdict == 'CERTIFIED' else 'warn' if verdict == 'PREUVE LIMITÉE' else 'bad'}">
           <div class="status-top">
             <div class="status-kicker">
               <span data-lang-inline="en">Verdict status</span>
-              <span data-lang-inline="fr">Statut du verdict</span>
+              <span data-lang-inline="fr">État du verdict</span>
             </div>
             <div class="status-pill">{esc(verdict)}</div>
           </div>
           <div class="status-value">
-            <span data-lang-inline="en">{'Ready for trusted circulation' if verdict == 'CERTIFIED' else 'More proof still needed' if verdict == 'INCOMPLETE' else 'Requires careful review'}</span>
-            <span data-lang-inline="fr">{'Prêt pour une circulation de confiance' if verdict == 'CERTIFIED' else 'Preuve encore insuffisante' if verdict == 'INCOMPLETE' else 'Exige une relecture attentive'}</span>
+            <span data-lang-inline="en">{'Ready for trusted circulation' if verdict == 'CERTIFIED' else 'More proof still needed' if verdict == 'PREUVE LIMITÉE' else 'Requires careful review'}</span>
+            <span data-lang-inline="fr">{'Prêt pour une circulation de confiance' if verdict == 'CERTIFIED' else 'Preuve encore insuffisante' if verdict == 'PREUVE LIMITÉE' else 'Exige une relecture attentive'}</span>
           </div>
           <div class="status-copy">
-            <span data-lang="en">{'The proof package is strong enough for normal public use.' if verdict == 'CERTIFIED' else 'The package is readable and verifiable, but the process verdict signals that more validated work may still be needed.' if verdict == 'INCOMPLETE' else 'The package remains readable and verifiable, but the verdict should be interpreted with caution.'}</span>
-            <span data-lang="fr">{'Le package de preuve est suffisamment solide pour un usage public normal.' if verdict == 'CERTIFIED' else 'Le package reste lisible et vérifiable, mais le verdict indique qu’un volume de travail validé supplémentaire peut encore être nécessaire.' if verdict == 'INCOMPLETE' else 'Le package reste lisible et vérifiable, mais le verdict doit être interprété avec prudence.'}</span>
+            <span data-lang="en">{'The proof package is strong enough for normal public use.' if verdict == 'CERTIFIED' else 'The package is readable and verifiable, but the process verdict signals that more validated work may still be needed.' if verdict == 'PREUVE LIMITÉE' else 'The package remains readable and verifiable, but the verdict should be interpreted with caution.'}</span>
+            <span data-lang="fr">{'Le package de preuve est suffisamment solide pour un usage public normal.' if verdict == 'CERTIFIED' else 'Le package reste lisible et vérifiable, mais le verdict indique qu’un volume de travail validé supplémentaire peut encore être nécessaire.' if verdict == 'PREUVE LIMITÉE' else 'Le package reste lisible et vérifiable, mais le verdict doit être interprété avec prudence.'}</span>
           </div>
         </div>
 
@@ -631,7 +631,7 @@ open_first_html = f"""<!doctype html>
             </a>
             <a class="btn secondary" href="{esc(v1_ho_filename)}">
               <span data-lang-inline="en">Open reference proof</span>
-              <span data-lang-inline="fr">Ouvrir la preuve de référence</span>
+              <span data-lang-inline="fr">Voir le fichier de vérification de référence</span>
             </a>
             <a class="btn ghost" href="{esc(verifier_url)}" target="_blank" rel="noopener">
               <span data-lang-inline="en">Verify online</span>
@@ -740,7 +740,7 @@ open_first_html = f"""<!doctype html>
             Open the public verifier, load <strong>{esc(v1_ho_filename)}</strong>, then optionally load the bound document to confirm the SHA-256 match.
           </p>
           <p data-lang="fr">
-            Ouvrez le vérificateur public, chargez <strong>{esc(v1_ho_filename)}</strong>, puis chargez si besoin le document lié pour confirmer la correspondance SHA-256.
+            Ouvrez le vérificateur public, chargez <strong>{esc(v1_ho_filename)}</strong>, puis chargez si besoin le document associé pour confirmer la correspondance SHA-256.
           </p>
         </div>
       </div>
@@ -749,7 +749,7 @@ open_first_html = f"""<!doctype html>
         <div class="meta-card">
           <div class="meta-label">
             <span data-lang-inline="en">Bound document</span>
-            <span data-lang-inline="fr">Document lié</span>
+            <span data-lang-inline="fr">Document associé</span>
           </div>
           <div class="meta-value">{esc(document_filename)}</div>
         </div>
@@ -792,7 +792,7 @@ open_first_html = f"""<!doctype html>
         </a>
         <a class="btn secondary" href="{esc(legacy_ho_filename)}">
           <span data-lang-inline="en">Open compatibility proof</span>
-          <span data-lang-inline="fr">Ouvrir la preuve de compatibilité</span>
+          <span data-lang-inline="fr">Voir le fichier de vérification de compatibilité</span>
         </a>
       </div>
     </section>

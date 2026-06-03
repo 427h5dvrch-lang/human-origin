@@ -888,7 +888,7 @@ Utilisez la vérification seulement si une vérification renforcée ou hors lign
 
 Fichiers recommandés
 - Fichier de vérification : {verification_name}
-- Document lié : {source_name}
+- Document associé : {source_name}
 
 Ouvrir le vérificateur
 - {verifier_url}

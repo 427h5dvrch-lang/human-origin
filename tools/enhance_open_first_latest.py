@@ -255,10 +255,10 @@ def main() -> None:
 
     raw_verdict = str(recursive_find(manifest, {"verdict", "final_verdict", "humanorigin_verdict"}) or "").strip().upper()
 
-    if raw_verdict == "INCOMPLETE":
+    if raw_verdict == "PREUVE LIMITÉE":
         assessment_tone = "warning"
         assessment_label_en = "Assessment status"
-        assessment_label_fr = "Statut d’évaluation"
+        assessment_label_fr = "État d’évaluation"
         assessment_title_en = "More proof is still needed"
         assessment_title_fr = "Une preuve supplémentaire reste nécessaire"
         assessment_body_en = "This package already establishes a document-bound proof path, but the current result should not yet be read as a completed certification outcome."
@@ -266,7 +266,7 @@ def main() -> None:
     elif raw_verdict in {"CERTIFIED", "VALID", "VERIFIED"}:
         assessment_tone = "success"
         assessment_label_en = "Assessment status"
-        assessment_label_fr = "Statut d’évaluation"
+        assessment_label_fr = "État d’évaluation"
         assessment_title_en = "This package reaches a certified outcome"
         assessment_title_fr = "Ce dossier atteint un résultat certifié"
         assessment_body_en = "The package provides a document-bound proof, a preferred portable reference proof, and a public verification path consistent with a certified outcome."
@@ -274,7 +274,7 @@ def main() -> None:
     else:
         assessment_tone = "neutral"
         assessment_label_en = "Assessment status"
-        assessment_label_fr = "Statut d’évaluation"
+        assessment_label_fr = "État d’évaluation"
         assessment_title_en = "This package should be interpreted with care"
         assessment_title_fr = "Ce dossier doit être interprété avec prudence"
         assessment_body_en = "Use the preferred proof and the public verifier to interpret the current status before relying on the package."
@@ -317,7 +317,7 @@ def main() -> None:
         )
     if bound_document:
         files_html.append(
-            f"""<li><span data-en="Bound document" data-fr="Document lié"></span><code>{html.escape(bound_document)}</code></li>"""
+            f"""<li><span data-en="Bound document" data-fr="Document associé"></span><code>{html.escape(bound_document)}</code></li>"""
         )
     if published_pdf:
         files_html.append(
@@ -346,7 +346,7 @@ def main() -> None:
         body_en="This is the preferred reference proof. It is portable, structured, and intended for verification.",
         body_fr="C’est la preuve de référence préférée. Elle est portable, structurée, et conçue pour la vérification.",
         button_en="Open reference proof",
-        button_fr="Ouvrir la preuve de référence",
+        button_fr="Voir le fichier de vérification de référence",
         href=preferred_proof,
         filename=preferred_proof,
         tone="trust",
@@ -370,11 +370,11 @@ def main() -> None:
         eyebrow_en="Compatibility only",
         eyebrow_fr="Compatibilité seulement",
         title_en="Open the legacy compatibility proof",
-        title_fr="Ouvrir la preuve legacy de compatibilité",
+        title_fr="Voir le fichier de vérification legacy de compatibilité",
         body_en="This file is included for legacy compatibility only. Use the v1 proof when possible.",
         body_fr="Ce fichier est inclus uniquement pour la compatibilité legacy. Utilisez la preuve v1 quand c’est possible.",
         button_en="Open compatibility proof",
-        button_fr="Ouvrir la preuve de compatibilité",
+        button_fr="Voir le fichier de vérification de compatibilité",
         href=legacy_proof,
         filename=legacy_proof,
         tone="muted",
@@ -1149,7 +1149,7 @@ def main() -> None:
           data-en="Use the legacy proof only for older tooling or transitional workflows. It is included for compatibility, not as the preferred reference proof."
           data-fr="Utilisez la preuve legacy uniquement pour des outils plus anciens ou des workflows transitoires. Elle est incluse pour compatibilité, pas comme preuve de référence préférée."></p>
         {"<div class='compat-file'><code>" + html.escape(legacy_proof) + "</code></div>" if legacy_proof else ""}
-        {"<a class='compat-link' href='" + html.escape(legacy_proof, quote=True) + "'><span data-en='Open compatibility proof' data-fr='Ouvrir la preuve de compatibilité'></span></a>" if legacy_proof else ""}
+        {"<a class='compat-link' href='" + html.escape(legacy_proof, quote=True) + "'><span data-en='Open compatibility proof' data-fr='Voir le fichier de vérification de compatibilité'></span></a>" if legacy_proof else ""}
       </div>
     </section>
 
@@ -1167,7 +1167,7 @@ def main() -> None:
         </div>
         <div class="assessment-side">
           <div class="assessment-mini">
-            <div class="mini-label" data-en="Verdict status" data-fr="Statut du verdict"></div>
+            <div class="mini-label" data-en="Verdict status" data-fr="État du verdict"></div>
             <div class="mini-value">{html.escape(verdict_en)}</div>
           </div>
           <div class="assessment-mini">
@@ -1179,7 +1179,7 @@ def main() -> None:
 
       <div class="metrics">
         <div class="metric">
-          <div class="label" data-en="Verdict status" data-fr="Statut du verdict"></div>
+          <div class="label" data-en="Verdict status" data-fr="État du verdict"></div>
           <div class="value">{html.escape(verdict_en)}</div>
           <div style="margin-top:6px;color:var(--muted)">{html.escape(verdict_fr)}</div>
         </div>

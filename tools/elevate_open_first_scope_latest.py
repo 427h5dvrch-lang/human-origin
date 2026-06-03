@@ -59,7 +59,7 @@ def main() -> None:
     reference_proof = manifest.get("reference_proof_filename") or "CERTIFICAT_FINAL.v1.ho.json"
     verdict = manifest.get("verdict") or "UNKNOWN"
 
-    if verdict == "INCOMPLETE":
+    if verdict == "PREUVE LIMITÉE":
         scope_statement_en = "This package establishes a document-bound proof package, but the current verdict remains incomplete."
         scope_statement_fr = "Ce dossier établit bien un ensemble de preuve lié au document, mais le verdict actuel reste incomplet."
     else:
@@ -209,7 +209,7 @@ def main() -> None:
 
       <div class="scope-grid">
         <article class="scope-card primary">
-          <div class="eyebrow" data-en="Bound document" data-fr="Document lié"></div>
+          <div class="eyebrow" data-en="Bound document" data-fr="Document associé"></div>
           <h3 data-en="This exact file is in scope" data-fr="Ce fichier précis est dans le périmètre"></h3>
           <p
             data-en="The proof package is attached to one document, not to a vague folder or claim."

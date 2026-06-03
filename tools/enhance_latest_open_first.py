@@ -343,7 +343,7 @@ send_block = f'''
       <span class="ho-file-pill">{published}</span>
       <div class="ho-send-actions">
         <a class="ho-send-btn" href="{published}">Ouvrir le document</a>
-        <button class="ho-send-btn" type="button" data-ho-copy="{safe_send_text}">Copier le message d’envoi</button>
+        <button class="ho-send-btn" type="button" data-ho-copy="{safe_send_text}">Copier le message d’accompagnement d’envoi</button>
       </div>
     </div>
 
