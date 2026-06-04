@@ -3907,7 +3907,6 @@ function buildOpenFirstHtml({
   const mainDisplayFilename = String(mainDocumentFilename || "").split(/[\\/]/).pop();
   const proofDisplayFilename = String(proofFilename || "").split(/[\\/]/).pop();
 
-  const sendFolderHref = `${packageFolderName}/`;
   const sendDocumentHref = `${packageFolderName}/${mainDisplayFilename}`;
   const archiveFolderHref = `${archiveFolderName}/`;
 
@@ -4181,55 +4180,54 @@ function buildOpenFirstHtml({
 <body>
   <main class="wrap">
     <section class="card">
-      <div class="kicker">HumanOrigin Package</div>
-      <h1>Votre package est prêt.</h1>
+      <div class="kicker">HumanOrigin</div>
+      <h1>Votre document est prêt.</h1>
       <p class="lead">
-        Un seul geste : envoyez le dossier préparé au destinataire. Il contient le document lisible et la preuve vérifiable.
+        Ce fichier porte la marque HumanOrigin, liée à un processus humain mesuré et signé. Ouvrez-le ou envoyez-le directement.
       </p>
 
       <div style="margin:16px 0 0;padding:14px 18px;background:rgba(8,35,77,.06);border-radius:14px;font-size:15px;line-height:1.65;color:#08234d;">
-        <strong style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.55">FR</strong>&ensp;Vous avez reçu un document accompagné d'une preuve HumanOrigin. Cette page vous indique quoi ouvrir, quoi envoyer et comment vérifier.<br/>
-        <strong style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.45">EN</strong>&ensp;<span style="opacity:.7">You have received a document with a HumanOrigin proof. This page shows what to open, what to share, and how to verify it.</span>
+        <strong style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.55">FR</strong>&ensp;Vous avez reçu un document portant la marque HumanOrigin. Ouvrez-le directement — la preuve est jointe si besoin.<br/>
+        <strong style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.45">EN</strong>&ensp;<span style="opacity:.7">You have received a HumanOrigin-labelled document. Open it directly — the proof is included if needed.</span>
         <br/><span style="display:inline-block;margin-top:8px;font-size:13px;opacity:.72;">Document associé à cette preuve&ensp;·&ensp;Linked document: <strong style="opacity:1;">${esc(documentFilename)}</strong></span>
       </div>
 
       <div class="hero">
-        <div class="kicker">Action principale</div>
-        <h2>Envoyez ce dossier.</h2>
+        <div class="kicker">Document labellisé HumanOrigin</div>
+        <h2>${esc(mainDisplayFilename)}</h2>
         <p>
-          Le destinataire ouvre le document transmis. La preuve signée reste dans le dossier pour vérification publique si nécessaire.
+          Ce fichier est marqué HumanOrigin. C’est lui que vous ouvrez et partagez. La preuve est jointe pour vérification si besoin.
         </p>
 
-        <div class="folder">
-          <span>Dossier à transmettre</span>
+        <div class="actions">
+          <a class="btn dark" href="${esc(sendDocumentHref)}" target="_blank" rel="noopener">Ouvrir le document</a>
+          <button class="btn" type="button" id="copySendMessage">Copier le message d’envoi</button>
+        </div>
+
+        <div class="folder" style="margin-top:18px;">
+          <span>Dossier complet</span>
           <strong>${esc(packageFolderName)}</strong>
-          <small>Joignez ce dossier à votre e-mail ou partagez-le directement.<br/>Attach this folder to your email or share it directly.</small>
+          <small>Contient le document et la preuve. Pour un envoi complet ou hors email.<br/>Contains the document and proof. For full delivery or non-email sharing.</small>
         </div>
 
         ${sendZipFilename ? `
         <div class="folder" style="margin-top:12px;background:rgba(255,255,255,.18);">
-          <span>ZIP prêt à joindre</span>
+          <span>Option email</span>
           <strong>${esc(sendZipFilename)}</strong>
-          <small>Pour un envoi par email, joignez ce fichier directement.<br/>To send by email, attach this file directly.</small>
+          <small>Pour joindre facilement à un email. Contient le document et la preuve.<br/>To attach easily to an email. Contains the document and proof.</small>
         </div>` : ""}
-
-        <div class="actions">
-          <a class="btn" href="${esc(sendFolderHref)}" target="_blank" rel="noopener">Ouvrir le dossier à envoyer</a>
-          <button class="btn" type="button" id="copySendMessage">Copier le message d’accompagnement</button>
-          <a class="btn" href="${esc(sendDocumentHref)}" target="_blank" rel="noopener">Voir le PDF</a>
-        </div>
       </div>
 
       <div class="files">
         <div class="file">
-          <span>Document transmis</span>
+          <span>Document labellisé</span>
           <strong>${esc(mainDisplayFilename)}</strong>
-          <em>Document à lire normalement.</em>
+          <em>Ce fichier porte le marquage visible HumanOrigin.</em>
         </div>
         <div class="file">
-          <span>Fichier de vérification inclus</span>
+          <span>Preuve portable (optionnelle)</span>
           <strong>${esc(proofDisplayFilename)}</strong>
-          <em>À garder dans le dossier. Ne pas ouvrir directement.</em>
+          <em>À conserver avec le document. Utile uniquement si une vérification indépendante est demandée.</em>
         </div>
       </div>
 
