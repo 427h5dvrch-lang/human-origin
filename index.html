@@ -1501,44 +1501,43 @@
             <button id="btn-recover-draft" class="btn btn-mini btn-ghost">Restaurer</button>
           </div>
 
-          <div
-            id="send-ready-banner"
-            style="display:none;margin-bottom:16px;border-radius:24px;overflow:hidden;box-shadow:0 8px 32px rgba(8,35,77,.10);border:1px solid rgba(16,185,129,.20);"
-          >
-            <!-- En-tête succès -->
-            <div style="padding:18px 20px 14px;background:linear-gradient(135deg,#0d1f3c,#0f2e52);display:flex;align-items:center;justify-content:space-between;gap:12px;">
-              <div>
-                <div style="font-size:11px;font-weight:900;letter-spacing:.16em;text-transform:uppercase;color:#10b981;margin-bottom:4px;">Document HumanOrigin créé avec succès</div>
-                <div style="font-size:15px;font-weight:700;color:rgba(255,255,255,.92);line-height:1.3;">Votre PDF labellisé est prêt à être envoyé.</div>
-              </div>
-              <button id="send-dismiss-btn" style="background:none;border:none;cursor:pointer;color:rgba(255,255,255,.35);font-size:18px;padding:4px 6px;line-height:1;flex-shrink:0;">✕</button>
-            </div>
+          <div id="send-ready-banner" style="display:none;margin-bottom:18px;">
+            <div class="app-card" style="position:relative;">
 
-            <!-- Carte document symbolique -->
-            <div style="padding:14px 20px;background:rgba(255,255,255,.96);display:flex;align-items:center;gap:14px;border-bottom:1px solid rgba(8,35,77,.06);">
-              <div style="width:36px;height:46px;border-radius:6px;background:linear-gradient(145deg,#08234d,#1a4a8a);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(8,35,77,.18);">
-                <svg width="18" height="22" viewBox="0 0 18 22" fill="none"><rect x="2" y="2" width="14" height="18" rx="2" fill="rgba(255,255,255,.15)"/><rect x="4" y="6" width="10" height="1.5" rx=".75" fill="rgba(255,255,255,.7)"/><rect x="4" y="9.5" width="7" height="1.5" rx=".75" fill="rgba(255,255,255,.5)"/><rect x="4" y="13" width="5" height="1.5" rx=".75" fill="rgba(255,255,255,.35)"/></svg>
+              <!-- Kicker + titre + dismiss -->
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:18px;">
+                <div>
+                  <div class="ritual-kicker" style="color:#10b981;margin-bottom:6px;">Document HumanOrigin créé avec succès</div>
+                  <div style="font-size:18px;font-weight:900;color:#0f172a;line-height:1.2;letter-spacing:-.02em;">Votre PDF labellisé est prêt à être envoyé.</div>
+                </div>
+                <button id="send-dismiss-btn" style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;padding:2px 4px;flex-shrink:0;margin-top:2px;line-height:1;">✕</button>
               </div>
-              <div style="flex:1;min-width:0;">
-                <div id="send-ready-doc-name" style="font-size:13px;font-weight:800;color:#0f172a;overflow-wrap:anywhere;line-height:1.35;margin-bottom:3px;"></div>
-                <div style="display:flex;align-items:center;gap:6px;">
-                  <span style="font-size:10px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:#10b981;background:rgba(16,185,129,.10);border:1px solid rgba(16,185,129,.22);border-radius:20px;padding:2px 7px;">PDF labellisé</span>
-                  <span style="font-size:10px;color:#94a3b8;font-weight:600;">Human Process Proof</span>
+
+              <!-- Ligne document -->
+              <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#f8fafc;border-radius:16px;border:1px solid rgba(15,23,42,.07);margin-bottom:16px;">
+                <div style="width:32px;height:40px;border-radius:5px;background:linear-gradient(145deg,#08234d,#1a4a8a);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 6px rgba(8,35,77,.16);">
+                  <svg width="14" height="18" viewBox="0 0 14 18" fill="none"><rect x="1" y="1" width="12" height="16" rx="2" fill="rgba(255,255,255,.1)"/><rect x="2.5" y="4.5" width="9" height="1.2" rx=".6" fill="rgba(255,255,255,.7)"/><rect x="2.5" y="7.5" width="6" height="1.2" rx=".6" fill="rgba(255,255,255,.5)"/><rect x="2.5" y="10.5" width="4" height="1.2" rx=".6" fill="rgba(255,255,255,.35)"/></svg>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div id="send-ready-doc-name" style="font-size:13px;font-weight:800;color:#0f172a;overflow-wrap:anywhere;line-height:1.3;margin-bottom:5px;"></div>
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <span style="font-size:10px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#10b981;background:rgba(16,185,129,.10);border:1px solid rgba(16,185,129,.22);border-radius:20px;padding:2px 8px;">PDF labellisé</span>
+                    <span style="font-size:10px;color:#94a3b8;font-weight:600;">Human Process Proof</span>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Clarification -->
-            <div style="padding:10px 20px;background:rgba(248,250,252,.9);border-bottom:1px solid rgba(8,35,77,.05);">
-              <p style="margin:0;font-size:11px;color:#64748b;line-height:1.55;">Le PDF contient une marque HumanOrigin visible. La preuve portable reste disponible dans le dossier complet.</p>
-            </div>
+              <!-- Actions -->
+              <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+                <button id="send-copy-pdf-btn" class="btn btn-primary">Copier le PDF à envoyer</button>
+                <button id="send-copy-folder-btn" class="btn btn-ghost btn-mini">Copier le dossier complet</button>
+                <button id="send-open-pdf-btn" class="btn btn-ghost btn-mini">Ouvrir le PDF</button>
+                <button id="send-copy-msg-btn" class="btn btn-ghost btn-mini" style="opacity:.5;font-size:11px;">Copier le message</button>
+              </div>
 
-            <!-- Actions -->
-            <div style="padding:14px 20px;background:#fff;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-              <button id="send-copy-pdf-btn" class="btn btn-primary btn-mini">Copier le PDF à envoyer</button>
-              <button id="send-copy-folder-btn" class="btn btn-ghost btn-mini">Copier le dossier complet</button>
-              <button id="send-open-pdf-btn" class="btn btn-ghost btn-mini">Ouvrir le PDF</button>
-              <button id="send-copy-msg-btn" class="btn btn-ghost btn-mini" style="opacity:.6;font-size:11px;">Copier le message</button>
+              <!-- Fine print -->
+              <p style="margin:0;font-size:11px;color:#94a3b8;line-height:1.55;">Le PDF contient une marque HumanOrigin visible. La preuve portable reste disponible dans le dossier complet.</p>
+
             </div>
           </div>
 

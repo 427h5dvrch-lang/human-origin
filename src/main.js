@@ -94,12 +94,25 @@ function showSendReadyBanner() {
   const nameEl = $("send-ready-doc-name");
   if (nameEl) nameEl.textContent = __lastExportContext.docName || __lastExportContext.projectName || "Document";
   banner.style.display = "block";
+  // Masquer le bouton export pendant le moment de réussite pour éviter une action concurrente
+  const exportBtn = $("close-project-btn");
+  if (exportBtn) exportBtn.style.display = "none";
 }
 
 function hideSendReadyBanner() {
   const banner = $("send-ready-banner");
   if (banner) banner.style.display = "none";
   __lastExportContext = null;
+  // Restaurer le bouton export si un travail est enregistré et qu'on est en état READY
+  const state = document.body.getAttribute("data-scan-state") || "READY";
+  if (state === "READY" && __hasRegisteredWork && currentProjectPath) {
+    const exportBtn = $("close-project-btn");
+    if (exportBtn) {
+      exportBtn.style.display = "block";
+      exportBtn.disabled = false;
+      exportBtn.title = "";
+    }
+  }
 }
 
 function resetWorkflowVisualState() {
