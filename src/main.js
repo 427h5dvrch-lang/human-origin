@@ -1122,7 +1122,8 @@ async function handleIncomingDeepLink(urlStr) {
   __deepLinkHandling = true;
 
   try {
-    console.log("DeepLink reçu:", urlStr);
+    console.log("[DEEPLINK] handleIncomingDeepLink URL =", urlStr);
+    toast("Lien HumanOrigin reçu");
 
     const p = parseUrlParamsFromFragmentOrQuery(urlStr);
     const access_token = p.get("access_token");
@@ -1155,7 +1156,7 @@ async function handleIncomingDeepLink(urlStr) {
       return;
     }
 
-    console.warn("DeepLink sans token/code/token_hash:", urlStr);
+    alert("[DEEPLINK] URL reçue sans token reconnu :\n" + urlStr);
   } catch (e) {
     console.warn("DeepLink auth fail:", e);
     alert("Erreur connexion : " + (e?.message || e));
@@ -1176,6 +1177,9 @@ async function setupDeepLinkListeners() {
 
   const handler = async (ev) => {
     try {
+      console.log("[DEEPLINK] event reçu, ev =", JSON.stringify(ev));
+      toast("Lien HumanOrigin reçu");
+
       const payload = ev?.payload;
 
       if (Array.isArray(payload) && payload.length) {
@@ -1196,10 +1200,15 @@ async function setupDeepLinkListeners() {
         if (u) {
           __rememberDeepLink(String(u));
           await handleIncomingDeepLink(String(u));
+          return;
         }
       }
+
+      // Payload reçu mais aucune URL extractible
+      alert("[DEEPLINK] event reçu mais URL non extractible. Payload : " + JSON.stringify(payload));
     } catch (e) {
       console.warn("DeepLink handler error", e);
+      alert("[DEEPLINK] erreur handler : " + (e?.message || e));
     }
   };
 
@@ -2485,8 +2494,10 @@ async function exportFinalProjectCertificate() {
 
       await writeTextFile(shareStartHerePath, startHereTxt);
 
-      // Le package premium devient l'entrée préférée après export.
-      preferredOpenPath = shareOpenFirstPath;
+      // Ouvrir le document labellisé en priorité ; Open First en fallback.
+      preferredOpenPath = canGeneratePublishedPdf
+        ? `${sendDir}${sep}${sendPublishedPdfFilename}`
+        : shareOpenFirstPath;
     } catch (e) {
       console.warn("[SHARE PACKAGE] premium build failed", e);
     }
@@ -2766,6 +2777,7 @@ async function exportFinalProjectCertificate() {
         await createDir(technicalDir, { recursive: true });
 
         await copyFile(finalPdfPath, `${sendDir}${sep}${sendPublishedPdfFilename}`);
+        preferredOpenPath = `${sendDir}${sep}${sendPublishedPdfFilename}`;
         await copyFile(hoPathV1, `${sendDir}${sep}${sendProofFilename}`);
 
         await copyFile(finalPdfPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`);
@@ -2775,16 +2787,13 @@ async function exportFinalProjectCertificate() {
         console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
       }
 
-      toast(bindExtLower === "docx"
-        ? "DOCX converti et Document transmis HumanOrigin généré ✅"
-        : "Document transmis HumanOrigin généré ✅"
-      );
+      toast("Document HumanOrigin prêt ✅");
 
       await invoke("open_file", { path: preferredOpenPath });
       return;
     }
 
-    toast("Kit de diffusion HumanOrigin généré ✅");
+    toast("Document HumanOrigin prêt ✅");
     await invoke("open_file", { path: preferredOpenPath });
   } catch (e) {
     console.error("exportFinalProjectCertificate failed", e);
