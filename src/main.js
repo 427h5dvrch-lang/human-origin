@@ -82,6 +82,25 @@ function exitLocalMode() {
   localStorage.removeItem("ho_local_mode");
   currentUser = null;
 }
+
+// =========================================================
+// POST-EXPORT SEND CONTEXT
+// =========================================================
+let __lastExportContext = null;
+
+function showSendReadyBanner() {
+  const banner = $("send-ready-banner");
+  if (!banner || !__lastExportContext) return;
+  const nameEl = $("send-ready-doc-name");
+  if (nameEl) nameEl.textContent = __lastExportContext.docName || __lastExportContext.projectName || "Document";
+  banner.style.display = "flex";
+}
+
+function hideSendReadyBanner() {
+  const banner = $("send-ready-banner");
+  if (banner) banner.style.display = "none";
+  __lastExportContext = null;
+}
 let currentProjectName = null;
 let currentProjectPath = null;
 
@@ -1973,6 +1992,8 @@ async function runConverterSidecar({ inputPath, outputDir }) {
 // FINAL PROJECT CERTIFICATE (HTML + HO-JSON + PUBLICATION KIT)
 // =========================================================
 async function exportFinalProjectCertificate() {
+  hideSendReadyBanner();
+
   if (!currentProjectPath) {
     alert("Projet non chargé.");
     return;
@@ -2468,6 +2489,14 @@ async function exportFinalProjectCertificate() {
         console.warn("[ZIP] création non bloquante échouée", zipErr);
       }
 
+      // Stocker le contexte pour le banner post-export
+      __lastExportContext = {
+        sendDir,
+        zipPath: sendZipCreated ? sendZipPath : null,
+        docName: sendPublishedPdfFilename,
+        projectName: rawShareProjectName,
+      };
+
       const technicalCopies = [
         [hoPath, `${technicalDir}${sep}CERTIFICAT_FINAL.ho.json`, "CERTIFICAT_FINAL.ho.json"],
         [hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`, "CERTIFICAT_FINAL.v1.ho.json"],
@@ -2830,12 +2859,13 @@ async function exportFinalProjectCertificate() {
       }
 
       toast("Document HumanOrigin prêt ✅");
-
+      showSendReadyBanner();
       await invoke("open_file", { path: preferredOpenPath });
       return;
     }
 
     toast("Document HumanOrigin prêt ✅");
+    showSendReadyBanner();
     await invoke("open_file", { path: preferredOpenPath });
   } catch (e) {
     console.error("exportFinalProjectCertificate failed", e);
@@ -5187,6 +5217,34 @@ window.addEventListener("DOMContentLoaded", async () => {
     enterLocalMode();
     await forcePostLogin(false);
   });
+
+  on("send-reveal-btn", async () => {
+    if (!__lastExportContext) return;
+    await invoke("open_file", { path: __lastExportContext.sendDir }).catch(() => {});
+  });
+
+  on("send-copy-msg-btn", async () => {
+    if (!__lastExportContext) return;
+    const msg = [
+      "Bonjour,",
+      "",
+      "Vous trouverez ci-joint mon document labellisé HumanOrigin.",
+      "",
+      "Le document contient une marque HumanOrigin visible. Une preuve portable de processus humain est également incluse dans le dossier d'envoi.",
+      "",
+      "Vous pouvez ouvrir le document directement, puis scanner le QR code ou utiliser la preuve .ho.json si vous souhaitez vérifier l'origine du processus.",
+      "",
+      "Bien à vous,",
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(msg);
+      toast("Message copié ✅");
+    } catch {
+      alert(msg);
+    }
+  });
+
+  on("send-dismiss-btn", () => hideSendReadyBanner());
 
   on("login-btn", async () => {
     const email = $("email")?.value?.trim();
