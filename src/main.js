@@ -1421,7 +1421,7 @@ async function ensureProjectIdByName(name, timeoutMs = 3000) {
   return Promise.race([fetchCloudId(), timeoutPromise]);
 }
 function notifyDeferredLocalMode() {
-  toast("Mode local actif — synchronisation cloud différée");
+  toast("Preuve locale — synchronisation cloud désactivée");
 }
 
 async function syncCurrentSessionToCloud(projectId, status = "RUNNING", snap = null) {
@@ -1565,7 +1565,7 @@ async function stopScan() {
     lastSnapshot = snap;
 
     updateDashboardUI("STOPPED");
-    toast("Enregistrement arrêté. Brouillon enregistré.");
+    toast("Observation terminée. Travail sauvegardé localement.");
 
     const gatePassed = snap?.diag?.analysis?.gate_passed;
     const finBtn = $("finalize-btn");
@@ -1798,7 +1798,7 @@ async function finalizeSession() {
     }
 
     if (cloudOk) {
-      toast(isTemporary ? "Session BROUILLON certifiée ✅" : "Session certifiée ✅");
+      toast(isTemporary ? "Travail enregistré (activité limitée) ✅" : "Travail enregistré ✅");
       await refreshHistory().catch(() => {});
     } else {
       toast(isTemporary ? "Travail enregistré localement ✅" : "Travail enregistré ✅");
@@ -1898,7 +1898,7 @@ async function refreshHistory() {
       return;
     }
     if (currentUser?.isLocal) {
-      tbody.innerHTML = `<tr><td colspan="3" style="color:#888;padding:15px">Mode local — historique cloud non disponible.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="3" style="color:#888;padding:15px">Preuve locale — historique cloud non disponible.</td></tr>`;
       return;
     }
 
@@ -1979,7 +1979,7 @@ async function refreshHistory() {
       const scp = typeof s.scp_score === "number" ? Math.round(s.scp_score) : 0;
       const isTemp = s.status === "CERTIFIED_TEMP";
       const v = verdictFromScp(scp);
-      const label = isTemp ? "BROUILLON" : v.label;
+      const label = isTemp ? "Activité limitée" : v.label;
       const color = isTemp ? "#60a5fa" : v.color;
       const hash = s.cert_id ? hashById.get(s.cert_id) || "" : "";
       const proof = hash ? `${hash.substring(0, 8)}...` : "—";
@@ -3087,7 +3087,7 @@ function ensureDraftModal() {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
         <div>
           <h2 style="margin:0;font-weight:950;letter-spacing:-0.02em;color:#0b1b33;font-size:22px;">Sessions en attente de certification</h2>
-          <div style="margin-top:6px;font-size:13px;color:rgba(11,18,32,0.6);">Reprendre ou supprimer un brouillon local avant certification.</div>
+          <div style="margin-top:6px;font-size:13px;color:rgba(11,18,32,0.6);">Reprendre ou supprimer un travail en cours.</div>
         </div>
         <button id="draft-modal-x" style="width:40px;height:40px;border-radius:12px;border:1px solid rgba(14,29,58,0.12);background:rgba(255,255,255,0.7);font-weight:900;cursor:pointer;">✕</button>
       </div>
@@ -3140,7 +3140,7 @@ function renderDraftModalList() {
   items.sort((a, b) => (b.created_at_utc || "").localeCompare(a.created_at_utc || ""));
 
   if (!items.length) {
-    list.innerHTML = "<div style='padding:15px;color:#888'>Aucun brouillon.</div>";
+    list.innerHTML = "<div style='padding:15px;color:#888'>Aucun travail en cours.</div>";
     return;
   }
 
