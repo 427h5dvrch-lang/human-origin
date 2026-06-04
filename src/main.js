@@ -2360,6 +2360,9 @@ async function exportFinalProjectCertificate() {
         "Projet :",
         rawShareProjectName,
         "",
+        "Document source :",
+        hoDoc.document.filename,
+        "",
         "Ce dossier contient les fichiers principaux à transmettre à un destinataire.",
         "",
         `1. ${canGeneratePublishedPdf ? sendPublishedPdfFilename : `${rawShareProjectName} — ${publishedDocumentFilename}`}`,
@@ -4148,6 +4151,7 @@ function buildOpenFirstHtml({
       <div style="margin:16px 0 0;padding:14px 18px;background:rgba(8,35,77,.06);border-radius:14px;font-size:15px;line-height:1.65;color:#08234d;">
         <strong style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.55">FR</strong>&ensp;Vous avez reçu un document accompagné d'une preuve HumanOrigin. Cette page vous indique quoi ouvrir, quoi envoyer et comment vérifier.<br/>
         <strong style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.45">EN</strong>&ensp;<span style="opacity:.7">You have received a document with a HumanOrigin proof. This page shows what to open, what to share, and how to verify it.</span>
+        <br/><span style="display:inline-block;margin-top:8px;font-size:13px;opacity:.72;">Document associé à cette preuve&ensp;·&ensp;Linked document: <strong style="opacity:1;">${esc(documentFilename)}</strong></span>
       </div>
 
       <div class="hero">
