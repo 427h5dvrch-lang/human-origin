@@ -4145,6 +4145,11 @@ function buildOpenFirstHtml({
         Un seul geste : envoyez le dossier préparé au destinataire. Il contient le document lisible et la preuve vérifiable.
       </p>
 
+      <div style="margin:16px 0 0;padding:14px 18px;background:rgba(8,35,77,.06);border-radius:14px;font-size:15px;line-height:1.65;color:#08234d;">
+        <strong style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.55">FR</strong>&ensp;Vous avez reçu un document accompagné d'une preuve HumanOrigin. Cette page vous indique quoi ouvrir, quoi envoyer et comment vérifier.<br/>
+        <strong style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.45">EN</strong>&ensp;<span style="opacity:.7">You have received a document with a HumanOrigin proof. This page shows what to open, what to share, and how to verify it.</span>
+      </div>
+
       <div class="hero">
         <div class="kicker">Action principale</div>
         <h2>Envoyez ce dossier.</h2>
