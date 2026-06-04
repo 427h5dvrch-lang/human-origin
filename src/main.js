@@ -3482,6 +3482,13 @@ async function buildCartoucheSvg({ verifierUrl, certificateId, verdict, issuedAt
   const visual = getVisualVerdictMeta(verdict);
   const dateLabel = formatDisplayDate(issuedAt);
 
+  // Tier label pour le cartouche large (archivé dans le package)
+  const vk = String(verdict || "").toUpperCase();
+  const ctSub = vk === "SUSPECT" ? "PROCESSUS NON CONFIRMÉ"
+    : vk === "PREUVE LIMITÉE" || vk === "PREUVE LIMITEE" ? "PREUVE PARTIELLE"
+    : vk === "ATYPIQUE" || vk === "ATYPICAL" ? "PROCESSUS ATYPIQUE"
+    : "Human Process Proof";
+
   const url = verifierUrl.includes("?")
     ? `${verifierUrl}&id=${encodeURIComponent(idShort)}`
     : `${verifierUrl}?id=${encodeURIComponent(idShort)}`;
@@ -3495,7 +3502,7 @@ const qrInner = qrSvg.replace(/^.*?<svg[^>]*>/s, "").replace(/<\/svg>\s*$/s, "")
       .paper{fill:#fffdf8}
       .border{fill:none;stroke:#d7dde7;stroke-width:2}
       .brand{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-weight:900;font-size:42px;fill:#0b1220}
-      .sub{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-weight:700;font-size:16px;fill:#475569;letter-spacing:0.02em}
+      .sub{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-weight:700;font-size:16px;fill:${visual.color};letter-spacing:0.02em}
       .verdict{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-weight:950;font-size:30px;fill:${visual.color}}
       .body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-weight:600;font-size:16px;fill:#334155}
       .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;fill:#475569}
@@ -3510,7 +3517,7 @@ const qrInner = qrSvg.replace(/^.*?<svg[^>]*>/s, "").replace(/<\/svg>\s*$/s, "")
   <line x1="682" y1="28" x2="682" y2="272" stroke="#e2e8f0" stroke-width="2"/>
 
   <text x="34" y="62" class="brand">HumanOrigin</text>
-  <text x="36" y="92" class="sub">Human Process Proof</text>
+  <text x="36" y="92" class="sub">${ctSub}</text>
 
   <rect x="36" y="118" width="164" height="38" rx="19" fill="${visual.bg}" stroke="${visual.border}" />
   <text x="118" y="143" text-anchor="middle" class="verdict" font-size="18">${visual.label}</text>
@@ -3546,10 +3553,28 @@ async function buildCartoucheCompactSvg({ verifierUrl, certificateId, verdict, i
     ? `${verifierUrl}&id=${encodeURIComponent(idShort)}`
     : `${verifierUrl}?id=${encodeURIComponent(idShort)}`;
 
-  const NAVY = "#08234d";
-  const NAVY_SOFT = "#12376d";
-  const PAPER = "#fffdf8";
+  // Logique de tier visuel selon le verdict
+  const verdictKey = String(verdict || "").toUpperCase();
+  const isSuspect = verdictKey === "SUSPECT";
+  const isLimited = verdictKey === "PREUVE LIMITÉE" || verdictKey === "PREUVE LIMITEE";
+  const isAtypical = verdictKey === "ATYPIQUE" || verdictKey === "ATYPICAL";
+  const isWeakProof = isSuspect || isLimited;
+
+  const tierLabel = isSuspect
+    ? "PROCESSUS NON CONFIRMÉ"
+    : isLimited
+    ? "PREUVE PARTIELLE — VOL. LIMITÉ"
+    : isAtypical
+    ? "PROCESSUS ATYPIQUE OBSERVÉ"
+    : "HUMAN PROCESS PROOF";
+
+  const tierSubLabel = isSuspect ? "VÉRIFIER LA PREUVE" : "";
+
+  const NAVY = isSuspect ? "#7f1d1d" : isLimited ? "#334155" : isAtypical ? "#78350f" : "#08234d";
+  const NAVY_SOFT = isSuspect ? "#991b1b" : isLimited ? "#475569" : isAtypical ? "#92400e" : "#12376d";
+  const PAPER = isSuspect ? "#fff1f2" : isLimited ? "#f8fafc" : "#fffdf8";
   const HAIRLINE = "#d9e0ec";
+  const showCheckmark = !isWeakProof;
 
   const QR_SIZE = 318;
 
@@ -3609,11 +3634,12 @@ async function buildCartoucheCompactSvg({ verifierUrl, certificateId, verdict, i
 
   <line x1="94" y1="535" x2="139" y2="535" stroke="${NAVY}" stroke-width="2"/>
   <line x1="381" y1="535" x2="426" y2="535" stroke="${NAVY}" stroke-width="2"/>
-  <text x="260" y="541" text-anchor="middle" class="smallcaps">HUMAN PROCESS PROOF</text>
+  <text x="260" y="541" text-anchor="middle" class="smallcaps">${xml(tierLabel)}</text>
+  ${tierSubLabel ? `<text x="260" y="560" text-anchor="middle" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-size:11px;font-weight:700;fill:${visual.color};letter-spacing:0.18em;">${xml(tierSubLabel)}</text>` : ""}
 
-  <circle cx="204" cy="586" r="18" fill="${NAVY}"/>
-  <path d="M194 586 L201 594 L216 576" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="238" y="592" class="scan">SCAN TO VERIFY</text>
+  <circle cx="204" cy="592" r="18" fill="${showCheckmark ? NAVY : "none"}" stroke="${showCheckmark ? "none" : visual.color}" stroke-width="2"/>
+  ${showCheckmark ? `<path d="M194 592 L201 600 L216 582" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>` : `<text x="204" y="598" text-anchor="middle" style="font-size:16px;font-weight:900;fill:${visual.color};">!</text>`}
+  <text x="238" y="598" class="scan">SCAN TO VERIFY</text>
 
   <rect x="74" y="628" width="372" height="62" rx="8" fill="#ffffff" stroke="${HAIRLINE}" stroke-width="1.5"/>
   <line x1="198" y1="638" x2="198" y2="680" stroke="${HAIRLINE}" stroke-width="1.3" stroke-dasharray="2 5"/>
