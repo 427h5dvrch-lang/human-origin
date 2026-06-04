@@ -1578,11 +1578,15 @@ function updateDashboardUI(state) {
   if (state === "READY") {
     // Nettoyage visuel complet, puis action unique : "Commencer l'observation"
     resetWorkflowVisualState();
-    // Bouton export : visible si projet chargé, actif ou désactivé selon l'état du travail
-    if (exportBtn && currentProjectPath) {
-      exportBtn.style.display = "block";
-      exportBtn.disabled = !__hasRegisteredWork;
-      exportBtn.title = __hasRegisteredWork ? "" : "Enregistrez d'abord un moment de travail.";
+    // Bouton export : visible et actif seulement si un travail a déjà été enregistré
+    if (exportBtn) {
+      if (currentProjectPath && __hasRegisteredWork) {
+        exportBtn.style.display = "block";
+        exportBtn.disabled = false;
+        exportBtn.title = "";
+      } else {
+        exportBtn.style.display = "none";
+      }
     }
   } else if (state === "SCANNING") {
     // Action unique : "Terminer l'observation"
@@ -1593,6 +1597,7 @@ function updateDashboardUI(state) {
     if (draftBanner) draftBanner.style.display = "none";
   } else if (state === "STOPPED") {
     // Action unique : "Enregistrer ce travail"
+    hideSendReadyBanner();
     if (finBtn) {
       finBtn.classList.remove("hidden");
       finBtn.disabled = false;
