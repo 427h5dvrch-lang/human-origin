@@ -102,25 +102,19 @@ function hideSendReadyBanner() {
 function showExportSuccessView() {
   if (!__lastExportContext) return;
   __isExportSuccessVisible = true;
-  const view = $("export-success-view");
   const nameEl = $("export-success-doc-name");
   if (nameEl) nameEl.textContent = __lastExportContext.docName || __lastExportContext.projectName || "Document";
-  if (view) view.style.display = "block";
-  // Masquer la zone de travail pour que le succès domine
-  const controlsSection = $("controls-section");
-  if (controlsSection) controlsSection.style.display = "none";
-  try { view?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
+  showScreen("SUCCESS");
+  const view = $("export-success-view");
+  try { view?.scrollIntoView({ behavior: "smooth", block: "center" }); } catch {}
 }
 
 function hideExportSuccessView() {
   if (!__isExportSuccessVisible) return;
   __isExportSuccessVisible = false;
   __lastExportContext = null;
-  const view = $("export-success-view");
-  if (view) view.style.display = "none";
-  // Restaurer la zone de travail
-  const controlsSection = $("controls-section");
-  if (controlsSection) controlsSection.style.display = "";
+  showScreen("DASHBOARD");
+  updateDashboardUI("READY");
 }
 
 function resetWorkflowVisualState() {
@@ -334,6 +328,10 @@ function showScreen(screenName) {
   if (permScreen) permScreen.style.display = "none";
   if (onboardScreen) onboardScreen.style.display = "none";
 
+  // Masquer la vue succès sauf si on navigue vers SUCCESS
+  const successView = $("export-success-view");
+  if (successView && screenName !== "SUCCESS") successView.style.display = "none";
+
   switch (screenName) {
     case "PERMISSIONS":
       if (permScreen) permScreen.style.display = "flex";
@@ -357,6 +355,13 @@ function showScreen(screenName) {
       if (appScreen) appScreen.style.display = "block";
       if (controlsSec) controlsSec.classList.remove("hidden");
       safeText("current-project-title", currentProjectName || "Workspace HumanOrigin");
+      break;
+
+    case "SUCCESS":
+      if (appScreen) appScreen.style.display = "block";
+      // controls-section reste caché (classList.add("hidden") déjà fait plus haut)
+      safeText("current-project-title", currentProjectName || "Workspace HumanOrigin");
+      if (successView) successView.style.display = "block";
       break;
   }
 }
@@ -1579,6 +1584,8 @@ async function stopScan() {
   }
 }
 function updateDashboardUI(state) {
+  // Ne pas toucher au dashboard pendant l'état de succès post-export
+  if (__isExportSuccessVisible) return;
   try { document.body.setAttribute("data-scan-state", state); } catch {}
   const startBtn = $("start-btn");
   const stopBtn = $("stop-btn");
