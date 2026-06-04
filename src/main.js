@@ -18,13 +18,14 @@
 import { invoke, convertFileSrc } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/api/dialog";
-import { writeTextFile, createDir, copyFile, removeDir } from "@tauri-apps/api/fs";
+import { writeTextFile, createDir, copyFile, removeDir, readBinaryFile, writeBinaryFile, readDir } from "@tauri-apps/api/fs";
 import { createClient } from "@supabase/supabase-js";
 import { checkUpdate, installUpdate } from "@tauri-apps/api/updater";
 import * as app from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/api/process";
 import QRCode from "qrcode";
 import { Command } from "@tauri-apps/api/shell";
+import { zip as fflateZip } from "fflate";
 
 console.log("HumanOrigin main.js V3.2.1 FULL + Publication Kit V1 loaded ✅");
 
@@ -2385,6 +2386,32 @@ async function exportFinalProjectCertificate() {
 
       await writeTextFile(`${sendDir}${sep}README_SEND_FIRST.txt`, sendReadme);
 
+      // ZIP non bloquant — régénère Open First avec bloc ZIP seulement si création réussie
+      const sendZipFilename = "HumanOrigin_SEND.zip";
+      const sendZipPath = `${sharePackageDir}${sep}${sendZipFilename}`;
+      let sendZipCreated = false;
+      try {
+        await createSendZip(sendDir, sendZipPath);
+        sendZipCreated = true;
+        const shareOpenFirstHtmlWithZip = buildOpenFirstHtml({
+          projectTitle: hoDoc.subject.title,
+          documentFilename: hoDoc.document.filename,
+          publishedDocumentFilename,
+          publishedOutputFilename: canGeneratePublishedPdf ? sendPublishedPdfRelativePath : null,
+          referenceProofFilename: sendProofRelativePath,
+          compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINAL.ho.json",
+          certificateId,
+          issuedAt,
+          verdict,
+          verifierUrl,
+          isPdf: canGeneratePublishedPdf,
+          sendZipFilename,
+        });
+        await writeTextFile(shareOpenFirstPath, shareOpenFirstHtmlWithZip);
+      } catch (zipErr) {
+        console.warn("[ZIP] création non bloquante échouée", zipErr);
+      }
+
       const technicalCopies = [
         [hoPath, `${technicalDir}${sep}CERTIFICAT_FINAL.ho.json`, "CERTIFICAT_FINAL.ho.json"],
         [hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`, "CERTIFICAT_FINAL.v1.ho.json"],
@@ -2439,6 +2466,7 @@ async function exportFinalProjectCertificate() {
         "À ouvrir en premier :",
         "1_OPEN_FIRST.html",
         "",
+        ...(sendZipCreated ? ["Pour envoyer par email :", sendZipFilename, ""] : []),
         "À envoyer à un destinataire :",
         "2_SEND_TO_RECIPIENT/",
         "",
@@ -3858,6 +3886,7 @@ function buildOpenFirstHtml({
   verdict,
   verifierUrl,
   isPdf,
+  sendZipFilename = null,
 }) {
   const mainDocumentFilename = publishedOutputFilename || publishedDocumentFilename;
   const proofFilename = referenceProofFilename || "CERTIFICAT_FINAL.v1.ho.json";
@@ -4166,6 +4195,13 @@ function buildOpenFirstHtml({
           <strong>${esc(packageFolderName)}</strong>
           <small>Joignez ce dossier à votre e-mail ou partagez-le directement.<br/>Attach this folder to your email or share it directly.</small>
         </div>
+
+        ${sendZipFilename ? `
+        <div class="folder" style="margin-top:12px;background:rgba(255,255,255,.18);">
+          <span>ZIP prêt à joindre</span>
+          <strong>${esc(sendZipFilename)}</strong>
+          <small>Pour un envoi par email, joignez ce fichier directement.<br/>To send by email, attach this file directly.</small>
+        </div>` : ""}
 
         <div class="actions">
           <a class="btn" href="${esc(sendFolderHref)}" target="_blank" rel="noopener">Ouvrir le dossier à envoyer</a>
@@ -4956,6 +4992,23 @@ async function syncWindowsCorePdfToSendPackage({
     publishedPdfPath: `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`,
     proofPath: `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`,
   };
+}
+
+async function createSendZip(sendDir, zipOutputPath) {
+  const entries = await readDir(sendDir, { recursive: false });
+  const fileMap = {};
+  for (const entry of entries) {
+    if (entry.children !== undefined) continue;
+    if (!entry.name) continue;
+    const bytes = await readBinaryFile(entry.path);
+    fileMap[entry.name] = new Uint8Array(bytes);
+  }
+  return new Promise((resolve, reject) => {
+    fflateZip(fileMap, { level: 6 }, (err, data) => {
+      if (err) return reject(err);
+      writeBinaryFile(zipOutputPath, data).then(resolve).catch(reject);
+    });
+  });
 }
 
 async function renderPublicationKitPngs({
