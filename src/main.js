@@ -93,7 +93,7 @@ function showSendReadyBanner() {
   if (!banner || !__lastExportContext) return;
   const nameEl = $("send-ready-doc-name");
   if (nameEl) nameEl.textContent = __lastExportContext.docName || __lastExportContext.projectName || "Document";
-  banner.style.display = "flex";
+  banner.style.display = "block";
 }
 
 function hideSendReadyBanner() {
