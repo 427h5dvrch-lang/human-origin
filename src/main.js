@@ -59,6 +59,29 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // =========================================================
 let currentUser = null;
 let currentProjectId = null;
+
+// =========================================================
+// LOCAL MODE — privacy-first, sans compte Supabase
+// =========================================================
+function isLocalMode() {
+  return localStorage.getItem("ho_local_mode") === "true";
+}
+
+function enterLocalMode() {
+  let localId = localStorage.getItem("ho_local_user_id");
+  if (!localId) {
+    localId = "local-" + crypto.randomUUID();
+    localStorage.setItem("ho_local_user_id", localId);
+  }
+  localStorage.setItem("ho_local_mode", "true");
+  currentUser = { id: localId, email: "", isLocal: true, authMode: "local" };
+  safeText("user-email-display", "Mode local");
+}
+
+function exitLocalMode() {
+  localStorage.removeItem("ho_local_mode");
+  currentUser = null;
+}
 let currentProjectName = null;
 let currentProjectPath = null;
 
@@ -1000,6 +1023,7 @@ async function handleLogout() {
 
   bumpEpoch();
   resetAllStateToLogin();
+  exitLocalMode();
 
   try {
     await supabase.auth.signOut();
@@ -1013,6 +1037,10 @@ async function continueAfterPermissions() {
   __permissionsContinueInFlight = true;
   try {
     stopPermissionTimers();
+    if (isLocalMode()) {
+      await forcePostLogin(true).catch(() => showScreen("LOGIN"));
+      return;
+    }
     hoBootMark("postlogin:getSession");
     const { data } = await supabase.auth.getSession();
     if (data?.session) {
@@ -1046,6 +1074,16 @@ async function forcePostLogin(skipPermissionsCheck = false) {
     const permOk = await ensurePermissionsBeforeApp();
     if (!permOk) return;
   }
+
+    if (isLocalMode()) {
+      enterLocalMode();
+      if (checkAndShowTuto()) return;
+      if (currentProjectName) showScreen("DASHBOARD");
+      else showScreen("PROJECT_SELECT");
+      await loadProjectList().catch(() => {});
+      refreshHistory().catch(() => {});
+      return;
+    }
 
     hoBootMark("postlogin:beforeGetSession");
     let data;
@@ -1726,6 +1764,10 @@ async function refreshHistory() {
   if (!currentProjectId) {
     if (!currentUser?.id) {
       tbody.innerHTML = `<tr><td colspan="3" style="color:#888;padding:15px">Connectez-vous</td></tr>`;
+      return;
+    }
+    if (currentUser?.isLocal) {
+      tbody.innerHTML = `<tr><td colspan="3" style="color:#888;padding:15px">Mode local — historique cloud non disponible.</td></tr>`;
       return;
     }
 
@@ -5140,6 +5182,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     const el = $("app-version");
     if (el) el.innerText = `Version ${v} · Sécurisé par Ed25519`;
   } catch {}
+
+  on("local-mode-btn", async () => {
+    enterLocalMode();
+    await forcePostLogin(false);
+  });
 
   on("login-btn", async () => {
     const email = $("email")?.value?.trim();
