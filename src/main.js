@@ -2371,7 +2371,7 @@ async function exportFinalProjectCertificate() {
         "   Preuve portable signée, vérifiable publiquement.",
         "",
         "Pour vérifier :",
-        "- ouvrir le vérificateur public HumanOrigin ;",
+        `- ${verifierUrl}`,
         "- importer le fichier de vérification ;",
         "- importer le document publié si une comparaison du document est demandée.",
         "",
@@ -4159,8 +4159,8 @@ function buildOpenFirstHtml({
 
         <div class="folder">
           <span>Dossier à transmettre</span>
-          <strong>Dossier à envoyer</strong>
-          <small>${esc(packageFolderName)}</small>
+          <strong>${esc(packageFolderName)}</strong>
+          <small>Joignez ce dossier à votre e-mail ou partagez-le directement.<br/>Attach this folder to your email or share it directly.</small>
         </div>
 
         <div class="actions">
