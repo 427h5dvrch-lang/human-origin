@@ -1377,10 +1377,10 @@
           <input type="email" id="email" class="login-input" placeholder="votre@email.com" />
           <button id="login-btn" class="btn btn-primary" style="width: 100%">Recevoir mon lien</button>
 
-          <div style="margin-top: 18px; border-top: 1px solid rgba(15,23,42,.08); padding-top: 16px;">
-            <button id="local-mode-btn" class="btn btn-ghost" style="width:100%">Continuer en local</button>
+          <div style="margin-top: 18px; border-top: 1px solid rgba(15,23,42,.10); padding-top: 16px;">
+            <button id="local-mode-btn" class="btn btn-ghost" style="width:100%;font-weight:800;color:#334155;border:1px solid rgba(15,23,42,.14);">Continuer en local</button>
             <p style="margin: 8px 0 0; font-size: 11px; color: #94a3b8; text-align: center; line-height: 1.5;">
-              Sans compte. Les preuves restent locales et ne sont pas liées à une identité cloud vérifiée.
+              Sans compte — preuves locales, non liées à une identité cloud vérifiée.
             </p>
           </div>
 
@@ -1506,10 +1506,11 @@
             style="display:none;align-items:flex-start;gap:14px;margin-bottom:16px;padding:18px 20px;border-radius:20px;background:linear-gradient(135deg,rgba(8,35,77,.06),rgba(16,185,129,.06));border:1px solid rgba(16,185,129,.22);flex-wrap:wrap;"
           >
             <div style="flex:1;min-width:0;">
-              <div style="font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#10b981;margin-bottom:4px;">Prêt à envoyer</div>
-              <div id="send-ready-doc-name" style="font-size:15px;font-weight:800;color:#0f172a;overflow-wrap:anywhere;margin-bottom:10px;"></div>
+              <div style="font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#10b981;margin-bottom:4px;">Votre document est prêt</div>
+              <div id="send-ready-doc-name" style="font-size:16px;font-weight:800;color:#0f172a;overflow-wrap:anywhere;margin-bottom:12px;line-height:1.35;"></div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button id="send-reveal-btn" class="btn btn-primary btn-mini">Ouvrir le dossier d'envoi</button>
+                <button id="send-open-pdf-btn" class="btn btn-primary btn-mini">Ouvrir le PDF à envoyer</button>
+                <button id="send-reveal-btn" class="btn btn-ghost btn-mini">Ouvrir le dossier complet</button>
                 <button id="send-copy-msg-btn" class="btn btn-ghost btn-mini">Copier le message</button>
                 <button id="send-dismiss-btn" class="btn btn-ghost btn-mini" style="opacity:.5;">✕</button>
               </div>

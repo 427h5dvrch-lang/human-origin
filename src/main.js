@@ -1214,10 +1214,17 @@ async function handleIncomingDeepLink(urlStr) {
       return;
     }
 
-    alert("[DEEPLINK] URL reçue sans token reconnu :\n" + urlStr);
+    console.warn("[DEEPLINK] URL sans token reconnu:", urlStr);
+    toast("Ce lien de connexion n'est plus valide. Réessayez ou continuez en local.");
   } catch (e) {
     console.warn("DeepLink auth fail:", e);
-    alert("Erreur connexion : " + (e?.message || e));
+    const errMsg = String(e?.message || e || "");
+    if (errMsg.includes("code verifier") || errMsg.includes("invalid request") || errMsg.includes("code challenge")) {
+      console.log("[AUTH] Lien PKCE expiré ou invalide:", errMsg);
+      toast("Ce lien de connexion n'est plus valide. Vous pouvez renvoyer un lien ou continuer en local.");
+    } else {
+      alert("Erreur connexion : " + errMsg);
+    }
   } finally {
     __deepLinkHandling = false;
   }
@@ -1429,7 +1436,11 @@ async function initProject() {
     toast("Projet prêt ✅");
 
     const exportBtn = $("close-project-btn");
-    if (exportBtn) exportBtn.style.display = "block";
+    if (exportBtn) {
+      exportBtn.style.display = "block";
+      exportBtn.disabled = true;
+      exportBtn.title = "Enregistrez d'abord un moment de travail.";
+    }
 
     refreshHistory().catch(() => {});
     checkForDrafts(true).catch(() => {});
@@ -1694,18 +1705,34 @@ async function finalizeSession() {
     success = true;
 
     if (btn) {
-      btn.innerText = cloudOk ? "Travail enregistré ✅" : "Travail enregistré ✅";
+      btn.innerText = "Travail enregistré ✅";
       btn.disabled = true;
+    }
+
+    // Activer le bouton export dès qu'un travail est enregistré
+    const exportBtnAfterWork = $("close-project-btn");
+    if (exportBtnAfterWork) {
+      exportBtnAfterWork.disabled = false;
+      exportBtnAfterWork.title = "";
     }
 
     if (cloudOk) {
       toast(isTemporary ? "Session BROUILLON certifiée ✅" : "Session certifiée ✅");
       await refreshHistory().catch(() => {});
     } else {
-      toast(isTemporary ? "Session BROUILLON certifiée en local ✅" : "Session certifiée en local ✅");
-      setTimeout(() => {
-        toast("Mode local actif — synchronisation cloud différée");
-      }, 900);
+      toast(isTemporary ? "Travail enregistré localement ✅" : "Travail enregistré ✅");
+      // En mode local : ajouter une ligne visible dans l'historique
+      const tbody = $("certs-tbody");
+      if (tbody) {
+        const now = new Date().toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+        const prev = tbody.innerHTML;
+        const hadPlaceholder = prev.includes("Mode local") || prev.includes("Aucun") || !prev.trim();
+        tbody.innerHTML = `<tr>
+          <td style="padding:10px 6px;">${now}</td>
+          <td style="padding:10px 6px;color:#10b981;font-weight:700">Enregistré ✅</td>
+          <td style="padding:10px 6px;color:#94a3b8;font-size:11px">Local</td>
+        </tr>` + (hadPlaceholder ? "" : prev);
+      }
     }
 
     await checkForDrafts(true);
@@ -2497,6 +2524,7 @@ async function exportFinalProjectCertificate() {
       __lastExportContext = {
         sendDir,
         zipPath: sendZipCreated ? sendZipPath : null,
+        pdfPath: canGeneratePublishedPdf ? `${sendDir}${sep}${sendPublishedPdfFilename}` : null,
         docName: sendPublishedPdfFilename,
         projectName: rawShareProjectName,
       };
@@ -5223,6 +5251,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   on("new-project-btn", initProject);
+
+  on("send-open-pdf-btn", async () => {
+    if (!__lastExportContext?.pdfPath) return;
+    await invoke("open_file", { path: __lastExportContext.pdfPath }).catch(() => {});
+  });
 
   on("send-reveal-btn", async () => {
     if (!__lastExportContext) return;
