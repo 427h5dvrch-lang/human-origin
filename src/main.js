@@ -100,17 +100,20 @@ function hideSendReadyBanner() {
 }
 
 function showExportSuccessView() {
-  if (!__lastExportContext) return;
   __isExportSuccessVisible = true;
   const nameEl = $("export-success-doc-name");
-  if (nameEl) nameEl.textContent = __lastExportContext.docName || __lastExportContext.projectName || "Document";
+  if (nameEl) {
+    nameEl.textContent =
+      __lastExportContext?.docName ||
+      __lastExportContext?.projectName ||
+      "Document HumanOrigin";
+  }
   showScreen("SUCCESS");
   const view = $("export-success-view");
-  try { view?.scrollIntoView({ behavior: "smooth", block: "center" }); } catch {}
+  try { view?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
 }
 
 function hideExportSuccessView() {
-  if (!__isExportSuccessVisible) return;
   __isExportSuccessVisible = false;
   __lastExportContext = null;
   showScreen("DASHBOARD");
@@ -5389,44 +5392,63 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  on("send-dismiss-btn", () => { hideExportSuccessView(); updateDashboardUI("READY"); });
+  on("send-dismiss-btn", () => hideExportSuccessView());
 
-  on("export-success-close-btn", () => { hideExportSuccessView(); updateDashboardUI("READY"); });
+  on("export-success-close-btn", () => hideExportSuccessView());
+  on("export-success-back-btn", () => hideExportSuccessView());
 
   on("export-success-copy-pdf-btn", async () => {
     const path = __lastExportContext?.pdfPath;
-    if (!path) { toast("PDF indisponible pour cette exportation."); return; }
-    try { await invoke("copy_file_to_clipboard", { path }); toast("PDF copié — collez-le dans votre email ✅"); }
-    catch (e) { console.warn("[SEND] copy pdf failed", e); toast("Impossible de copier le PDF. Ouvrez le dossier complet."); }
+    if (!path) {
+      toast("PDF indisponible pour cette exportation.");
+      return;
+    }
+    try {
+      await invoke("copy_file_to_clipboard", { path });
+      toast("PDF copié — collez-le dans votre email ✅");
+    } catch (e) {
+      console.warn("[SUCCESS] copy pdf failed", e);
+      toast("Impossible de copier le PDF.");
+    }
   });
 
   on("export-success-copy-folder-btn", async () => {
     const path = __lastExportContext?.sendDir;
-    if (!path) { toast("Dossier d'envoi indisponible."); return; }
-    try { await invoke("copy_file_to_clipboard", { path }); toast("Dossier complet copié ✅"); }
-    catch (e) { console.warn("[SEND] copy folder failed", e); toast("Impossible de copier le dossier. Ouvrez-le manuellement."); }
+    if (!path) {
+      toast("Dossier complet indisponible.");
+      return;
+    }
+    try {
+      await invoke("copy_file_to_clipboard", { path });
+      toast("Dossier complet copié ✅");
+    } catch (e) {
+      console.warn("[SUCCESS] copy folder failed", e);
+      toast("Impossible de copier le dossier.");
+    }
   });
 
   on("export-success-open-pdf-btn", async () => {
-    if (!__lastExportContext?.pdfPath) return;
-    await invoke("open_file", { path: __lastExportContext.pdfPath }).catch(() => {});
+    const path = __lastExportContext?.pdfPath;
+    if (!path) return;
+    await invoke("open_file", { path }).catch(() => {});
   });
 
   on("export-success-copy-msg-btn", async () => {
-    if (!__lastExportContext) return;
     const msg = [
       "Bonjour,",
       "",
       "Vous trouverez ci-joint mon document labellisé HumanOrigin.",
       "",
-      "Le document contient une marque HumanOrigin visible. Une preuve portable de processus humain est également incluse dans le dossier d'envoi.",
-      "",
-      "Vous pouvez ouvrir le document directement, puis scanner le QR code ou utiliser la preuve .ho.json si vous souhaitez vérifier l'origine du processus.",
+      "Le document contient une marque HumanOrigin visible. Une preuve portable de processus humain est également disponible dans le dossier complet.",
       "",
       "Bien à vous,",
     ].join("\n");
-    try { await navigator.clipboard.writeText(msg); toast("Message copié ✅"); }
-    catch { alert(msg); }
+    try {
+      await navigator.clipboard.writeText(msg);
+      toast("Message copié ✅");
+    } catch {
+      alert(msg);
+    }
   });
 
   on("login-btn", async () => {
