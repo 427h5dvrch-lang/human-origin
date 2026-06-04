@@ -2297,7 +2297,12 @@ async function exportFinalProjectCertificate() {
       const shareOpenFirstPath = `${sharePackageDir}${sep}1_OPEN_FIRST.html`;
       const shareStartHerePath = `${sharePackageDir}${sep}README_START_HERE.txt`;
 
-      const sendPublishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
+      const sendSourceBasename = String(hoDoc.document.filename || "Document")
+        .replace(/\.[^.]+$/, "")
+        .replace(/[/\\:*?"<>|]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim() || "Document";
+      const sendPublishedPdfFilename = `${sendSourceBasename} — HumanOrigin.pdf`;
       const sendProofFilename = "HumanOrigin_PROOF.v1.ho.json";
       const sendPublishedPdfRelativePath = `2_SEND_TO_RECIPIENT/${sendPublishedPdfFilename}`;
       const sendProofRelativePath = `2_SEND_TO_RECIPIENT/${sendProofFilename}`;
@@ -2749,7 +2754,12 @@ async function exportFinalProjectCertificate() {
         const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
         const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
 
-        const sendPublishedPdfFilename = "HumanOrigin_PUBLISHED.pdf";
+        const sendSourceBasename = String(hoDoc.document.filename || "Document")
+          .replace(/\.[^.]+$/, "")
+          .replace(/[/\\:*?"<>|]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim() || "Document";
+        const sendPublishedPdfFilename = `${sendSourceBasename} — HumanOrigin.pdf`;
         const sendProofFilename = "HumanOrigin_PROOF.v1.ho.json";
 
         await createDir(sendDir, { recursive: true });
@@ -4927,10 +4937,17 @@ async function syncWindowsCorePdfToSendPackage({
   const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
   const shareOpenFirstPath = `${sharePackageDir}${sep}1_OPEN_FIRST.html`;
 
+  const sendSourceBasename = String(hoDoc?.document?.filename || "Document")
+    .replace(/\.[^.]+$/, "")
+    .replace(/[/\\:*?"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() || "Document";
+  const syncSendPdfFilename = `${sendSourceBasename} — HumanOrigin.pdf`;
+
   await removeDir(sendDir, { recursive: true }).catch(() => {});
   await createDir(sendDir, { recursive: true });
 
-  await copyFile(corePdfPath, `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`);
+  await copyFile(corePdfPath, `${sendDir}${sep}${syncSendPdfFilename}`);
   await copyFile(hoPathV1, `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`);
 
   const sendReadmeFinal = [
@@ -4939,7 +4956,7 @@ async function syncWindowsCorePdfToSendPackage({
     "FR",
     "Envoyez ce dossier complet au destinataire.",
     "",
-    "1. HumanOrigin_PUBLISHED.pdf",
+    `1. ${syncSendPdfFilename}`,
     "   Document publié avec marquage visible HumanOrigin.",
     "",
     "2. HumanOrigin_PROOF.v1.ho.json",
@@ -4951,7 +4968,7 @@ async function syncWindowsCorePdfToSendPackage({
     "EN",
     "Send this complete folder to the recipient.",
     "",
-    "1. HumanOrigin_PUBLISHED.pdf",
+    `1. ${syncSendPdfFilename}`,
     "   Published document with visible HumanOrigin mark.",
     "",
     "2. HumanOrigin_PROOF.v1.ho.json",
@@ -4969,7 +4986,7 @@ async function syncWindowsCorePdfToSendPackage({
     projectTitle: hoDoc.subject.title,
     documentFilename: hoDoc.document.filename,
     publishedDocumentFilename,
-    publishedOutputFilename: "2_SEND_TO_RECIPIENT/HumanOrigin_PUBLISHED.pdf",
+    publishedOutputFilename: `2_SEND_TO_RECIPIENT/${syncSendPdfFilename}`,
     referenceProofFilename: "2_SEND_TO_RECIPIENT/HumanOrigin_PROOF.v1.ho.json",
     compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINAL.ho.json",
     certificateId,
@@ -4982,14 +4999,14 @@ async function syncWindowsCorePdfToSendPackage({
   await writeTextFile(shareOpenFirstPath, shareOpenFirstHtml);
 
   console.log("[WINDOWS CORE PDF SEND SYNC HELPER] ready", {
-    pdf: `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`,
+    pdf: `${sendDir}${sep}${syncSendPdfFilename}`,
     proof: `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`,
   });
 
   return {
     sendDir,
     openFirstPath: shareOpenFirstPath,
-    publishedPdfPath: `${sendDir}${sep}HumanOrigin_PUBLISHED.pdf`,
+    publishedPdfPath: `${sendDir}${sep}${syncSendPdfFilename}`,
     proofPath: `${sendDir}${sep}HumanOrigin_PROOF.v1.ho.json`,
   };
 }
