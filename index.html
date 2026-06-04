@@ -983,12 +983,12 @@
   };
 
   const PRIMARY_RULES = [
-    { key: "active", terms: ["Terminer ce moment de travail"] },
-    { key: "validate", terms: ["Valider ce moment de travail"] },
-    { key: "package", terms: ["Créer le package final"] },
+    { key: "active", terms: ["Terminer l'observation", "Terminer ce moment de travail"] },
+    { key: "validate", terms: ["Enregistrer ce travail", "Valider ce moment de travail"] },
+    { key: "package", terms: ["Créer mon document HumanOrigin", "Créer le package final"] },
     { key: "chooseDocument", terms: ["Choisir le document à certifier", "Associer votre document"] },
-    { key: "launch", terms: ["Lancer HumanOrigin"] },
-    { key: "send", terms: ["Ouvrir le dossier à envoyer"] },
+    { key: "launch", terms: ["Commencer l'observation", "Lancer HumanOrigin"] },
+    { key: "send", terms: ["Ouvrir le dossier à envoyer", "Ouvrir le dossier d'envoi"] },
     { key: "chooseProject", terms: ["Continuer avec ce projet", "Créer ce projet"] }
   ];
 
@@ -1059,10 +1059,14 @@
 
     const allText = norm(document.body.innerText || "");
     const hasRecorded = allText.includes("Travail enregistré");
-    const hasPackage = els.some(el => textOf(el).includes("Créer le package final"));
+    const hasPackage = els.some(el =>
+      textOf(el).includes("Créer mon document HumanOrigin") || textOf(el).includes("Créer le package final")
+    );
 
     if (hasRecorded && hasPackage) {
-      const btn = els.find(el => textOf(el).includes("Créer le package final"));
+      const btn = els.find(el =>
+        textOf(el).includes("Créer mon document HumanOrigin") || textOf(el).includes("Créer le package final")
+      );
       if (btn) return { key: "package", el: btn };
     }
 
@@ -1329,9 +1333,10 @@
               <h3>Comment faire ?</h3>
               <p>
                 1. Créez un <strong>Projet</strong> (ex: "Mon Roman").<br />
-                2. Lancez le <strong>Scan</strong> avant d'écrire.<br />
-                3. <strong>Arrêtez</strong> quand vous avez fini.<br />
-                4. <strong>Certifiez</strong> la session.
+                2. Cliquez sur <strong>Commencer l'observation</strong>.<br />
+                3. Travaillez normalement dans votre éditeur habituel.<br />
+                4. Cliquez sur <strong>Terminer l'observation</strong> quand vous avez fini.<br />
+                5. <strong>Enregistrez ce travail</strong>, puis créez votre document.
               </p>
             </div>
             <div class="tuto-dots">
@@ -1342,10 +1347,9 @@
 
           <div id="tuto-step-3" class="tuto-step">
             <div class="tuto-content">
-              <h3>Important</h3>
+              <h3>Ce qui est observé</h3>
               <p>
-                Ne trichez pas. Le copier-coller massif est détecté. Il faut taper "pour de vrai" pour que la
-                certification soit valide.
+                HumanOrigin ne lit pas votre texte. Il mesure uniquement votre présence de travail : frappe, activité, continuité, pauses et corrections.
               </p>
             </div>
             <div class="tuto-dots">
@@ -1439,6 +1443,7 @@
               <div class="project-picker-block">
                 <div class="project-picker-label">Nouveau projet</div>
                 <input id="project-name" class="login-input" placeholder="Nom du nouveau projet..." style="margin:0" />
+                <button id="new-project-btn" class="btn btn-primary" style="margin-top: 10px;">Créer ce projet</button>
                 <div class="project-picker-note">Créez un nouveau cadre de travail quand vous commencez une nouvelle œuvre, étude, ou série de documents.</div>
               </div>
             </div>
@@ -1501,10 +1506,10 @@
             style="display:none;align-items:flex-start;gap:14px;margin-bottom:16px;padding:18px 20px;border-radius:20px;background:linear-gradient(135deg,rgba(8,35,77,.06),rgba(16,185,129,.06));border:1px solid rgba(16,185,129,.22);flex-wrap:wrap;"
           >
             <div style="flex:1;min-width:0;">
-              <div style="font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#10b981;margin-bottom:4px;">Document prêt</div>
+              <div style="font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:#10b981;margin-bottom:4px;">Prêt à envoyer</div>
               <div id="send-ready-doc-name" style="font-size:15px;font-weight:800;color:#0f172a;overflow-wrap:anywhere;margin-bottom:10px;"></div>
               <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                <button id="send-reveal-btn" class="btn btn-primary btn-mini">Afficher dans le Finder</button>
+                <button id="send-reveal-btn" class="btn btn-primary btn-mini">Ouvrir le dossier d'envoi</button>
                 <button id="send-copy-msg-btn" class="btn btn-ghost btn-mini">Copier le message</button>
                 <button id="send-dismiss-btn" class="btn btn-ghost btn-mini" style="opacity:.5;">✕</button>
               </div>
@@ -1515,13 +1520,13 @@
             <div class="history-head">
               <div class="history-head-left">
                 <div class="ritual-kicker">Historique</div>
-                <h3 style="margin: 0; font-size: 22px;">Travaux enregistrés</h3>
+                <h3 style="margin: 0; font-size: 22px;">Mes travaux</h3>
                 <p>Retrouvez ici les moments de travail enregistrés pour ce projet, puis préparez le dossier final à envoyer.</p>
               </div>
 
               <div class="history-actions">
                 <button id="sync-btn" class="btn btn-ghost btn-mini">🔄</button>
-                <button id="close-project-btn" class="btn btn-ghost btn-mini" style="display: none;">📜 Créer le package final</button>
+                <button id="close-project-btn" class="btn btn-primary btn-mini" style="display: none;">📄 Créer mon document HumanOrigin</button>
               </div>
             </div>
 
@@ -1530,7 +1535,7 @@
                 <tr style="text-align: left; color: #888; font-size: 11px; text-transform: uppercase;">
                   <th>Moment</th>
                   <th>État</th>
-                  <th>Détails techniques</th>
+                  <th>Preuve</th>
                 </tr>
               </thead>
               <tbody id="certs-tbody"></tbody>
@@ -1719,10 +1724,10 @@
       b.classList.remove("ho-final-primary", "ho-final-secondary", "ho-final-status", "ho-final-hide");
     });
 
-    const stop = findByText(["Terminer ce moment de travail"])[0];
-    const validate = findByText(["Valider ce moment de travail"])[0];
-    const launch = findByText(["Lancer HumanOrigin"])[0];
-    const packageBtn = findByText(["Créer le package final"])[0];
+    const stop = findByText(["Terminer l'observation", "Terminer ce moment de travail"])[0];
+    const validate = findByText(["Enregistrer ce travail", "Valider ce moment de travail"])[0];
+    const launch = findByText(["Commencer l'observation", "Lancer HumanOrigin"])[0];
+    const packageBtn = findByText(["Créer mon document HumanOrigin", "Créer le package final"])[0];
     const recorded = findByText(["Travail enregistré ✅"])[0];
 
     let primary = null;

@@ -636,14 +636,14 @@ function applySessionScreenCopy() {
   ensureProjectLangToggle();
 
   const kickers = root.querySelectorAll(".ritual-kicker");
-  if (kickers[0]) kickers[0].innerText = hoPerm("Session", "Session");
+  if (kickers[0]) kickers[0].innerText = hoPerm("Observation", "Observation");
   if (kickers[1]) kickers[1].innerText = hoPerm("Repère", "Reference");
   if (kickers[2]) kickers[2].innerText = hoPerm("Historique", "History");
 
   const titles = root.querySelectorAll(".section-title");
   if (titles[0]) titles[0].innerText = hoPerm(
-    "Prêt à travailler",
-    "Measure a real moment of human work"
+    "Prêt à observer",
+    "Ready to observe"
   );
   if (titles[1]) titles[1].innerText = hoPerm(
     "Ce que HumanOrigin rend visible",
@@ -652,8 +652,8 @@ function applySessionScreenCopy() {
 
   const leads = root.querySelectorAll(".section-lead");
   if (leads[0]) leads[0].innerText = hoPerm(
-    "Associez votre document, lancez HumanOrigin, travaillez normalement, puis terminez pour préparer votre dossier vérifiable.",
-    "Attach your document, start the HumanOrigin recording, work normally, then stop to generate proof linked to this file version."
+    "Cliquez sur Commencer l'observation, puis travaillez normalement dans Word, Pages ou votre éditeur habituel. HumanOrigin observe votre activité, sans lire votre texte. À la fin, vous choisirez le document à labelliser.",
+    "Click Start observation, then work normally in Word, Pages or your usual editor. HumanOrigin observes your activity, without reading your text. At the end, you will choose the document to label."
   );
 
   const statLabels = root.querySelectorAll(".stat-lbl");
@@ -661,21 +661,22 @@ function applySessionScreenCopy() {
   if (statLabels[1]) statLabels[1].innerText = hoPerm("Clics", "Clicks");
 
   const startBtn = $("start-btn");
-  if (startBtn) startBtn.innerText = hoPerm("Lancer HumanOrigin", "Start Recording");
+  if (startBtn) startBtn.innerText = hoPerm("Commencer l'observation", "Start observation");
 
   const stopBtn = $("stop-btn");
-  if (stopBtn) stopBtn.innerText = hoPerm("Terminer ce moment de travail", "Stop Recording");
+  if (stopBtn) stopBtn.innerText = hoPerm("Terminer l'observation", "Finish observation");
 
   const finalizeBtn = $("finalize-btn");
   if (finalizeBtn) {
     const t = (finalizeBtn.innerText || "").trim();
     if (
       t === "Certifier la Session" ||
-      t === "Valider ce moment de travail" ||
+      t === "Enregistrer ce travail" ||
+      t === "Enregistrer ce travail" ||
       t === "Certify Session" ||
       t === "Certify session"
     ) {
-      finalizeBtn.innerText = hoPerm("Valider ce moment de travail", "Certify session");
+      finalizeBtn.innerText = hoPerm("Enregistrer ce travail", "Save this work");
     }
   }
 
@@ -703,24 +704,24 @@ function applySessionScreenCopy() {
   if (recoverBtn) recoverBtn.innerText = hoPerm("Restaurer", "Restore");
 
   const histTitle = root.querySelector(".history-head-left h3");
-  if (histTitle) histTitle.innerText = hoPerm("Travaux enregistrés", "Certified history");
+  if (histTitle) histTitle.innerText = hoPerm("Mes travaux", "My work");
 
   const histLead = root.querySelector(".history-head-left p");
   if (histLead) histLead.innerText = hoPerm(
-    "Retrouvez ici les moments de travail enregistrés pour ce projet, puis préparez le dossier final à envoyer.",
-    "Find here the sessions already certified for this project, as well as access to the final export when available."
+    "Vos moments de travail enregistrés. Créez votre document labellisé quand vous êtes prêt.",
+    "Your recorded work sessions. Create your labelled document when you are ready."
   );
 
   const syncBtn = $("sync-btn");
   if (syncBtn) syncBtn.innerText = hoPerm("🔄", "🔄");
 
   const finalBtn = $("close-project-btn");
-  if (finalBtn) finalBtn.innerText = hoPerm("📜 Créer le package final", "📜 Final Certificate");
+  if (finalBtn) finalBtn.innerText = hoPerm("📄 Créer mon document HumanOrigin", "📄 Create my document");
 
   const ths = root.querySelectorAll(".history-table thead th");
   if (ths[0]) ths[0].innerText = hoPerm("Moment", "Date/Time");
   if (ths[1]) ths[1].innerText = hoPerm("État", "Status");
-  if (ths[2]) ths[2].innerText = hoPerm("Détails techniques", "Proof (Hash)");
+  if (ths[2]) ths[2].innerText = hoPerm("Preuve", "Proof");
 }
 
 function ensureLoginLangToggle() {
@@ -1427,6 +1428,9 @@ async function initProject() {
     updateDashboardUI("READY");
     toast("Projet prêt ✅");
 
+    const exportBtn = $("close-project-btn");
+    if (exportBtn) exportBtn.style.display = "block";
+
     refreshHistory().catch(() => {});
     checkForDrafts(true).catch(() => {});
   } catch (e) {
@@ -1496,8 +1500,8 @@ async function stopScan() {
     const finBtn = $("finalize-btn");
     if (finBtn) {
       finBtn.disabled = false;
-      finBtn.innerText = "Valider ce moment de travail";
-      if (!gatePassed) toast("Volume insuffisant : certification TEMPORAIRE possible.");
+      finBtn.innerText = "Enregistrer ce travail";
+      if (!gatePassed) toast("Peu d'activité détectée — vous pouvez enregistrer ce moment.");
     }
 
     if (!currentProjectId && currentProjectName) {
@@ -1533,7 +1537,7 @@ function updateDashboardUI(state) {
 
   if (finBtn && state !== "STOPPED") {
     finBtn.disabled = true;
-    finBtn.innerText = "Valider ce moment de travail";
+    finBtn.innerText = "Enregistrer ce travail";
   }
 
   if (state === "READY") {
@@ -1549,7 +1553,7 @@ function updateDashboardUI(state) {
     if (finBtn) {
       finBtn.classList.remove("hidden");
       finBtn.disabled = false;
-      if (finBtn.innerText === "Travail enregistré ✅") finBtn.innerText = "Valider ce moment de travail";
+      if (finBtn.innerText === "Travail enregistré ✅") finBtn.innerText = "Enregistrer ce travail";
     }
   }
 }
@@ -1568,7 +1572,7 @@ async function finalizeSession() {
   const isTemporary = gatePassed === false || scpNow <= 0;
 
   if (isTemporary) {
-    const ok = confirm("Volume insuffisant.\nCertifier en TEMPORAIRE quand même ?");
+    const ok = confirm("Peu d'activité détectée. Vous pouvez enregistrer ce moment, mais il pourra être marqué comme incomplet. Continuer ?");
     if (!ok) return;
   }
 
@@ -1710,7 +1714,7 @@ async function finalizeSession() {
     alert("Erreur certification : " + (e?.message || e));
   } finally {
     if (!success && btn) {
-      btn.innerText = "Valider ce moment de travail";
+      btn.innerText = "Enregistrer ce travail";
       btn.disabled = false;
     }
   }
@@ -3161,7 +3165,7 @@ async function recoverDraft(sid) {
     const finBtn = $("finalize-btn");
     if (finBtn) {
       finBtn.disabled = false;
-      finBtn.innerText = "Valider ce moment de travail";
+      finBtn.innerText = "Enregistrer ce travail";
     }
 
     const banner = $("draft-banner");
@@ -5217,6 +5221,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     enterLocalMode();
     await forcePostLogin(false);
   });
+
+  on("new-project-btn", initProject);
 
   on("send-reveal-btn", async () => {
     if (!__lastExportContext) return;
