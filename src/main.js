@@ -99,6 +99,57 @@ function hideSendReadyBanner() {
   if (banner) banner.style.display = "none";
 }
 
+function applyExportSuccessCopy(verdict) {
+  const v = String(verdict || "").toUpperCase();
+  const kicker = $("export-success-kicker");
+  const title = $("export-success-title");
+  const subtitle = $("export-success-subtitle");
+  const badge = $("export-success-primary-badge");
+  const note = $("export-success-note");
+
+  if (v === "SUSPECT") {
+    if (kicker) kicker.textContent = "Preuve limitée générée";
+    if (title) title.textContent = "Votre document contient une preuve HumanOrigin limitée.";
+    if (subtitle) subtitle.textContent =
+      "Le processus observé présente des signaux faibles ou atypiques. Le verdict complet reste disponible dans la preuve portable.";
+    if (badge) badge.textContent = "Preuve limitée";
+    if (note) note.textContent =
+      "Vous pouvez envoyer le PDF, mais il ne doit pas être présenté comme une preuve forte de processus humain.";
+    return;
+  }
+
+  if (v === "PREUVE LIMITÉE") {
+    if (kicker) kicker.textContent = "Preuve partielle générée";
+    if (title) title.textContent = "Le volume observé est insuffisant pour une preuve forte.";
+    if (subtitle) subtitle.textContent =
+      "HumanOrigin a créé une preuve partielle. Le dossier complet contient les éléments de vérification disponibles.";
+    if (badge) badge.textContent = "Preuve partielle";
+    if (note) note.textContent =
+      "Pour renforcer cette preuve, réalisez une observation plus longue avant de générer un nouveau document.";
+    return;
+  }
+
+  if (v === "ATYPIQUE") {
+    if (kicker) kicker.textContent = "Document HumanOrigin créé";
+    if (title) title.textContent = "Votre PDF labellisé est prêt à être envoyé.";
+    if (subtitle) subtitle.textContent =
+      "Le processus observé est utilisable, avec certains signaux atypiques indiqués dans la preuve portable.";
+    if (badge) badge.textContent = "PDF labellisé";
+    if (note) note.textContent =
+      "Le PDF contient une marque HumanOrigin visible. La preuve portable reste disponible dans le dossier complet.";
+    return;
+  }
+
+  // COHERENT / défaut
+  if (kicker) kicker.textContent = "Document HumanOrigin créé avec succès";
+  if (title) title.textContent = "Votre PDF labellisé est prêt à être envoyé.";
+  if (subtitle) subtitle.textContent =
+    "Le document contient une marque HumanOrigin visible et reste lié à une preuve portable vérifiable.";
+  if (badge) badge.textContent = "PDF labellisé";
+  if (note) note.textContent =
+    "Pour un envoi simple, copiez le PDF. Pour une vérification complète, envoyez aussi le dossier complet.";
+}
+
 function showExportSuccessView() {
   __isExportSuccessVisible = true;
   const nameEl = $("export-success-doc-name");
@@ -108,6 +159,7 @@ function showExportSuccessView() {
       __lastExportContext?.projectName ||
       "Document HumanOrigin";
   }
+  applyExportSuccessCopy(__lastExportContext?.verdict);
   showScreen("SUCCESS");
   const view = $("export-success-view");
   try { view?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
@@ -2172,6 +2224,18 @@ async function exportFinalProjectCertificate() {
       reasons = [];
     }
 
+    // Gate soft : prévenir l'utilisateur si la preuve est faible
+    const weakProof = verdict === "SUSPECT" || verdict === "PREUVE LIMITÉE";
+    if (weakProof) {
+      const go = confirm(
+        "La preuve observée est limitée.\n\n" +
+        "HumanOrigin peut créer un document avec une mention de preuve limitée, " +
+        "mais ce document ne doit pas être présenté comme une preuve forte.\n\n" +
+        "Continuer l'export ?"
+      );
+      if (!go) return;
+    }
+
     const appVersion = await app.getVersion().catch(() => "unknown");
     const certificateId = crypto.randomUUID();
     const issuedAt = new Date().toISOString();
@@ -2610,6 +2674,7 @@ async function exportFinalProjectCertificate() {
         pdfPath: canGeneratePublishedPdf ? `${sendDir}${sep}${sendPublishedPdfFilename}` : null,
         docName: sendPublishedPdfFilename,
         projectName: rawShareProjectName,
+        verdict,
       };
 
       const technicalCopies = [
@@ -5409,7 +5474,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
     try {
       await invoke("copy_file_to_clipboard", { path });
-      toast("PDF copié — collez-le dans votre email ✅");
+      const weak = ["SUSPECT", "PREUVE LIMITÉE"].includes(
+        String(__lastExportContext?.verdict || "").toUpperCase()
+      );
+      toast(
+        weak
+          ? "PDF copié — preuve limitée, à transmettre avec prudence ✅"
+          : "PDF copié — collez-le dans votre email ✅"
+      );
     } catch (e) {
       console.warn("[SUCCESS] copy pdf failed", e);
       toast("Impossible de copier le PDF.");
