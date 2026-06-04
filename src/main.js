@@ -88,21 +88,32 @@ function exitLocalMode() {
 // =========================================================
 let __lastExportContext = null;
 
+let __isExportSuccessVisible = false;
+
 function showSendReadyBanner() {
   const banner = $("send-ready-banner");
   if (!banner || !__lastExportContext) return;
   const nameEl = $("send-ready-doc-name");
   if (nameEl) nameEl.textContent = __lastExportContext.docName || __lastExportContext.projectName || "Document";
   banner.style.display = "block";
-  // Masquer le bouton export pendant le moment de réussite pour éviter une action concurrente
+  __isExportSuccessVisible = true;
+  // Masquer les éléments concurrents pendant le moment de réussite
   const exportBtn = $("close-project-btn");
   if (exportBtn) exportBtn.style.display = "none";
+  const draftBanner = $("draft-banner");
+  if (draftBanner) draftBanner.style.display = "none";
+  const historyCard = document.querySelector(".history-card");
+  if (historyCard) historyCard.style.display = "none";
 }
 
 function hideSendReadyBanner() {
   const banner = $("send-ready-banner");
   if (banner) banner.style.display = "none";
   __lastExportContext = null;
+  __isExportSuccessVisible = false;
+  // Restaurer la carte historique
+  const historyCard = document.querySelector(".history-card");
+  if (historyCard) historyCard.style.display = "";
   // Restaurer le bouton export si un travail est enregistré et qu'on est en état READY
   const state = document.body.getAttribute("data-scan-state") || "READY";
   if (state === "READY" && __hasRegisteredWork && currentProjectPath) {
@@ -1593,7 +1604,7 @@ function updateDashboardUI(state) {
     resetWorkflowVisualState();
     // Bouton export : visible et actif seulement si un travail a déjà été enregistré
     if (exportBtn) {
-      if (currentProjectPath && __hasRegisteredWork) {
+      if (currentProjectPath && __hasRegisteredWork && !__isExportSuccessVisible) {
         exportBtn.style.display = "block";
         exportBtn.disabled = false;
         exportBtn.title = "";
