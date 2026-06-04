@@ -101,6 +101,9 @@ function hideSendReadyBanner() {
   if (banner) banner.style.display = "none";
   __lastExportContext = null;
 }
+
+// Tracks whether at least one work session has been finalized in this project session
+let __hasRegisteredWork = false;
 let currentProjectName = null;
 let currentProjectPath = null;
 
@@ -327,6 +330,7 @@ function resetProjectStateOnly() {
 
   const tbody = $("certs-tbody");
   if (tbody) tbody.innerHTML = "";
+  __hasRegisteredWork = false;
 }
 
 function stopPermissionTimers() {
@@ -1426,6 +1430,7 @@ async function initProject() {
   }
 
   try {
+    __hasRegisteredWork = false;
     await invoke("initialize_project", { projectName: name });
     currentProjectPath = await invoke("activate_project", { projectName: name });
     currentProjectName = name;
@@ -1551,14 +1556,27 @@ function updateDashboardUI(state) {
     finBtn.innerText = "Enregistrer ce travail";
   }
 
+  const exportBtn = $("close-project-btn");
+  const draftBanner = $("draft-banner");
+
   if (state === "READY") {
     if (startBtn) startBtn.classList.remove("hidden");
     safeText("timer", "00:00");
     safeText("keystrokes-display", "0");
     safeText("clicks-display", "0");
+    // En READY : si un travail a déjà été enregistré, le bouton export reste actif
+    if (exportBtn && exportBtn.style.display === "none" && __hasRegisteredWork) {
+      exportBtn.style.display = "block";
+      exportBtn.disabled = false;
+      exportBtn.title = "";
+    }
   } else if (state === "SCANNING") {
     if (stopBtn) stopBtn.classList.remove("hidden");
     if (live) live.style.display = "block";
+    // Pendant l'observation : masquer tout sauf le bouton stop
+    hideSendReadyBanner();
+    if (exportBtn) exportBtn.style.display = "none";
+    if (draftBanner) draftBanner.style.display = "none";
   } else if (state === "STOPPED") {
     if (startBtn) startBtn.classList.remove("hidden");
     if (finBtn) {
@@ -1566,6 +1584,9 @@ function updateDashboardUI(state) {
       finBtn.disabled = false;
       if (finBtn.innerText === "Travail enregistré ✅") finBtn.innerText = "Enregistrer ce travail";
     }
+    // Pendant STOPPED : masquer le banner et l'export (pas encore sauvegardé)
+    if (exportBtn) exportBtn.style.display = "none";
+    if (draftBanner) draftBanner.style.display = "none";
   }
 }
 
@@ -1708,6 +1729,8 @@ async function finalizeSession() {
       btn.innerText = "Travail enregistré ✅";
       btn.disabled = true;
     }
+
+    __hasRegisteredWork = true;
 
     // Activer le bouton export dès qu'un travail est enregistré
     const exportBtnAfterWork = $("close-project-btn");
@@ -1877,6 +1900,8 @@ async function refreshHistory() {
     tbody.innerHTML = `<tr><td colspan="3" style="color:#888;padding:15px">Aucune session certifiée</td></tr>`;
     return;
   }
+
+  __hasRegisteredWork = true;
 
   const certIds = sessions.map((s) => s.cert_id).filter(Boolean);
   const hashById = new Map();
