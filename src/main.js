@@ -102,6 +102,30 @@ function hideSendReadyBanner() {
   __lastExportContext = null;
 }
 
+function resetWorkflowVisualState() {
+  hideSendReadyBanner();
+  const startBtn = $("start-btn");
+  const stopBtn = $("stop-btn");
+  const finBtn = $("finalize-btn");
+  const exportBtn = $("close-project-btn");
+  const draftBanner = $("draft-banner");
+  const live = $("live-dashboard");
+  if (startBtn) startBtn.classList.remove("hidden");
+  if (stopBtn) stopBtn.classList.add("hidden");
+  if (finBtn) {
+    finBtn.classList.add("hidden");
+    finBtn.disabled = true;
+    finBtn.innerText = "Enregistrer ce travail";
+  }
+  if (exportBtn) exportBtn.style.display = "none";
+  if (draftBanner) draftBanner.style.display = "none";
+  if (live) live.style.display = "none";
+  safeText("timer", "00:00");
+  safeText("keystrokes-display", "0");
+  safeText("clicks-display", "0");
+  try { document.body.setAttribute("data-scan-state", "READY"); } catch {}
+}
+
 // Tracks whether at least one work session has been finalized in this project session
 let __hasRegisteredWork = false;
 let currentProjectName = null;
@@ -331,6 +355,7 @@ function resetProjectStateOnly() {
   const tbody = $("certs-tbody");
   if (tbody) tbody.innerHTML = "";
   __hasRegisteredWork = false;
+  resetWorkflowVisualState();
 }
 
 function stopPermissionTimers() {
@@ -1440,13 +1465,6 @@ async function initProject() {
     updateDashboardUI("READY");
     toast("Projet prêt ✅");
 
-    const exportBtn = $("close-project-btn");
-    if (exportBtn) {
-      exportBtn.style.display = "block";
-      exportBtn.disabled = true;
-      exportBtn.title = "Enregistrez d'abord un moment de travail.";
-    }
-
     refreshHistory().catch(() => {});
     checkForDrafts(true).catch(() => {});
   } catch (e) {
@@ -1544,47 +1562,42 @@ function updateDashboardUI(state) {
   const stopBtn = $("stop-btn");
   const finBtn = $("finalize-btn");
   const live = $("live-dashboard");
+  const exportBtn = $("close-project-btn");
+  const draftBanner = $("draft-banner");
 
+  // Base reset — tout masqué avant d'appliquer l'état
   if (startBtn) startBtn.classList.add("hidden");
   if (stopBtn) stopBtn.classList.add("hidden");
   if (finBtn) finBtn.classList.add("hidden");
-
   if (live) live.style.display = "none";
-
   if (finBtn && state !== "STOPPED") {
     finBtn.disabled = true;
     finBtn.innerText = "Enregistrer ce travail";
   }
 
-  const exportBtn = $("close-project-btn");
-  const draftBanner = $("draft-banner");
-
   if (state === "READY") {
-    if (startBtn) startBtn.classList.remove("hidden");
-    safeText("timer", "00:00");
-    safeText("keystrokes-display", "0");
-    safeText("clicks-display", "0");
-    // En READY : si un travail a déjà été enregistré, le bouton export reste actif
-    if (exportBtn && exportBtn.style.display === "none" && __hasRegisteredWork) {
+    // Nettoyage visuel complet, puis action unique : "Commencer l'observation"
+    resetWorkflowVisualState();
+    // Bouton export : visible si projet chargé, actif ou désactivé selon l'état du travail
+    if (exportBtn && currentProjectPath) {
       exportBtn.style.display = "block";
-      exportBtn.disabled = false;
-      exportBtn.title = "";
+      exportBtn.disabled = !__hasRegisteredWork;
+      exportBtn.title = __hasRegisteredWork ? "" : "Enregistrez d'abord un moment de travail.";
     }
   } else if (state === "SCANNING") {
+    // Action unique : "Terminer l'observation"
     if (stopBtn) stopBtn.classList.remove("hidden");
     if (live) live.style.display = "block";
-    // Pendant l'observation : masquer tout sauf le bouton stop
     hideSendReadyBanner();
     if (exportBtn) exportBtn.style.display = "none";
     if (draftBanner) draftBanner.style.display = "none";
   } else if (state === "STOPPED") {
-    if (startBtn) startBtn.classList.remove("hidden");
+    // Action unique : "Enregistrer ce travail"
     if (finBtn) {
       finBtn.classList.remove("hidden");
       finBtn.disabled = false;
       if (finBtn.innerText === "Travail enregistré ✅") finBtn.innerText = "Enregistrer ce travail";
     }
-    // Pendant STOPPED : masquer le banner et l'export (pas encore sauvegardé)
     if (exportBtn) exportBtn.style.display = "none";
     if (draftBanner) draftBanner.style.display = "none";
   }
