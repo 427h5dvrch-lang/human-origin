@@ -114,6 +114,7 @@ function showExportSuccessView() {
 }
 
 function hideExportSuccessView() {
+  if (!__isExportSuccessVisible) return;
   __isExportSuccessVisible = false;
   __lastExportContext = null;
   showScreen("DASHBOARD");
@@ -121,7 +122,10 @@ function hideExportSuccessView() {
 }
 
 function resetWorkflowVisualState() {
-  hideExportSuccessView();
+  // Masquer la vue succès directement sans déclencher de transition dashboard
+  const successView = $("export-success-view");
+  if (successView) successView.style.display = "none";
+  __isExportSuccessVisible = false;
   hideSendReadyBanner();
   const startBtn = $("start-btn");
   const stopBtn = $("stop-btn");
