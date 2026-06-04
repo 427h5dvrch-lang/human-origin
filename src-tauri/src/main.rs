@@ -1274,6 +1274,51 @@ fn open_file(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn copy_file_to_clipboard(path: String) -> Result<(), String> {
+    if !std::path::Path::new(&path).exists() {
+        return Err(format!("Chemin introuvable: {}", path));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let script = format!("set the clipboard to (POSIX file {:?})", path);
+        let output = std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let escaped = path.replace('\'', "''");
+        let cmd = format!(
+            "Add-Type -AssemblyName System.Windows.Forms; \
+             $col = New-Object System.Collections.Specialized.StringCollection; \
+             [void]$col.Add('{}'); \
+             [System.Windows.Forms.Clipboard]::SetFileDropList($col)",
+            escaped
+        );
+        let output = std::process::Command::new("powershell")
+            .args(["-Sta", "-NoProfile", "-Command", &cmd])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).to_string());
+        }
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        return Err("Copie de fichier non supportée sur cette plateforme.".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
 }
@@ -1546,6 +1591,7 @@ thread::spawn(move || {
             pick_document_to_bind_windows,
             sha256_file,
             copy_file,
+            copy_file_to_clipboard,
             publish_pdf_native,
         ])
         .run(tauri::generate_context!())

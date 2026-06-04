@@ -5295,6 +5295,36 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   on("new-project-btn", initProject);
 
+  on("send-copy-pdf-btn", async () => {
+    const path = __lastExportContext?.pdfPath;
+    if (!path) {
+      toast("PDF indisponible pour cette exportation.");
+      return;
+    }
+    try {
+      await invoke("copy_file_to_clipboard", { path });
+      toast("PDF copié — collez-le dans votre email ✅");
+    } catch (e) {
+      console.warn("[SEND] copy pdf failed", e);
+      toast("Impossible de copier le PDF. Ouvrez le dossier complet.");
+    }
+  });
+
+  on("send-copy-folder-btn", async () => {
+    const path = __lastExportContext?.sendDir;
+    if (!path) {
+      toast("Dossier d'envoi indisponible.");
+      return;
+    }
+    try {
+      await invoke("copy_file_to_clipboard", { path });
+      toast("Dossier complet copié ✅");
+    } catch (e) {
+      console.warn("[SEND] copy folder failed", e);
+      toast("Impossible de copier le dossier. Ouvrez-le manuellement.");
+    }
+  });
+
   on("send-open-pdf-btn", async () => {
     if (!__lastExportContext?.pdfPath) return;
     await invoke("open_file", { path: __lastExportContext.pdfPath }).catch(() => {});
