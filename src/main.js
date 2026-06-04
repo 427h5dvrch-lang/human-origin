@@ -8,7 +8,7 @@
 // - DeepLink macOS fiable via `tauri://open-url` + buffer pending
 // Publication Kit V1:
 // - CERTIFICAT_FINAL.html
-// - CERTIFICAT_FINALfichier de vérification
+// - CERTIFICAT_FINAL.ho.json
 // - HumanOrigin_STAMP.svg / .png
 // - HumanOrigin_BADGE.svg / .png
 // - HumanOrigin_CARTOUCHE.svg / .png
@@ -2164,7 +2164,7 @@ async function exportFinalProjectCertificate() {
       publishedDocumentFilename,
       publishedOutputFilename: canGeneratePublishedPdf ? publishedPdfFilename : null,
       referenceProofFilename: "CERTIFICAT_FINAL.v1.ho.json",
-      compatibilityProofFilename: "CERTIFICAT_FINALfichier de vérification",
+      compatibilityProofFilename: "CERTIFICAT_FINAL.ho.json",
       certificateId,
       issuedAt,
       verdict,
@@ -2312,7 +2312,7 @@ async function exportFinalProjectCertificate() {
         publishedDocumentFilename,
         publishedOutputFilename: canGeneratePublishedPdf ? sendPublishedPdfRelativePath : null,
         referenceProofFilename: sendProofRelativePath,
-        compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINALfichier de vérification",
+        compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINAL.ho.json",
         certificateId,
         issuedAt,
         verdict,
@@ -2383,7 +2383,7 @@ async function exportFinalProjectCertificate() {
       await writeTextFile(`${sendDir}${sep}README_SEND_FIRST.txt`, sendReadme);
 
       const technicalCopies = [
-        [hoPath, `${technicalDir}${sep}CERTIFICAT_FINALfichier de vérification`, "CERTIFICAT_FINALfichier de vérification"],
+        [hoPath, `${technicalDir}${sep}CERTIFICAT_FINAL.ho.json`, "CERTIFICAT_FINAL.ho.json"],
         [hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`, "CERTIFICAT_FINAL.v1.ho.json"],
         [`${dir}${sep}CERTIFICAT_FINAL.html`, `${technicalDir}${sep}CERTIFICAT_FINAL.html`, "CERTIFICAT_FINAL.html"],
         [manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`, "HumanOrigin_MANIFEST.json"],
@@ -2422,7 +2422,7 @@ async function exportFinalProjectCertificate() {
         "CERTIFICAT_FINAL.v1.ho.json",
         "",
         "Fichier de compatibilité legacy :",
-        "CERTIFICAT_FINALfichier de vérification",
+        "CERTIFICAT_FINAL.ho.json",
       ].join("\n");
 
       await writeTextFile(`${technicalDir}${sep}README_TECHNICAL_PROOF.txt`, technicalReadme);
@@ -3410,14 +3410,14 @@ ${fullHash}
 WHAT THIS PACKAGE CONTAINS
 
 This export may include:
-- CERTIFICAT_FINALfichier de vérification  -> signed proof file
+- CERTIFICAT_FINAL.ho.json  -> signed proof file
 - CERTIFICAT_FINAL.html     -> human-readable certificate
 - HumanOrigin_PUBLISHED.pdf -> published marked document (when PDF publication is used)
 - HumanOrigin_CARTOUCHE*.svg/.png -> visible public mark assets
 
 SOURCE OF TRUTH
 
-The signed file CERTIFICAT_FINALfichier de vérification is the source of truth.
+The signed file CERTIFICAT_FINAL.ho.json is the source of truth.
 The visible cartouche, badge, stamp, or PDF marking are public-facing markers,
 but the signed fichier de vérification file is the authoritative proof object.
 
@@ -3427,7 +3427,7 @@ HOW TO VERIFY
 ${verifierUrl}
 
 2. Drag and drop:
-CERTIFICAT_FINALfichier de vérification
+CERTIFICAT_FINAL.ho.json
 
 3. Confirm that the verifier reports:
 - VALID signature
@@ -3478,7 +3478,7 @@ ${documentFilename || "BOUND_DOCUMENT"}
 
 Current recommended workflow
 - keep the original bound working file
-- use CERTIFICAT_FINALfichier de vérification as the source of truth
+- use CERTIFICAT_FINAL.ho.json as the source of truth
 - use the exported visible assets for circulation
 - publish a PDF version later when a visible marked public document is needed`;
 
@@ -3509,13 +3509,13 @@ OPEN IN THIS ORDER
 3. HumanOrigin_VERIFY.txt
    Verification instructions
 
-4. CERTIFICAT_FINALfichier de vérification
+4. CERTIFICAT_FINAL.ho.json
    Signed proof object (source of truth)
 
 SOURCE OF TRUTH
 
 The authoritative proof file is:
-CERTIFICAT_FINALfichier de vérification
+CERTIFICAT_FINAL.ho.json
 
 The cartouche, badge, stamp, HTML certificate, and published PDF are visibility and presentation assets.
 Formal verification is based on the signed fichier de vérification file and the bound document hash.
@@ -3528,7 +3528,7 @@ HOW TO VERIFY
 ${verifierUrl}
 
 2. Load:
-CERTIFICAT_FINALfichier de vérification
+CERTIFICAT_FINAL.ho.json
 
 3. Confirm:
 - VALID signature
@@ -3669,7 +3669,7 @@ function buildShareCardHtml({
 
       <div class="panel" style="margin-bottom:16px;background:#fffdf8;">
         <div class="label">Source of truth</div>
-        <div class="value" style="margin-bottom:8px;">CERTIFICAT_FINALfichier de vérification</div>
+        <div class="value" style="margin-bottom:8px;">CERTIFICAT_FINAL.ho.json</div>
         <div style="font-size:14px;line-height:1.55;color:#475569;">
           The HTML views and visible marks help circulation and reading.
           Formal verification is based on the signed <strong>fichier de vérification</strong> proof file and the bound document hash.
@@ -3683,7 +3683,7 @@ function buildShareCardHtml({
 
         <div style="font-size:15px;line-height:1.55;color:#0b1220;margin-bottom:10px;">
           This HTML certificate is a readable presentation of the HumanOrigin package.
-          The signed file <strong>CERTIFICAT_FINALfichier de vérification</strong> is the authoritative proof object.
+          The signed file <strong>CERTIFICAT_FINAL.ho.json</strong> is the authoritative proof object.
         </div>
 
         <div style="font-size:14px;line-height:1.55;color:#475569;margin-bottom:12px;">
@@ -3694,7 +3694,7 @@ function buildShareCardHtml({
         <div style="font-size:14px;line-height:1.6;color:#0b1220;">
           <strong>How to verify:</strong><br/>
           1. Open the verifier: <span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${esc(verifierUrl)}</span><br/>
-          2. Load <strong>CERTIFICAT_FINALfichier de vérification</strong><br/>
+          2. Load <strong>CERTIFICAT_FINAL.ho.json</strong><br/>
           3. Confirm a valid signature and a matching bound document hash
         </div>
       </div>
@@ -3736,7 +3736,7 @@ function buildShareCardHtml({
             <div class="label">How to verify</div>
             <ul>
               <li>Open the verifier page</li>
-              <li>Load <strong>CERTIFICAT_FINALfichier de vérification</strong></li>
+              <li>Load <strong>CERTIFICAT_FINAL.ho.json</strong></li>
               <li>Use <strong>HumanOrigin_VERIFY.txt</strong> for quick reference</li>
             </ul>
             <div class="footer">Verifier: ${esc(verifierUrl)}</div>
@@ -3763,7 +3763,7 @@ function buildPublicationManifest({
 }) {
   const files = [
     "CERTIFICAT_FINAL.html",
-    "CERTIFICAT_FINALfichier de vérification",
+    "CERTIFICAT_FINAL.ho.json",
     "HumanOrigin_BADGE.svg",
     "HumanOrigin_BADGE.png",
     "HumanOrigin_CARTOUCHE.svg",
@@ -3803,21 +3803,21 @@ function buildPublicationManifest({
 
       recommended_public_workflow: publishedOutputFilename
         ? "Use the included published output for public circulation."
-        : "Send the full package folder or ZIP, open HumanOrigin_PUBLISHED.html first, keep the bound source file as the linked source document, use CERTIFICAT_FINALfichier de vérification as the authoritative proof file, and publish a PDF later if a visibly marked public version is needed.",
+        : "Send the full package folder or ZIP, open HumanOrigin_PUBLISHED.html first, keep the bound source file as the linked source document, use CERTIFICAT_FINAL.ho.json as the authoritative proof file, and publish a PDF later if a visibly marked public version is needed.",
       certificate_id: certificateId,
       issued_at: issuedAt,
       verdict,
       verifier_url: verifierUrl,
 
       source_of_truth: {
-        primary_file: "CERTIFICAT_FINALfichier de vérification",
+        primary_file: "CERTIFICAT_FINAL.ho.json",
         description: "Signed HumanOrigin proof object",
       },
 
       recommended_opening_order: [
         "HumanOrigin_PUBLISHED.html",
         "HumanOrigin_VERIFY.txt",
-        "CERTIFICAT_FINALfichier de vérification",
+        "CERTIFICAT_FINAL.ho.json",
         documentFilename,
       ],
 
@@ -3825,7 +3825,7 @@ function buildPublicationManifest({
         verifier_url: verifierUrl,
         steps: [
           "Open the verifier",
-          "Load CERTIFICAT_FINALfichier de vérification",
+          "Load CERTIFICAT_FINAL.ho.json",
           "Confirm VALID signature",
           "Confirm matching bound document hash",
         ],
@@ -4362,7 +4362,7 @@ function buildOpenFirstHtml({
         </div>
 
         <div class="docx-guide-answer" id="docxGuideAnswer">
-          Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINALfichier de vérification et le document source lié. N'envoyez pas un fichier seul.
+          Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json et le document source lié. N'envoyez pas un fichier seul.
         </div>
 
         <script>
@@ -4377,9 +4377,9 @@ function buildOpenFirstHtml({
                 actionOpen: "Quel fichier ouvrir en premier ?",
                 actionProof: "Quel fichier fait foi ?",
                 answers: {
-                  send: "Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINALfichier de vérification et le document source lié. N'envoyez pas un fichier seul.",
+                  send: "Envoyez le ZIP complet du package HumanOrigin. À défaut, envoyez le dossier complet contenant HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json et le document source lié. N'envoyez pas un fichier seul.",
                   open: "Ouvrez d'abord HumanOrigin_PUBLISHED.html.",
-                  proof: "Le fichier de référence est CERTIFICAT_FINALfichier de vérification."
+                  proof: "Le fichier de référence est CERTIFICAT_FINAL.ho.json."
                 },
                 metaLabels: [
                   "PROJET",
@@ -4397,7 +4397,7 @@ function buildOpenFirstHtml({
                 openTech: "Ouvrir le certificat technique",
                 openVerifier: "Ouvrir le vérificateur",
                 fallbackNote: "Ce document source lié est inclus dans ce package.",
-                bottomNote: "Cette page est l'entrée lisible principale du package. Envoyez le dossier complet ou le ZIP, pas CERTIFICAT_FINAL.html seul. Le fichier signé CERTIFICAT_FINALfichier de vérification reste la preuve de référence.",
+                bottomNote: "Cette page est l'entrée lisible principale du package. Envoyez le dossier complet ou le ZIP, pas CERTIFICAT_FINAL.html seul. Le fichier signé CERTIFICAT_FINAL.ho.json reste la preuve de référence.",
                 verifierNote: "La vérification formelle repose sur le fichier signé fichier de vérification et sur l'empreinte du document associé. Vérificateur :"
               },
               en: {
@@ -4409,9 +4409,9 @@ function buildOpenFirstHtml({
                 actionOpen: "Which file should be opened first?",
                 actionProof: "Which file is authoritative?",
                 answers: {
-                  send: "Send the full HumanOrigin package ZIP. Otherwise send the full folder containing HumanOrigin_PUBLISHED.html, CERTIFICAT_FINALfichier de vérification, and the linked source document. Do not send a single file on its own.",
+                  send: "Send the full HumanOrigin package ZIP. Otherwise send the full folder containing HumanOrigin_PUBLISHED.html, CERTIFICAT_FINAL.ho.json, and the linked source document. Do not send a single file on its own.",
                   open: "Open HumanOrigin_PUBLISHED.html first.",
-                  proof: "The reference proof file is CERTIFICAT_FINALfichier de vérification."
+                  proof: "The reference proof file is CERTIFICAT_FINAL.ho.json."
                 },
                 metaLabels: [
                   "PROJECT",
@@ -4429,7 +4429,7 @@ function buildOpenFirstHtml({
                 openTech: "Open technical certificate",
                 openVerifier: "Open verifier",
                 fallbackNote: "This linked source document is included in this package.",
-                bottomNote: "This page is the main readable entry for the package. Send the full package folder or ZIP, not CERTIFICAT_FINAL.html alone. The signed file CERTIFICAT_FINALfichier de vérification remains the reference proof file.",
+                bottomNote: "This page is the main readable entry for the package. Send the full package folder or ZIP, not CERTIFICAT_FINAL.html alone. The signed file CERTIFICAT_FINAL.ho.json remains the reference proof file.",
                 verifierNote: "Formal verification is based on the signed fichier de vérification file and the linked document hash. Verifier:"
               }
             };
@@ -4814,7 +4814,7 @@ function buildOpenFirstHtml({
           </div>
           <div class="meta-card">
             <div class="meta-label">Source of truth</div>
-            <div class="meta-value">CERTIFICAT_FINALfichier de vérification</div>
+            <div class="meta-value">CERTIFICAT_FINAL.ho.json</div>
           </div>
           ${!isPdf ? `
           <div class="meta-card">
@@ -4852,8 +4852,8 @@ function buildOpenFirstHtml({
 
       <div class="footer-note">
         ${isPdf
-          ? `This page is a readable package view. The signed file <strong>CERTIFICAT_FINALfichier de vérification</strong> remains the authoritative proof object.`
-          : `Cette page est l'entrée lisible principale du package. Envoyez le ZIP complet du package HumanOrigin ou le dossier complet, pas <strong>CERTIFICAT_FINAL.html</strong> seul. Le fichier signé <strong>CERTIFICAT_FINALfichier de vérification</strong> reste la preuve de référence.`}
+          ? `This page is a readable package view. The signed file <strong>CERTIFICAT_FINAL.ho.json</strong> remains the authoritative proof object.`
+          : `Cette page est l'entrée lisible principale du package. Envoyez le ZIP complet du package HumanOrigin ou le dossier complet, pas <strong>CERTIFICAT_FINAL.html</strong> seul. Le fichier signé <strong>CERTIFICAT_FINAL.ho.json</strong> reste la preuve de référence.`}
       </div>
     </div>
   </div>
@@ -4926,7 +4926,7 @@ async function syncWindowsCorePdfToSendPackage({
     publishedDocumentFilename,
     publishedOutputFilename: "2_SEND_TO_RECIPIENT/HumanOrigin_PUBLISHED.pdf",
     referenceProofFilename: "2_SEND_TO_RECIPIENT/HumanOrigin_PROOF.v1.ho.json",
-    compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINALfichier de vérification",
+    compatibilityProofFilename: "3_TECHNICAL_PROOF_ARCHIVE/CERTIFICAT_FINAL.ho.json",
     certificateId,
     issuedAt,
     verdict,
