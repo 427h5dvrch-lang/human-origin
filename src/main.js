@@ -90,43 +90,41 @@ let __lastExportContext = null;
 
 let __isExportSuccessVisible = false;
 
+// showSendReadyBanner/hideSendReadyBanner délèguent à la vue dédiée
 function showSendReadyBanner() {
-  const banner = $("send-ready-banner");
-  if (!banner || !__lastExportContext) return;
-  const nameEl = $("send-ready-doc-name");
-  if (nameEl) nameEl.textContent = __lastExportContext.docName || __lastExportContext.projectName || "Document";
-  banner.style.display = "block";
-  __isExportSuccessVisible = true;
-  // Masquer les éléments concurrents pendant le moment de réussite
-  const exportBtn = $("close-project-btn");
-  if (exportBtn) exportBtn.style.display = "none";
-  const draftBanner = $("draft-banner");
-  if (draftBanner) draftBanner.style.display = "none";
-  const historyCard = document.querySelector(".history-card");
-  if (historyCard) historyCard.style.display = "none";
+  showExportSuccessView();
 }
-
 function hideSendReadyBanner() {
   const banner = $("send-ready-banner");
   if (banner) banner.style.display = "none";
-  __lastExportContext = null;
+}
+
+function showExportSuccessView() {
+  if (!__lastExportContext) return;
+  __isExportSuccessVisible = true;
+  const view = $("export-success-view");
+  const nameEl = $("export-success-doc-name");
+  if (nameEl) nameEl.textContent = __lastExportContext.docName || __lastExportContext.projectName || "Document";
+  if (view) view.style.display = "block";
+  // Masquer la zone de travail pour que le succès domine
+  const controlsSection = $("controls-section");
+  if (controlsSection) controlsSection.style.display = "none";
+  try { view?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch {}
+}
+
+function hideExportSuccessView() {
+  if (!__isExportSuccessVisible) return;
   __isExportSuccessVisible = false;
-  // Restaurer la carte historique
-  const historyCard = document.querySelector(".history-card");
-  if (historyCard) historyCard.style.display = "";
-  // Restaurer le bouton export si un travail est enregistré et qu'on est en état READY
-  const state = document.body.getAttribute("data-scan-state") || "READY";
-  if (state === "READY" && __hasRegisteredWork && currentProjectPath) {
-    const exportBtn = $("close-project-btn");
-    if (exportBtn) {
-      exportBtn.style.display = "block";
-      exportBtn.disabled = false;
-      exportBtn.title = "";
-    }
-  }
+  __lastExportContext = null;
+  const view = $("export-success-view");
+  if (view) view.style.display = "none";
+  // Restaurer la zone de travail
+  const controlsSection = $("controls-section");
+  if (controlsSection) controlsSection.style.display = "";
 }
 
 function resetWorkflowVisualState() {
+  hideExportSuccessView();
   hideSendReadyBanner();
   const startBtn = $("start-btn");
   const stopBtn = $("stop-btn");
@@ -1614,9 +1612,10 @@ function updateDashboardUI(state) {
     }
   } else if (state === "SCANNING") {
     // Action unique : "Terminer l'observation"
+    hideExportSuccessView();
+    hideSendReadyBanner();
     if (stopBtn) stopBtn.classList.remove("hidden");
     if (live) live.style.display = "block";
-    hideSendReadyBanner();
     if (exportBtn) exportBtn.style.display = "none";
     if (draftBanner) draftBanner.style.display = "none";
   } else if (state === "STOPPED") {
@@ -5380,7 +5379,45 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  on("send-dismiss-btn", () => hideSendReadyBanner());
+  on("send-dismiss-btn", () => { hideExportSuccessView(); updateDashboardUI("READY"); });
+
+  on("export-success-close-btn", () => { hideExportSuccessView(); updateDashboardUI("READY"); });
+
+  on("export-success-copy-pdf-btn", async () => {
+    const path = __lastExportContext?.pdfPath;
+    if (!path) { toast("PDF indisponible pour cette exportation."); return; }
+    try { await invoke("copy_file_to_clipboard", { path }); toast("PDF copié — collez-le dans votre email ✅"); }
+    catch (e) { console.warn("[SEND] copy pdf failed", e); toast("Impossible de copier le PDF. Ouvrez le dossier complet."); }
+  });
+
+  on("export-success-copy-folder-btn", async () => {
+    const path = __lastExportContext?.sendDir;
+    if (!path) { toast("Dossier d'envoi indisponible."); return; }
+    try { await invoke("copy_file_to_clipboard", { path }); toast("Dossier complet copié ✅"); }
+    catch (e) { console.warn("[SEND] copy folder failed", e); toast("Impossible de copier le dossier. Ouvrez-le manuellement."); }
+  });
+
+  on("export-success-open-pdf-btn", async () => {
+    if (!__lastExportContext?.pdfPath) return;
+    await invoke("open_file", { path: __lastExportContext.pdfPath }).catch(() => {});
+  });
+
+  on("export-success-copy-msg-btn", async () => {
+    if (!__lastExportContext) return;
+    const msg = [
+      "Bonjour,",
+      "",
+      "Vous trouverez ci-joint mon document labellisé HumanOrigin.",
+      "",
+      "Le document contient une marque HumanOrigin visible. Une preuve portable de processus humain est également incluse dans le dossier d'envoi.",
+      "",
+      "Vous pouvez ouvrir le document directement, puis scanner le QR code ou utiliser la preuve .ho.json si vous souhaitez vérifier l'origine du processus.",
+      "",
+      "Bien à vous,",
+    ].join("\n");
+    try { await navigator.clipboard.writeText(msg); toast("Message copié ✅"); }
+    catch { alert(msg); }
+  });
 
   on("login-btn", async () => {
     const email = $("email")?.value?.trim();
