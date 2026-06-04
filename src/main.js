@@ -1146,6 +1146,9 @@ async function forcePostLogin(skipPermissionsCheck = false) {
       return;
     }
 
+    // Ne pas interrompre l'écran de succès post-export
+    if (__isExportSuccessVisible) return;
+
     if (!skipPermissionsCheck) {
     const permOk = await ensurePermissionsBeforeApp();
     if (!permOk) return;
@@ -1154,8 +1157,8 @@ async function forcePostLogin(skipPermissionsCheck = false) {
     if (isLocalMode()) {
       enterLocalMode();
       if (checkAndShowTuto()) return;
-      if (currentProjectName) showScreen("DASHBOARD");
-      else showScreen("PROJECT_SELECT");
+      if (currentProjectName && !__isExportSuccessVisible) showScreen("DASHBOARD");
+      else if (!currentProjectName) showScreen("PROJECT_SELECT");
       await loadProjectList().catch(() => {});
       refreshHistory().catch(() => {});
       return;
@@ -1186,8 +1189,8 @@ async function forcePostLogin(skipPermissionsCheck = false) {
     if (checkAndShowTuto()) return;
 
     hoBootMark("postlogin:beforeShow");
-    if (currentProjectName) showScreen("DASHBOARD");
-    else showScreen("PROJECT_SELECT");
+    if (currentProjectName && !__isExportSuccessVisible) showScreen("DASHBOARD");
+    else if (!currentProjectName) showScreen("PROJECT_SELECT");
     hoBootMark("postlogin:afterShow");
 
     hoBootMark("postlogin:beforeLoadProjects");
