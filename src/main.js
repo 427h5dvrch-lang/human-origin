@@ -1988,7 +1988,7 @@ async function exportFinalProjectCertificate() {
     const appVersion = await app.getVersion().catch(() => "unknown");
     const certificateId = crypto.randomUUID();
     const issuedAt = new Date().toISOString();
-    const verifierUrl = "le vérificateur public HumanOrigin";
+    const verifierUrl = "https://427h5dvrch-lang.github.io/humanorigin-verifier/";
 
     const hoDoc = {
       ho: {
