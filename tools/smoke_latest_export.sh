@@ -195,6 +195,48 @@ else:
     fail("Signature manquante")
     errors += 1
 
+# ── Binding documentaire (champs V2) ─────────────────────────────────────
+doc = p.get('document', {})
+binding_mode = doc.get('binding_mode', '')
+if binding_mode:
+    ok(f"binding_mode : {binding_mode}")
+else:
+    warn("binding_mode absent (ancien package)")
+
+delta_significant = doc.get('delta_significant')
+if delta_significant is None:
+    warn("delta_significant absent (ancien package)")
+else:
+    ok(f"delta_significant : {delta_significant}")
+
+delta_ratio = doc.get('delta_bytes_ratio')
+if delta_ratio is not None:
+    ok(f"delta_bytes_ratio : {delta_ratio}")
+else:
+    warn("delta_bytes_ratio absent (ancien package ou pas de taille initiale)")
+
+# ── Label eligibility ─────────────────────────────────────────────────────
+le = p.get('label_eligibility', {})
+if le:
+    vis = le.get('visible_verdict', '')
+    raw = le.get('raw_engine_verdict', '')
+    cap = le.get('binding_cap_applied', None)
+    claims_allowed = le.get('claims_allowed', [])
+    claims_forbidden = le.get('claims_forbidden', [])
+    gates = le.get('security_gates', {})
+    if vis:
+        ok(f"visible_verdict : {vis}")
+    if raw and raw != vis:
+        ok(f"raw_engine_verdict : {raw} → cap appliqué")
+    if claims_allowed:
+        ok(f"claims_allowed : {', '.join(claims_allowed[:3])}{'…' if len(claims_allowed) > 3 else ''}")
+    if claims_forbidden:
+        ok(f"claims_forbidden : {len(claims_forbidden)} entrée(s)")
+    if gates:
+        ok(f"security_gates : binding_mode={gates.get('binding_mode','?')}, delta_significant={gates.get('delta_significant','?')}")
+else:
+    warn("label_eligibility absent (ancien package)")
+
 sys.exit(errors)
 PYEOF
   PROOF_EXIT=$?

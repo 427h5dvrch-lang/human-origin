@@ -310,14 +310,78 @@ function resetPasteStats() {
   pasteStats = { paste_events: 0, pasted_chars: 0, max_paste_chars: 0 };
 }
 
+function buildDocumentDelta(initialSize, finalSize, initialMime, finalMime) {
+  const i = Number(initialSize || 0);
+  const f = Number(finalSize || 0);
+  const hasSizes = i > 0 && f > 0;
+  const deltaBytes = hasSizes ? Math.abs(f - i) : null;
+  const denom = hasSizes ? Math.max(i, f) : null;
+  const deltaBytesRatio = hasSizes && denom > 0 ? deltaBytes / denom : null;
+  const formatConversionDetected = !!initialMime && !!finalMime && String(initialMime) !== String(finalMime);
+  const deltaSignificant =
+    hasSizes &&
+    !formatConversionDetected &&
+    deltaBytes >= 512 &&
+    deltaBytesRatio >= 0.01;
+  return {
+    initial_size_bytes: hasSizes ? i : null,
+    final_size_bytes: hasSizes ? f : null,
+    delta_bytes: deltaBytes,
+    delta_bytes_ratio: deltaBytesRatio !== null ? Math.round(deltaBytesRatio * 10000) / 10000 : null,
+    delta_significant: !!deltaSignificant,
+    format_conversion_detected: !!formatConversionDetected,
+    extraction_status: "not_attempted",
+  };
+}
+
+function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason) {
+  const allowed = ["activity_observed", "object_hash_bound", "signature_valid"];
+  const forbidden = [
+    "content_certified", "truth_certified", "authorship_confirmed",
+    "creation_complete", "no_ai_generation",
+  ];
+  if (documentBinding?.binding_mode === "pre_observation") allowed.push("object_bound_before_observation");
+  if (documentBinding?.document_modified === true) allowed.push("object_modified_after_binding");
+  if (documentBinding?.delta_significant === true) {
+    allowed.push("non_trivial_file_delta_detected");
+  } else {
+    forbidden.push("substantial_contribution_attested");
+  }
+  if (boundVerdict === "COHERENT" && documentBinding?.delta_significant === true) {
+    allowed.push("strong_process_evidence");
+  }
+  return {
+    claims_allowed: allowed,
+    claims_forbidden: [...new Set(forbidden)],
+    security_gates: {
+      session_gate: "passed",
+      binding_mode: documentBinding?.binding_mode || "unknown",
+      document_modified: documentBinding?.document_modified ?? null,
+      delta_significant: documentBinding?.delta_significant ?? null,
+      format_conversion_detected: documentBinding?.format_conversion_detected ?? null,
+    },
+    caps_applied: capReason ? [capReason] : [],
+  };
+}
+
 function applyBindingVerdictCap(rawVerdict, documentBinding) {
   const mode = documentBinding?.binding_mode;
   const modified = documentBinding?.document_modified;
+  const deltaSignificant = documentBinding?.delta_significant;
+  const formatConversion = documentBinding?.format_conversion_detected;
   if (mode === "export_time") {
     return { verdict: "PREUVE LIMITÉE", reason: "document_bound_at_export" };
   }
   if (mode === "pre_observation" && modified === false && rawVerdict === "COHERENT") {
     return { verdict: "ATYPIQUE", reason: "document_not_modified" };
+  }
+  if (mode === "pre_observation" && modified === true && !deltaSignificant) {
+    if (rawVerdict === "COHERENT") {
+      return {
+        verdict: "ATYPIQUE",
+        reason: formatConversion ? "format_conversion_delta_not_trusted" : "document_delta_too_small",
+      };
+    }
   }
   return { verdict: rawVerdict, reason: null };
 }
@@ -413,12 +477,14 @@ async function bindDocumentBeforeObservation() {
   try {
     const bind = await pickDocumentToBind();
     if (!bind || !bind.path || !bind.sha256) return;
+    const sizeBytes = await invoke("file_size_bytes", { path: bind.path }).catch(() => null);
     currentBoundDocument = {
       path: bind.path,
       filename: bind.filename || "Document",
       mime: bind.mime || "",
       sha256: bind.sha256,
       bound_at: new Date().toISOString(),
+      size_bytes: Number.isFinite(Number(sizeBytes)) ? Number(sizeBytes) : null,
     };
     updateBoundDocumentUI();
     toast("Document lié à l'observation ✅");
@@ -2336,18 +2402,29 @@ async function exportFinalProjectCertificate() {
       return;
     }
 
-    // ── Binding documentaire : comparer hash initial et final ──────────────
+    // ── Binding documentaire : comparer hash initial et final + delta ──────
     const finalSelectedAt = new Date().toISOString();
+    const finalSizeBytes = await invoke("file_size_bytes", { path: bind.path }).catch(() => null);
+    const finalSizeNum = Number.isFinite(Number(finalSizeBytes)) ? Number(finalSizeBytes) : null;
+
     const documentBinding = currentBoundDocument
-      ? {
-          binding_mode: "pre_observation",
-          initial_sha256: currentBoundDocument.sha256,
-          initial_filename: currentBoundDocument.filename,
-          initial_bound_at: currentBoundDocument.bound_at,
-          final_selected_at: finalSelectedAt,
-          document_modified: currentBoundDocument.sha256 !== bind.sha256,
-          binding_strength: currentBoundDocument.sha256 !== bind.sha256 ? "partial" : "weak",
-        }
+      ? (() => {
+          const hashModified = currentBoundDocument.sha256 !== bind.sha256;
+          const delta = buildDocumentDelta(
+            currentBoundDocument.size_bytes, finalSizeNum,
+            currentBoundDocument.mime, bind.mime
+          );
+          return {
+            binding_mode: "pre_observation",
+            initial_sha256: currentBoundDocument.sha256,
+            initial_filename: currentBoundDocument.filename,
+            initial_bound_at: currentBoundDocument.bound_at,
+            final_selected_at: finalSelectedAt,
+            document_modified: hashModified,
+            binding_strength: hashModified && delta.delta_significant ? "partial" : "weak",
+            ...delta,
+          };
+        })()
       : {
           binding_mode: "export_time",
           initial_sha256: null,
@@ -2356,6 +2433,7 @@ async function exportFinalProjectCertificate() {
           final_selected_at: finalSelectedAt,
           document_modified: null,
           binding_strength: "weak",
+          ...buildDocumentDelta(null, finalSizeNum, null, bind.mime),
         };
 
     // ── Plafonner le verdict selon le binding documentaire ─────────────────
@@ -2378,6 +2456,19 @@ async function exportFinalProjectCertificate() {
         capMsg =
           "Aucune modification du document lié n'a été détectée.\n\n" +
           "HumanOrigin peut attester une activité observée, mais pas une modification détectable du document.\n" +
+          "Le niveau visible sera limité.\n\n" +
+          "Continuer ?";
+      } else if (bindingCapReason === "document_delta_too_small") {
+        capMsg =
+          "Modification documentaire trop faible.\n\n" +
+          "HumanOrigin a détecté que le document lié a changé, mais le changement mesurable est trop faible pour attester une contribution substantielle.\n" +
+          "Le niveau visible sera limité.\n\n" +
+          "Continuer ?";
+      } else if (bindingCapReason === "format_conversion_delta_not_trusted") {
+        capMsg =
+          "Changement de format détecté.\n\n" +
+          "Le document initial et le document final ne sont pas du même type.\n" +
+          "HumanOrigin ne peut pas assimiler cette conversion à une contribution substantielle au contenu.\n" +
           "Le niveau visible sera limité.\n\n" +
           "Continuer ?";
       }
@@ -2631,6 +2722,13 @@ async function exportFinalProjectCertificate() {
           final_selected_at: documentBinding.final_selected_at,
           document_modified: documentBinding.document_modified,
           binding_strength: documentBinding.binding_strength,
+          initial_size_bytes: documentBinding.initial_size_bytes,
+          final_size_bytes: documentBinding.final_size_bytes,
+          delta_bytes: documentBinding.delta_bytes,
+          delta_bytes_ratio: documentBinding.delta_bytes_ratio,
+          delta_significant: documentBinding.delta_significant,
+          format_conversion_detected: documentBinding.format_conversion_detected,
+          extraction_status: documentBinding.extraction_status,
         },
         process_summary: {
           verdict,
@@ -2645,6 +2743,7 @@ async function exportFinalProjectCertificate() {
           binding_cap_reason: bindingCapReason,
           raw_engine_verdict: rawEngineVerdict,
           visible_verdict: verdict,
+          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason),
         },
         verification: {
           verify_url: verifierUrl || null,

@@ -987,6 +987,12 @@ fn sha256_file(path: String) -> Result<String, String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 #[tauri::command]
+fn file_size_bytes(path: String) -> Result<u64, String> {
+    std::fs::metadata(&path)
+        .map(|m| m.len())
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
 fn copy_file(src_path: String, dest_path: String) -> Result<(), String> {
     use std::path::Path;
 
@@ -1590,6 +1596,7 @@ thread::spawn(move || {
             take_pending_deep_link,
             pick_document_to_bind_windows,
             sha256_file,
+            file_size_bytes,
             copy_file,
             copy_file_to_clipboard,
             publish_pdf_native,
