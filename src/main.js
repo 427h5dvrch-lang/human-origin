@@ -238,6 +238,7 @@ function resetWorkflowVisualState() {
 
 // Tracks whether at least one work session has been finalized in this project session
 let __hasRegisteredWork = false;
+let currentBoundDocument = null; // { path, filename, mime, sha256, bound_at } — document lié avant observation
 let currentProjectName = null;
 let currentProjectPath = null;
 
@@ -396,6 +397,41 @@ async function pickDocumentToBind() {
   return { path, filename, mime, sha256 };
 }
 
+async function bindDocumentBeforeObservation() {
+  try {
+    const bind = await pickDocumentToBind();
+    if (!bind || !bind.path || !bind.sha256) return;
+    currentBoundDocument = {
+      path: bind.path,
+      filename: bind.filename || "Document",
+      mime: bind.mime || "",
+      sha256: bind.sha256,
+      bound_at: new Date().toISOString(),
+    };
+    updateBoundDocumentUI();
+    toast("Document lié à l'observation ✅");
+  } catch (e) {
+    console.warn("bindDocumentBeforeObservation failed", e);
+  }
+}
+
+function updateBoundDocumentUI() {
+  const box = $("bound-document-box");
+  const name = $("bound-document-name");
+  const meta = $("bound-document-meta");
+  const btn = $("bind-document-btn");
+  if (!box) return;
+  if (!currentBoundDocument) {
+    if (name) name.textContent = "Aucun document lié";
+    if (meta) meta.textContent = "Optionnel : liez un document avant l'observation pour renforcer la preuve.";
+    if (btn) btn.textContent = "Lier un document";
+  } else {
+    if (name) name.textContent = currentBoundDocument.filename;
+    if (meta) meta.textContent = "Empreinte initiale enregistrée avant observation.";
+    if (btn) btn.textContent = "Changer";
+  }
+}
+
 // =========================================================
 // SCREEN ROUTER
 // =========================================================
@@ -476,6 +512,7 @@ function resetProjectStateOnly() {
   const tbody = $("certs-tbody");
   if (tbody) tbody.innerHTML = "";
   __hasRegisteredWork = false;
+  currentBoundDocument = null;
   resetWorkflowVisualState();
 }
 
@@ -1716,6 +1753,7 @@ function updateDashboardUI(state) {
         exportBtn.style.display = "none";
       }
     }
+    updateBoundDocumentUI();
   } else if (state === "SCANNING") {
     // Action unique : "Terminer l'observation"
     hideExportSuccessView();
@@ -2286,6 +2324,28 @@ async function exportFinalProjectCertificate() {
       return;
     }
 
+    // ── Binding documentaire : comparer hash initial et final ──────────────
+    const finalSelectedAt = new Date().toISOString();
+    const documentBinding = currentBoundDocument
+      ? {
+          binding_mode: "pre_observation",
+          initial_sha256: currentBoundDocument.sha256,
+          initial_filename: currentBoundDocument.filename,
+          initial_bound_at: currentBoundDocument.bound_at,
+          final_selected_at: finalSelectedAt,
+          document_modified: currentBoundDocument.sha256 !== bind.sha256,
+          binding_strength: currentBoundDocument.sha256 !== bind.sha256 ? "partial" : "weak",
+        }
+      : {
+          binding_mode: "export_time",
+          initial_sha256: null,
+          initial_filename: null,
+          initial_bound_at: null,
+          final_selected_at: finalSelectedAt,
+          document_modified: null,
+          binding_strength: "weak",
+        };
+
     const appVersion = await app.getVersion().catch(() => "unknown");
     const certificateId = crypto.randomUUID();
     const issuedAt = new Date().toISOString();
@@ -2521,10 +2581,16 @@ async function exportFinalProjectCertificate() {
           name: hoDoc.subject.title,
         },
         document: {
-          binding_mode: "external_file",
+          binding_mode: documentBinding.binding_mode,
           filename: hoDoc.document.filename ?? null,
           mime: hoDoc.document.mime ?? null,
           sha256: hoDoc.document.sha256 ?? null,
+          initial_sha256: documentBinding.initial_sha256,
+          initial_filename: documentBinding.initial_filename,
+          initial_bound_at: documentBinding.initial_bound_at,
+          final_selected_at: documentBinding.final_selected_at,
+          document_modified: documentBinding.document_modified,
+          binding_strength: documentBinding.binding_strength,
         },
         process_summary: {
           verdict,
@@ -5700,6 +5766,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   on("finalize-btn", finalizeSession);
   on("sync-btn", () => refreshHistory().catch(() => {}));
   on("close-project-btn", exportFinalProjectCertificate);
+  on("bind-document-btn", bindDocumentBeforeObservation);
   on("check-update-btn", tauriCheckAndInstallUpdate);
 
   window.addEventListener("paste", (e) => {
