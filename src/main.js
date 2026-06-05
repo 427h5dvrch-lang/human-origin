@@ -176,10 +176,12 @@ function applyExportSuccessCopy(verdict) {
   const openPdfBtn = $("export-success-open-pdf-btn");
   const copyMsgBtn = $("export-success-copy-msg-btn");
   const backBtn = $("export-success-back-btn");
+  const openVerifierBtn = $("export-success-open-verifier-btn");
   if (copyPdfBtn) copyPdfBtn.textContent = hoPerm("Copier le PDF à envoyer", "Copy PDF to send");
-  if (copyFolderBtn) copyFolderBtn.textContent = hoPerm("Copier le dossier complet", "Copy complete folder");
+  if (copyFolderBtn) copyFolderBtn.textContent = hoPerm("Copier le kit de vérification (.zip)", "Copy verification kit (.zip)");
   if (openPdfBtn) openPdfBtn.textContent = hoPerm("Ouvrir le PDF", "Open PDF");
   if (copyMsgBtn) copyMsgBtn.textContent = hoPerm("Copier le message", "Copy message");
+  if (openVerifierBtn) openVerifierBtn.textContent = hoPerm("Ouvrir le vérificateur", "Open verifier");
   if (backBtn) backBtn.textContent = hoPerm("Revenir à mes travaux", "Back to my work");
 }
 
@@ -5527,6 +5529,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   on("export-success-close-btn", () => hideExportSuccessView());
   on("export-success-back-btn", () => hideExportSuccessView());
 
+  on("export-success-open-verifier-btn", async () => {
+    const url = "https://427h5dvrch-lang.github.io/humanorigin-verifier/";
+    // open_file utilise `open url` sur macOS et `start url` sur Windows → ouvre le navigateur
+    await invoke("open_file", { path: url }).catch(() => {
+      try { window.open(url, "_blank"); } catch {}
+    });
+  });
+
   on("export-success-copy-pdf-btn", async () => {
     const path = __lastExportContext?.pdfPath;
     if (!path) {
@@ -5550,17 +5560,17 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   on("export-success-copy-folder-btn", async () => {
-    const path = __lastExportContext?.sendDir;
+    const path = __lastExportContext?.zipPath || __lastExportContext?.sendDir;
     if (!path) {
-      toast("Dossier complet indisponible.");
+      toast(hoPerm("Kit de vérification indisponible.", "Verification kit unavailable."));
       return;
     }
     try {
       await invoke("copy_file_to_clipboard", { path });
-      toast(hoPerm("Dossier complet copié ✅", "Complete folder copied ✅"));
+      toast(hoPerm("Kit de vérification copié ✅", "Verification kit copied ✅"));
     } catch (e) {
       console.warn("[SUCCESS] copy folder failed", e);
-      toast(hoPerm("Impossible de copier le dossier.", "Unable to copy the folder."));
+      toast(hoPerm("Impossible de copier le kit de vérification.", "Unable to copy the verification kit."));
     }
   });
 
@@ -5571,13 +5581,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   on("export-success-copy-msg-btn", async () => {
+    const VERIFIER_URL = "https://427h5dvrch-lang.github.io/humanorigin-verifier/";
     const msg = hoUiLang() === "en"
       ? [
           "Hello,",
           "",
           "Please find attached my HumanOrigin-labeled document.",
           "",
-          "The document contains a visible HumanOrigin mark. A portable proof of human process is also available in the complete folder.",
+          "To verify the proof:",
+          VERIFIER_URL,
+          "Import the file HumanOrigin_PROOF.v1.ho.json included in the verification kit.",
+          "",
+          "The document contains a visible HumanOrigin mark. HumanOrigin verifies an observed creation process, not the document content.",
           "",
           "Best regards,",
         ].join("\n")
@@ -5586,7 +5601,11 @@ window.addEventListener("DOMContentLoaded", async () => {
           "",
           "Vous trouverez ci-joint mon document labellisé HumanOrigin.",
           "",
-          "Le document contient une marque HumanOrigin visible. Une preuve portable de processus humain est également disponible dans le dossier complet.",
+          "Pour vérifier la preuve :",
+          VERIFIER_URL,
+          "Importez le fichier HumanOrigin_PROOF.v1.ho.json fourni dans le kit de vérification.",
+          "",
+          "Le document contient une marque HumanOrigin visible. HumanOrigin vérifie un processus de création observé, pas le contenu du document.",
           "",
           "Bien à vous,",
         ].join("\n");
