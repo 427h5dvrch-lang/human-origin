@@ -1882,6 +1882,7 @@ async function finalizeSession() {
     // Activer le bouton export dès qu'un travail est enregistré
     const exportBtnAfterWork = $("close-project-btn");
     if (exportBtnAfterWork) {
+      exportBtnAfterWork.style.display = "block";
       exportBtnAfterWork.disabled = false;
       exportBtnAfterWork.title = "";
     }
