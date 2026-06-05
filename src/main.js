@@ -3084,6 +3084,12 @@ async function exportFinalProjectCertificate() {
         preferredOpenPath = `${sendDir}${sep}${sendPublishedPdfFilename}`;
         await copyFile(hoPathV1, `${sendDir}${sep}${sendProofFilename}`);
 
+        // Le PDF labellisé est maintenant dans sendDir — régénérer le ZIP pour l'inclure
+        await createSendZip(
+          sendDir,
+          `${sharePackageDir}${sep}HumanOrigin_SEND.zip`
+        ).catch(e => console.warn("[ZIP] post-publication regen failed", e));
+
         await copyFile(finalPdfPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`);
         await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`);
         await copyFile(manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`);
