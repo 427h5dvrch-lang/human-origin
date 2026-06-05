@@ -108,46 +108,79 @@ function applyExportSuccessCopy(verdict) {
   const note = $("export-success-note");
 
   if (v === "SUSPECT") {
-    if (kicker) kicker.textContent = "Preuve limitée générée";
-    if (title) title.textContent = "Votre document contient une preuve HumanOrigin limitée.";
-    if (subtitle) subtitle.textContent =
-      "Le processus observé présente des signaux faibles ou atypiques. Le verdict complet reste disponible dans la preuve portable.";
-    if (badge) badge.textContent = "Preuve limitée";
-    if (note) note.textContent =
-      "Vous pouvez envoyer le PDF, mais il ne doit pas être présenté comme une preuve forte de processus humain.";
-    return;
+    if (kicker) kicker.textContent = hoPerm("Preuve limitée générée", "Limited proof generated");
+    if (title) title.textContent = hoPerm(
+      "Votre document contient une preuve HumanOrigin limitée.",
+      "Your document contains limited HumanOrigin proof."
+    );
+    if (subtitle) subtitle.textContent = hoPerm(
+      "Le processus observé présente des signaux faibles ou atypiques. Le verdict complet reste disponible dans la preuve portable.",
+      "The observed process shows weak or atypical signals. The full verdict remains available in the portable proof."
+    );
+    if (badge) badge.textContent = hoPerm("Preuve limitée", "Limited proof");
+    if (note) note.textContent = hoPerm(
+      "Vous pouvez envoyer le PDF, mais il ne doit pas être présenté comme une preuve forte de processus humain.",
+      "You may send the PDF, but it should not be presented as strong proof of a human process."
+    );
+  } else if (v === "PREUVE LIMITÉE" || v === "PREUVE LIMITEE") {
+    if (kicker) kicker.textContent = hoPerm("Preuve partielle générée", "Partial proof generated");
+    if (title) title.textContent = hoPerm(
+      "Le volume observé est limité.",
+      "The observed activity is limited."
+    );
+    if (subtitle) subtitle.textContent = hoPerm(
+      "HumanOrigin a créé une preuve partielle. Le dossier complet contient les éléments de vérification disponibles.",
+      "HumanOrigin created a partial proof. The complete folder contains the available verification elements."
+    );
+    if (badge) badge.textContent = hoPerm("Preuve partielle", "Partial proof");
+    if (note) note.textContent = hoPerm(
+      "Pour renforcer cette preuve, réalisez une observation plus longue avant de générer un nouveau document.",
+      "To strengthen this proof, complete a longer observation before generating a new document."
+    );
+  } else if (v === "ATYPIQUE" || v === "ATYPICAL") {
+    if (kicker) kicker.textContent = hoPerm("Document HumanOrigin créé", "HumanOrigin document created");
+    if (title) title.textContent = hoPerm(
+      "Votre PDF labellisé est prêt à être envoyé.",
+      "Your labeled PDF is ready to send."
+    );
+    if (subtitle) subtitle.textContent = hoPerm(
+      "Le processus observé est utilisable, avec certains signaux atypiques indiqués dans la preuve portable.",
+      "The observed process is usable, with some atypical signals documented in the portable proof."
+    );
+    if (badge) badge.textContent = hoPerm("PDF labellisé", "Labeled PDF");
+    if (note) note.textContent = hoPerm(
+      "Le PDF contient une marque HumanOrigin visible. La preuve portable reste disponible dans le dossier complet.",
+      "The PDF contains a visible HumanOrigin mark. The portable proof remains available in the complete folder."
+    );
+  } else {
+    // COHERENT / défaut
+    if (kicker) kicker.textContent = hoPerm("Document HumanOrigin créé avec succès", "HumanOrigin document created successfully");
+    if (title) title.textContent = hoPerm(
+      "Votre PDF labellisé est prêt à être envoyé.",
+      "Your labeled PDF is ready to send."
+    );
+    if (subtitle) subtitle.textContent = hoPerm(
+      "Le document contient une marque HumanOrigin visible et reste lié à une preuve portable vérifiable.",
+      "The document contains a visible HumanOrigin mark and remains linked to a portable, verifiable proof."
+    );
+    if (badge) badge.textContent = hoPerm("PDF labellisé", "Labeled PDF");
+    if (note) note.textContent = hoPerm(
+      "Pour un envoi simple, copiez le PDF. Pour une vérification complète, envoyez aussi le dossier complet.",
+      "For a simple send, copy the PDF. For full verification, also send the complete folder."
+    );
   }
 
-  if (v === "PREUVE LIMITÉE") {
-    if (kicker) kicker.textContent = "Preuve partielle générée";
-    if (title) title.textContent = "Le volume observé est insuffisant pour une preuve forte.";
-    if (subtitle) subtitle.textContent =
-      "HumanOrigin a créé une preuve partielle. Le dossier complet contient les éléments de vérification disponibles.";
-    if (badge) badge.textContent = "Preuve partielle";
-    if (note) note.textContent =
-      "Pour renforcer cette preuve, réalisez une observation plus longue avant de générer un nouveau document.";
-    return;
-  }
-
-  if (v === "ATYPIQUE") {
-    if (kicker) kicker.textContent = "Document HumanOrigin créé";
-    if (title) title.textContent = "Votre PDF labellisé est prêt à être envoyé.";
-    if (subtitle) subtitle.textContent =
-      "Le processus observé est utilisable, avec certains signaux atypiques indiqués dans la preuve portable.";
-    if (badge) badge.textContent = "PDF labellisé";
-    if (note) note.textContent =
-      "Le PDF contient une marque HumanOrigin visible. La preuve portable reste disponible dans le dossier complet.";
-    return;
-  }
-
-  // COHERENT / défaut
-  if (kicker) kicker.textContent = "Document HumanOrigin créé avec succès";
-  if (title) title.textContent = "Votre PDF labellisé est prêt à être envoyé.";
-  if (subtitle) subtitle.textContent =
-    "Le document contient une marque HumanOrigin visible et reste lié à une preuve portable vérifiable.";
-  if (badge) badge.textContent = "PDF labellisé";
-  if (note) note.textContent =
-    "Pour un envoi simple, copiez le PDF. Pour une vérification complète, envoyez aussi le dossier complet.";
+  // Libellés des boutons d'action
+  const copyPdfBtn = $("export-success-copy-pdf-btn");
+  const copyFolderBtn = $("export-success-copy-folder-btn");
+  const openPdfBtn = $("export-success-open-pdf-btn");
+  const copyMsgBtn = $("export-success-copy-msg-btn");
+  const backBtn = $("export-success-back-btn");
+  if (copyPdfBtn) copyPdfBtn.textContent = hoPerm("Copier le PDF à envoyer", "Copy PDF to send");
+  if (copyFolderBtn) copyFolderBtn.textContent = hoPerm("Copier le dossier complet", "Copy complete folder");
+  if (openPdfBtn) openPdfBtn.textContent = hoPerm("Ouvrir le PDF", "Open PDF");
+  if (copyMsgBtn) copyMsgBtn.textContent = hoPerm("Copier le message", "Copy message");
+  if (backBtn) backBtn.textContent = hoPerm("Revenir à mes travaux", "Back to my work");
 }
 
 function showExportSuccessView() {
@@ -632,6 +665,7 @@ function ensureProjectLangToggle() {
       if (typeof applySessionScreenCopy === "function") applySessionScreenCopy();
       if (typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
       if (typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
+      if (__isExportSuccessVisible) applyExportSuccessCopy(__lastExportContext?.verdict);
     });
 
     bar.querySelector("#project-lang-en")?.addEventListener("click", () => {
@@ -640,6 +674,7 @@ function ensureProjectLangToggle() {
       if (typeof applySessionScreenCopy === "function") applySessionScreenCopy();
       if (typeof applyLoginScreenCopy === "function") applyLoginScreenCopy();
       if (typeof applyPermissionsScreenCopy === "function") applyPermissionsScreenCopy();
+      if (__isExportSuccessVisible) applyExportSuccessCopy(__lastExportContext?.verdict);
     });
   }
 
@@ -5505,12 +5540,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       );
       toast(
         weak
-          ? "PDF copié — preuve limitée, à transmettre avec prudence ✅"
-          : "PDF copié — collez-le dans votre email ✅"
+          ? hoPerm("PDF copié — preuve limitée, à transmettre avec prudence ✅", "PDF copied — limited proof, share with care ✅")
+          : hoPerm("PDF copié — collez-le dans votre email ✅", "PDF copied — paste it into your email ✅")
       );
     } catch (e) {
       console.warn("[SUCCESS] copy pdf failed", e);
-      toast("Impossible de copier le PDF.");
+      toast(hoPerm("Impossible de copier le PDF.", "Unable to copy the PDF."));
     }
   });
 
@@ -5522,10 +5557,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
     try {
       await invoke("copy_file_to_clipboard", { path });
-      toast("Dossier complet copié ✅");
+      toast(hoPerm("Dossier complet copié ✅", "Complete folder copied ✅"));
     } catch (e) {
       console.warn("[SUCCESS] copy folder failed", e);
-      toast("Impossible de copier le dossier.");
+      toast(hoPerm("Impossible de copier le dossier.", "Unable to copy the folder."));
     }
   });
 
@@ -5536,18 +5571,28 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   on("export-success-copy-msg-btn", async () => {
-    const msg = [
-      "Bonjour,",
-      "",
-      "Vous trouverez ci-joint mon document labellisé HumanOrigin.",
-      "",
-      "Le document contient une marque HumanOrigin visible. Une preuve portable de processus humain est également disponible dans le dossier complet.",
-      "",
-      "Bien à vous,",
-    ].join("\n");
+    const msg = hoUiLang() === "en"
+      ? [
+          "Hello,",
+          "",
+          "Please find attached my HumanOrigin-labeled document.",
+          "",
+          "The document contains a visible HumanOrigin mark. A portable proof of human process is also available in the complete folder.",
+          "",
+          "Best regards,",
+        ].join("\n")
+      : [
+          "Bonjour,",
+          "",
+          "Vous trouverez ci-joint mon document labellisé HumanOrigin.",
+          "",
+          "Le document contient une marque HumanOrigin visible. Une preuve portable de processus humain est également disponible dans le dossier complet.",
+          "",
+          "Bien à vous,",
+        ].join("\n");
     try {
       await navigator.clipboard.writeText(msg);
-      toast("Message copié ✅");
+      toast(hoPerm("Message copié ✅", "Message copied ✅"));
     } catch {
       alert(msg);
     }
