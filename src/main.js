@@ -310,6 +310,18 @@ function resetPasteStats() {
   pasteStats = { paste_events: 0, pasted_chars: 0, max_paste_chars: 0 };
 }
 
+function applyBindingVerdictCap(rawVerdict, documentBinding) {
+  const mode = documentBinding?.binding_mode;
+  const modified = documentBinding?.document_modified;
+  if (mode === "export_time") {
+    return { verdict: "PREUVE LIMITÉE", reason: "document_bound_at_export" };
+  }
+  if (mode === "pre_observation" && modified === false && rawVerdict === "COHERENT") {
+    return { verdict: "ATYPIQUE", reason: "document_not_modified" };
+  }
+  return { verdict: rawVerdict, reason: null };
+}
+
 function verdictFromScp(scp) {
   if (scp === null || scp === undefined) {
     return { label: "—", color: "rgba(11,18,32,0.55)" };
@@ -2346,6 +2358,34 @@ async function exportFinalProjectCertificate() {
           binding_strength: "weak",
         };
 
+    // ── Plafonner le verdict selon le binding documentaire ─────────────────
+    const rawEngineVerdict = verdict;
+    const { verdict: boundVerdict, reason: bindingCapReason } =
+      applyBindingVerdictCap(rawEngineVerdict, documentBinding);
+
+    if (boundVerdict !== rawEngineVerdict) {
+      let capMsg = "";
+      if (documentBinding.binding_mode === "export_time") {
+        capMsg =
+          "Document lié seulement à l'export.\n\n" +
+          "HumanOrigin a observé votre activité, mais ce document n'était pas lié avant l'observation.\n" +
+          "La preuve indiquera une contribution limitée au document.\n\n" +
+          "Continuer ?";
+      } else if (
+        documentBinding.binding_mode === "pre_observation" &&
+        documentBinding.document_modified === false
+      ) {
+        capMsg =
+          "Aucune modification du document lié n'a été détectée.\n\n" +
+          "HumanOrigin peut attester une activité observée, mais pas une modification détectable du document.\n" +
+          "Le niveau visible sera limité.\n\n" +
+          "Continuer ?";
+      }
+      if (capMsg && !confirm(capMsg)) return;
+    }
+
+    verdict = boundVerdict;
+
     const appVersion = await app.getVersion().catch(() => "unknown");
     const certificateId = crypto.randomUUID();
     const issuedAt = new Date().toISOString();
@@ -2599,6 +2639,12 @@ async function exportFinalProjectCertificate() {
           active_ms: Math.max(0, Number(res.total_active_seconds || 0)) * 1000,
           valid_sessions_count: Math.max(0, Number(res.valid_sessions || 0)),
           certified_sessions_count: Math.max(0, Number(res.valid_sessions || 0)),
+        },
+        label_eligibility: {
+          binding_cap_applied: bindingCapReason !== null,
+          binding_cap_reason: bindingCapReason,
+          raw_engine_verdict: rawEngineVerdict,
+          visible_verdict: verdict,
         },
         verification: {
           verify_url: verifierUrl || null,
