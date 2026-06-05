@@ -85,6 +85,10 @@ struct SessionAnalysis {
     density_penalty: i32,
     backspace_count: u32,
     session_tier: String,
+    rhythm_mean_ms: Option<f64>,
+    rhythm_stddev_ms: Option<f64>,
+    rhythm_cv: Option<f64>,
+    rhythm_penalty: i32,
 }
 
 #[derive(Serialize)]
@@ -378,8 +382,35 @@ fn calculate_scp(
             density_penalty: 0,
             backspace_count,
             session_tier,
+            rhythm_mean_ms: None,
+            rhythm_stddev_ms: None,
+            rhythm_cv: None,
+            rhythm_penalty: 0,
         };
     }
+
+    // --- RHYTHM ANALYSIS ---
+    let (rhythm_mean_ms, rhythm_stddev_ms, rhythm_cv) = if keystrokes.len() >= 2 {
+        let mut intervals: Vec<f64> = Vec::new();
+        for pair in keystrokes.windows(2) {
+            let dt = (pair[1] - pair[0]) as f64;
+            if dt > 0.0 && dt < 10_000.0 {
+                intervals.push(dt);
+            }
+        }
+        if intervals.len() >= 30 {
+            let mean = intervals.iter().sum::<f64>() / intervals.len() as f64;
+            let variance = intervals.iter().map(|x| (x - mean).powi(2)).sum::<f64>()
+                / intervals.len() as f64;
+            let stddev = variance.sqrt();
+            let cv = if mean > 0.0 { stddev / mean } else { 0.0 };
+            (Some(mean), Some(stddev), Some(cv))
+        } else {
+            (None, None, None)
+        }
+    } else {
+        (None, None, None)
+    };
 
     // --- SCORE ---
     let mut score = 100;
@@ -405,6 +436,21 @@ fn calculate_scp(
         score = std::cmp::min(100, score + 5);
     }
 
+    let mut rhythm_penalty = 0i32;
+    if k_count >= 100 {
+        if let Some(cv) = rhythm_cv {
+            if cv < 0.15 {
+                rhythm_penalty = 40;
+                score -= rhythm_penalty;
+                flags.push("RHYTHM_SUSPECT".to_string());
+            } else if cv < 0.25 {
+                rhythm_penalty = 20;
+                score -= rhythm_penalty;
+                flags.push("RHYTHM_TOO_REGULAR".to_string());
+            }
+        }
+    }
+
     if session_tier == "MINI" {
         score = std::cmp::min(score, 59);
         flags.push("MINI_SESSION".to_string());
@@ -412,8 +458,8 @@ fn calculate_scp(
         score = std::cmp::min(score, 74);
     }
 
-    if flags.len() > 3 {
-        flags.truncate(3);
+    if flags.len() > 5 {
+        flags.truncate(5);
     }
     score = score.clamp(0, 100);
 
@@ -440,6 +486,10 @@ fn calculate_scp(
         density_penalty: 0,
         backspace_count,
         session_tier,
+        rhythm_mean_ms,
+        rhythm_stddev_ms,
+        rhythm_cv,
+        rhythm_penalty,
     }
 }
 
