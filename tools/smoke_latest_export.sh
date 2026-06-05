@@ -270,6 +270,32 @@ if c_cap_doc is not None:
 else:
     warn("document.contribution_cap_reason absent (pas de cap, ou ancien package)")
 
+# ── Paste risk (champs V4) ────────────────────────────────────────────────
+ps = p.get('process_summary', {}).get('paste_summary')
+if ps is not None:
+    ok(f"paste_summary.total_paste_events : {ps.get('total_paste_events', 0)}")
+    ok(f"paste_summary.total_pasted_chars : {ps.get('total_pasted_chars', 0)}")
+    dom = ps.get('paste_dominant_sessions', 0)
+    hvy = ps.get('paste_heavy_sessions', 0)
+    mat = ps.get('paste_material_sessions', 0)
+    if dom > 0:
+        warn(f"paste_dominant_sessions : {dom} (session(s) collage dominant)")
+    else:
+        ok(f"paste_dominant_sessions : {dom}")
+    if hvy > 0:
+        warn(f"paste_heavy_sessions : {hvy} (session(s) collage lourd)")
+    else:
+        ok(f"paste_heavy_sessions : {hvy}")
+    ok(f"paste_material_sessions : {mat}")
+else:
+    warn("process_summary.paste_summary absent (ancien package)")
+
+paste_risk_gate = le.get('security_gates', {}).get('paste_risk') if le else None
+if paste_risk_gate is not None:
+    ok(f"security_gates.paste_risk présent : dominant={paste_risk_gate.get('paste_dominant_sessions',0)}, heavy={paste_risk_gate.get('paste_heavy_sessions',0)}")
+else:
+    warn("security_gates.paste_risk absent (ancien package)")
+
 sys.exit(errors)
 PYEOF
   PROOF_EXIT=$?

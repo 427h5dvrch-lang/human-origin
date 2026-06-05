@@ -334,7 +334,7 @@ function buildDocumentDelta(initialSize, finalSize, initialMime, finalMime) {
   };
 }
 
-function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason) {
+function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason, pasteSummary = {}) {
   const allowed = ["activity_observed", "object_hash_bound", "signature_valid"];
   const forbidden = [
     "content_certified", "truth_certified", "authorship_confirmed",
@@ -356,6 +356,14 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
   } else {
     forbidden.push("substantial_document_contribution_attested");
   }
+  const pasteRiskHighClaims =
+    Number(pasteSummary.paste_dominant_sessions || 0) > 0 ||
+    Number(pasteSummary.paste_heavy_sessions || 0) > 0;
+  if (pasteRiskHighClaims) {
+    allowed.push("external_text_insertion_detected");
+    forbidden.push("substantial_document_contribution_attested");
+    forbidden.push("no_external_generation");
+  }
   return {
     claims_allowed: allowed,
     claims_forbidden: [...new Set(forbidden)],
@@ -369,6 +377,7 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
       contribution_coherence: documentBinding?.contribution_coherence ?? null,
       contribution_flags: documentBinding?.contribution_flags ?? null,
       contribution_cap_reason: documentBinding?.contribution_cap_reason ?? null,
+      paste_risk: pasteSummary,
     },
     caps_applied: capReason ? [capReason] : [],
   };
@@ -2466,6 +2475,20 @@ async function exportFinalProjectCertificate() {
     const projectValid = Boolean(res?.project_valid);
     const scp = Number(res?.scp_score ?? 0);
 
+    const pasteSummary = {
+      total_paste_events:    Number(res.total_paste_events    || 0),
+      total_pasted_chars:    Number(res.total_pasted_chars    || 0),
+      max_paste_chars:       Number(res.max_paste_chars       || 0),
+      paste_dominant_sessions: Number(res.paste_dominant_sessions || 0),
+      paste_heavy_sessions:    Number(res.paste_heavy_sessions    || 0),
+      paste_material_sessions: Number(res.paste_material_sessions || 0),
+    };
+    const pasteRiskHigh =
+      pasteSummary.paste_dominant_sessions > 0 ||
+      pasteSummary.paste_heavy_sessions > 0 ||
+      (pasteSummary.total_pasted_chars >= 1000 &&
+       Number(res.total_keystrokes || 0) < pasteSummary.total_pasted_chars * 0.75);
+
     let verdict = "PREUVE LIMITÉE";
     let reasons = [];
 
@@ -2599,6 +2622,19 @@ async function exportFinalProjectCertificate() {
     }
 
     verdict = boundVerdict;
+
+    // ── Paste risk cap (niveau projet) ────────────────────────────────────
+    let pasteCapApplied = false;
+    if (verdict === "COHERENT" && pasteRiskHigh) {
+      const pasteCapMsg =
+        "Collage important détecté.\n\n" +
+        "HumanOrigin a observé une activité humaine, mais une partie importante du texte semble provenir d'un collage ou d'une insertion externe.\n" +
+        "Le niveau visible sera limité.\n\n" +
+        "Continuer ?";
+      if (!confirm(pasteCapMsg)) return;
+      verdict = "ATYPIQUE";
+      pasteCapApplied = true;
+    }
 
     const appVersion = await app.getVersion().catch(() => "unknown");
     const certificateId = crypto.randomUUID();
@@ -2864,13 +2900,15 @@ async function exportFinalProjectCertificate() {
           active_ms: Math.max(0, Number(res.total_active_seconds || 0)) * 1000,
           valid_sessions_count: Math.max(0, Number(res.valid_sessions || 0)),
           certified_sessions_count: Math.max(0, Number(res.valid_sessions || 0)),
+          paste_summary: pasteSummary,
         },
         label_eligibility: {
           binding_cap_applied: bindingCapReason !== null,
           binding_cap_reason: bindingCapReason,
+          paste_cap_applied: pasteCapApplied,
           raw_engine_verdict: rawEngineVerdict,
           visible_verdict: verdict,
-          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason),
+          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason, pasteSummary),
         },
         verification: {
           verify_url: verifierUrl || null,

@@ -91,6 +91,10 @@ struct SessionAnalysis {
     rhythm_penalty: i32,
     correction_rate: Option<f64>,
     correction_penalty: i32,
+    paste_share: Option<f64>,
+    paste_to_typed_ratio: Option<f64>,
+    paste_penalty: i32,
+    paste_risk_level: String,
 }
 
 #[derive(Serialize)]
@@ -106,6 +110,13 @@ struct FinalizationResult {
     project_valid: bool,
     valid_sessions: u32,
     validation_reason: String,
+    // ── Paste risk agrégé projet
+    total_paste_events: u32,
+    total_pasted_chars: u32,
+    max_paste_chars: u32,
+    paste_dominant_sessions: u32,
+    paste_heavy_sessions: u32,
+    paste_material_sessions: u32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -390,6 +401,10 @@ fn calculate_scp(
             rhythm_penalty: 0,
             correction_rate: None,
             correction_penalty: 0,
+            paste_share: None,
+            paste_to_typed_ratio: None,
+            paste_penalty: 0,
+            paste_risk_level: "none".to_string(),
         };
     }
 
@@ -526,6 +541,10 @@ fn calculate_scp(
         rhythm_penalty,
         correction_rate,
         correction_penalty,
+        paste_share: None,
+        paste_to_typed_ratio: None,
+        paste_penalty: 0,
+        paste_risk_level: "none".to_string(),
     }
 }
 
@@ -1141,53 +1160,68 @@ fn stop_scan(
 
     let pasted = paste.pasted_chars as f64;
     let typed = keys.len() as f64;
-    let mut paste_dominant = false;
-    let mut paste_heavy = false;
+    let total_text_flow = pasted + typed;
+
+    let paste_share = if total_text_flow > 0.0 {
+        Some(pasted / total_text_flow)
+    } else {
+        None
+    };
+    let paste_to_typed_ratio = if typed > 0.0 { Some(pasted / typed) } else { None };
+
+    let mut paste_penalty = 0i32;
+    let mut paste_risk_level = "none".to_string();
 
     if paste.paste_events > 0 && pasted >= 120.0 {
         if typed < pasted * 0.35 {
-            paste_dominant = true;
+            paste_risk_level = "dominant".to_string();
+            paste_penalty = 45;
+            analysis.gate_passed = false;
+            analysis.gate_reason = Some(format!(
+                "Collage dominant — contribution humaine insuffisante ({} collés / {} tapés).",
+                paste.pasted_chars,
+                keys.len()
+            ));
+            analysis.score = 0;
+            analysis.verdict_label = "INSUFFISANT".to_string();
+            analysis.verdict_color = "#9ca3af".to_string();
+            analysis.evidence_score = 0;
+            analysis.evidence_label = "N/A".to_string();
+            analysis.flags = vec!["PASTE_DOMINANT".to_string()];
         } else if typed < pasted * 0.75 {
-            paste_heavy = true;
-        }
-    }
-
-    if paste_dominant {
-        analysis.gate_passed = false;
-        analysis.gate_reason = Some(format!(
-            "Collage dominant ({} collés / {} tapés)",
-            paste.pasted_chars,
-            keys.len()
-        ));
-        analysis.score = 0;
-        analysis.verdict_label = "INSUFFISANT".to_string();
-        analysis.verdict_color = "#9ca3af".to_string();
-        analysis.evidence_score = 0;
-        analysis.evidence_label = "N/A".to_string();
-        analysis.flags = vec!["PASTE_DOMINANT".to_string()];
-    } else {
-        if paste_heavy {
-            analysis.score = std::cmp::min(75, analysis.score);
-            if analysis.gate_reason.is_none() {
-                analysis.gate_reason = Some(format!(
-                    "Collage important ({} collés / {} tapés)",
-                    paste.pasted_chars,
-                    keys.len()
-                ));
-            }
-        }
-
-        if paste.paste_events > 0 {
+            paste_risk_level = "heavy".to_string();
+            paste_penalty = 30;
+            analysis.score -= paste_penalty;
+            analysis.score = analysis.score.min(59);
+            analysis.flags.push("PASTE_HEAVY".to_string());
+            let (lab, col) = apply_verdict(analysis.score);
+            analysis.verdict_label = lab;
+            analysis.verdict_color = col;
+        } else if typed < pasted * 1.5 {
+            paste_risk_level = "material".to_string();
+            paste_penalty = 15;
+            analysis.score -= paste_penalty;
+            analysis.score = analysis.score.min(74);
+            analysis.flags.push("PASTE_MATERIAL".to_string());
+            let (lab, col) = apply_verdict(analysis.score);
+            analysis.verdict_label = lab;
+            analysis.verdict_color = col;
+        } else {
             analysis.flags.push(format!("PASTE:{}ch", paste.pasted_chars));
-            if analysis.flags.len() > 3 {
-                analysis.flags.truncate(3);
-            }
+            let (lab, col) = apply_verdict(analysis.score);
+            analysis.verdict_label = lab;
+            analysis.verdict_color = col;
         }
-
+    } else {
         let (lab, col) = apply_verdict(analysis.score);
         analysis.verdict_label = lab;
         analysis.verdict_color = col;
     }
+
+    analysis.paste_share = paste_share;
+    analysis.paste_to_typed_ratio = paste_to_typed_ratio;
+    analysis.paste_penalty = paste_penalty;
+    analysis.paste_risk_level = paste_risk_level;
 
     let json_path = path_buf.join("project.json");
     let content = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
@@ -1276,12 +1310,30 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
     let mut certified_count: u32 = 0;
     let mut max_valid_keystrokes: u64 = 0;
 
+    let mut total_paste_events: u32 = 0;
+    let mut total_pasted_chars: u32 = 0;
+    let mut max_paste_chars: u32 = 0;
+    let mut paste_dominant_sessions: u32 = 0;
+    let mut paste_heavy_sessions: u32 = 0;
+    let mut paste_material_sessions: u32 = 0;
+
     if let Ok(entries) = fs::read_dir(path.join("certificats")) {
         for entry in entries.flatten() {
             if entry.path().extension().map(|s| s == "json").unwrap_or(false) {
                 if let Ok(c) = fs::read_to_string(entry.path()) {
                     if let Ok(proof) = serde_json::from_str::<BiometricProof>(&c) {
                         total_keys += proof.keyboard_dynamics.total_keystrokes;
+                        total_paste_events += proof.paste_stats.paste_events;
+                        total_pasted_chars += proof.paste_stats.pasted_chars;
+                        if proof.paste_stats.pasted_chars > max_paste_chars {
+                            max_paste_chars = proof.paste_stats.pasted_chars;
+                        }
+                        match proof.analysis.paste_risk_level.as_str() {
+                            "dominant" => paste_dominant_sessions += 1,
+                            "heavy"    => paste_heavy_sessions += 1,
+                            "material" => paste_material_sessions += 1,
+                            _ => {}
+                        }
 
                         if proof.analysis.gate_passed {
                             let w = proof.analysis.active_est_sec as f64;
@@ -1333,6 +1385,12 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
         project_valid,
         valid_sessions: certified_count,
         validation_reason,
+        total_paste_events,
+        total_pasted_chars,
+        max_paste_chars,
+        paste_dominant_sessions,
+        paste_heavy_sessions,
+        paste_material_sessions,
     })
 }
 
