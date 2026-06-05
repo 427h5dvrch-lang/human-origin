@@ -89,6 +89,8 @@ struct SessionAnalysis {
     rhythm_stddev_ms: Option<f64>,
     rhythm_cv: Option<f64>,
     rhythm_penalty: i32,
+    correction_rate: Option<f64>,
+    correction_penalty: i32,
 }
 
 #[derive(Serialize)]
@@ -386,6 +388,8 @@ fn calculate_scp(
             rhythm_stddev_ms: None,
             rhythm_cv: None,
             rhythm_penalty: 0,
+            correction_rate: None,
+            correction_penalty: 0,
         };
     }
 
@@ -429,11 +433,41 @@ fn calculate_scp(
         flags.push("BURSTY_PATTERN".to_string());
     }
 
-    if k_count > 200 && backspace_count == 0 {
-        score -= 50;
-        flags.push("NO_CORRECTION".to_string());
-    } else if k_count > 100 && backspace_count > 5 {
-        score = std::cmp::min(100, score + 5);
+    let correction_rate = if k_count > 0 {
+        Some(backspace_count as f64 / k_count as f64)
+    } else {
+        None
+    };
+    let mut correction_penalty = 0i32;
+
+    if k_count >= 200 {
+        if backspace_count == 0 {
+            correction_penalty = 50;
+            score -= correction_penalty;
+            flags.push("NO_CORRECTION".to_string());
+        } else if let Some(rate) = correction_rate {
+            if rate < 0.005 {
+                correction_penalty = 30;
+                score -= correction_penalty;
+                flags.push("CORRECTION_RATE_TOO_LOW".to_string());
+            } else if rate > 0.45 {
+                correction_penalty = 25;
+                score -= correction_penalty;
+                flags.push("CORRECTION_RATE_TOO_HIGH".to_string());
+            }
+        }
+    } else if k_count >= 100 {
+        if let Some(rate) = correction_rate {
+            if rate < 0.003 {
+                correction_penalty = 15;
+                score -= correction_penalty;
+                flags.push("LOW_CORRECTION_SIGNAL".to_string());
+            } else if rate > 0.55 {
+                correction_penalty = 20;
+                score -= correction_penalty;
+                flags.push("EXCESSIVE_CORRECTION_SIGNAL".to_string());
+            }
+        }
     }
 
     let mut rhythm_penalty = 0i32;
@@ -458,8 +492,8 @@ fn calculate_scp(
         score = std::cmp::min(score, 74);
     }
 
-    if flags.len() > 5 {
-        flags.truncate(5);
+    if flags.len() > 7 {
+        flags.truncate(7);
     }
     score = score.clamp(0, 100);
 
@@ -490,6 +524,8 @@ fn calculate_scp(
         rhythm_stddev_ms,
         rhythm_cv,
         rhythm_penalty,
+        correction_rate,
+        correction_penalty,
     }
 }
 
