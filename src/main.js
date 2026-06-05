@@ -3672,6 +3672,8 @@ async function buildCartoucheCompactSvg({ verifierUrl, certificateId, verdict, i
   <path class="frame" d="M220 34 L96 34 Q56 34 56 74 L56 686 Q56 726 96 726 L220 726"/>
   <path class="frame" d="M300 34 L424 34 Q464 34 464 74 L464 686 Q464 726 424 726 L300 726"/>
 
+  <text x="260" y="64" text-anchor="middle" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:10px;font-weight:700;fill:${NAVY};letter-spacing:0.22em;opacity:0.68;">SCAN TO VERIFY</text>
+
   <g transform="translate(101,86)">
     <rect x="-14" y="-14" width="346" height="346" rx="18" fill="#ffffff" opacity="0.86"/>
     <svg x="0" y="0" width="${QR_SIZE}" height="${QR_SIZE}" viewBox="${qrViewBox}" shape-rendering="crispEdges">
@@ -3690,9 +3692,8 @@ async function buildCartoucheCompactSvg({ verifierUrl, certificateId, verdict, i
   <text x="260" y="541" text-anchor="middle" class="smallcaps">${xml(tierLabel)}</text>
   ${tierSubLabel ? `<text x="260" y="560" text-anchor="middle" style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Arial,sans-serif;font-size:11px;font-weight:700;fill:${visual.color};letter-spacing:0.18em;">${xml(tierSubLabel)}</text>` : ""}
 
-  <circle cx="204" cy="592" r="18" fill="${showCheckmark ? NAVY : "none"}" stroke="${showCheckmark ? "none" : visual.color}" stroke-width="2"/>
-  ${showCheckmark ? `<path d="M194 592 L201 600 L216 582" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>` : `<text x="204" y="598" text-anchor="middle" style="font-size:16px;font-weight:900;fill:${visual.color};">!</text>`}
-  <text x="238" y="598" class="scan">SCAN TO VERIFY</text>
+  <circle cx="260" cy="592" r="18" fill="${showCheckmark ? NAVY : "none"}" stroke="${showCheckmark ? "none" : visual.color}" stroke-width="2"/>
+  ${showCheckmark ? `<path d="M250 592 L257 600 L272 582" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>` : `<text x="260" y="598" text-anchor="middle" style="font-size:16px;font-weight:900;fill:${visual.color};">!</text>`}
 
   <rect x="74" y="628" width="372" height="62" rx="8" fill="#ffffff" stroke="${HAIRLINE}" stroke-width="1.5"/>
   <line x1="198" y1="638" x2="198" y2="680" stroke="${HAIRLINE}" stroke-width="1.3" stroke-dasharray="2 5"/>
