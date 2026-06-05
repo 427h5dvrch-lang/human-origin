@@ -350,6 +350,12 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
   if (boundVerdict === "COHERENT" && documentBinding?.delta_significant === true) {
     allowed.push("strong_process_evidence");
   }
+  const contributionScore = Number(documentBinding?.contribution_score ?? 0);
+  if (contributionScore >= 55) {
+    allowed.push("contribution_plausible");
+  } else {
+    forbidden.push("substantial_document_contribution_attested");
+  }
   return {
     claims_allowed: allowed,
     claims_forbidden: [...new Set(forbidden)],
@@ -359,8 +365,94 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
       document_modified: documentBinding?.document_modified ?? null,
       delta_significant: documentBinding?.delta_significant ?? null,
       format_conversion_detected: documentBinding?.format_conversion_detected ?? null,
+      contribution_score: documentBinding?.contribution_score ?? null,
+      contribution_coherence: documentBinding?.contribution_coherence ?? null,
+      contribution_flags: documentBinding?.contribution_flags ?? null,
+      contribution_cap_reason: documentBinding?.contribution_cap_reason ?? null,
     },
     caps_applied: capReason ? [capReason] : [],
+  };
+}
+
+function buildContributionCoherence({ totalKeystrokes, activeSeconds, documentBinding }) {
+  const k = Math.max(0, Number(totalKeystrokes || 0));
+  const active = Math.max(0, Number(activeSeconds || 0));
+  const deltaBytes = documentBinding?.delta_bytes;
+  const deltaSignificant = documentBinding?.delta_significant === true;
+  const bindingMode = documentBinding?.binding_mode;
+
+  const flags = [];
+  let score = 50;
+
+  if (bindingMode === "export_time") {
+    flags.push("DOCUMENT_BOUND_AT_EXPORT");
+    return {
+      contribution_score: 20,
+      contribution_coherence: "weak",
+      contribution_flags: flags,
+      contribution_cap_reason: "document_bound_at_export",
+    };
+  }
+
+  if (!deltaSignificant) {
+    flags.push("DELTA_NOT_SIGNIFICANT");
+    return {
+      contribution_score: 30,
+      contribution_coherence: "weak",
+      contribution_flags: flags,
+      contribution_cap_reason: "delta_not_significant",
+    };
+  }
+
+  if (k < 120 && deltaBytes !== null && deltaBytes >= 10_000) {
+    flags.push("LARGE_DELTA_LOW_KEYSTROKES");
+    return {
+      contribution_score: 35,
+      contribution_coherence: "weak",
+      contribution_flags: flags,
+      contribution_cap_reason: "large_delta_low_keystrokes",
+    };
+  }
+
+  if (active < 120 && deltaBytes !== null && deltaBytes >= 25_000) {
+    flags.push("LARGE_DELTA_LOW_ACTIVE_TIME");
+    return {
+      contribution_score: 35,
+      contribution_coherence: "weak",
+      contribution_flags: flags,
+      contribution_cap_reason: "large_delta_low_active_time",
+    };
+  }
+
+  if (k >= 1000 && deltaBytes !== null && deltaBytes < 2_000) {
+    flags.push("HIGH_ACTIVITY_LOW_DELTA");
+    return {
+      contribution_score: 45,
+      contribution_coherence: "partial",
+      contribution_flags: flags,
+      contribution_cap_reason: "high_activity_low_delta",
+    };
+  }
+
+  if (deltaSignificant && k >= 300 && active >= 180) {
+    score = 70;
+    flags.push("CONTRIBUTION_PLAUSIBLE");
+  } else if (deltaSignificant && k >= 120 && active >= 60) {
+    score = 55;
+    flags.push("CONTRIBUTION_PARTIAL");
+  } else {
+    score = 40;
+    flags.push("CONTRIBUTION_LIMITED");
+  }
+
+  return {
+    contribution_score: score,
+    contribution_coherence:
+      score >= 70 ? "plausible" :
+      score >= 55 ? "partial" :
+      "weak",
+    contribution_flags: flags,
+    contribution_cap_reason: score < 55 ? "contribution_too_limited" : null,
   };
 }
 
@@ -382,6 +474,14 @@ function applyBindingVerdictCap(rawVerdict, documentBinding) {
         reason: formatConversion ? "format_conversion_delta_not_trusted" : "document_delta_too_small",
       };
     }
+  }
+  const contributionScore = Number(documentBinding?.contribution_score ?? 0);
+  const contributionCapReason = documentBinding?.contribution_cap_reason;
+  if (rawVerdict === "COHERENT" && contributionScore < 55) {
+    return {
+      verdict: "ATYPIQUE",
+      reason: contributionCapReason || "contribution_coherence_too_low",
+    };
   }
   return { verdict: rawVerdict, reason: null };
 }
@@ -2436,6 +2536,17 @@ async function exportFinalProjectCertificate() {
           ...buildDocumentDelta(null, finalSizeNum, null, bind.mime),
         };
 
+    // ── Cohérence contributionnelle ───────────────────────────────────────
+    const contribution = buildContributionCoherence({
+      totalKeystrokes: Number(res.total_keystrokes || 0),
+      activeSeconds: Number(res.total_active_seconds || 0),
+      documentBinding,
+    });
+    documentBinding.contribution_score = contribution.contribution_score;
+    documentBinding.contribution_coherence = contribution.contribution_coherence;
+    documentBinding.contribution_flags = contribution.contribution_flags;
+    documentBinding.contribution_cap_reason = contribution.contribution_cap_reason;
+
     // ── Plafonner le verdict selon le binding documentaire ─────────────────
     const rawEngineVerdict = verdict;
     const { verdict: boundVerdict, reason: bindingCapReason } =
@@ -2469,6 +2580,18 @@ async function exportFinalProjectCertificate() {
           "Changement de format détecté.\n\n" +
           "Le document initial et le document final ne sont pas du même type.\n" +
           "HumanOrigin ne peut pas assimiler cette conversion à une contribution substantielle au contenu.\n" +
+          "Le niveau visible sera limité.\n\n" +
+          "Continuer ?";
+      } else if (
+        bindingCapReason === "large_delta_low_keystrokes" ||
+        bindingCapReason === "large_delta_low_active_time" ||
+        bindingCapReason === "high_activity_low_delta" ||
+        bindingCapReason === "contribution_too_limited" ||
+        bindingCapReason === "contribution_coherence_too_low"
+      ) {
+        capMsg =
+          "Cohérence contributionnelle limitée.\n\n" +
+          "HumanOrigin a observé votre activité, mais l'effort mesuré et le changement du document ne sont pas assez cohérents pour attester une contribution substantielle.\n" +
           "Le niveau visible sera limité.\n\n" +
           "Continuer ?";
       }
@@ -2729,6 +2852,10 @@ async function exportFinalProjectCertificate() {
           delta_significant: documentBinding.delta_significant,
           format_conversion_detected: documentBinding.format_conversion_detected,
           extraction_status: documentBinding.extraction_status,
+          contribution_score: documentBinding.contribution_score,
+          contribution_coherence: documentBinding.contribution_coherence,
+          contribution_flags: documentBinding.contribution_flags,
+          contribution_cap_reason: documentBinding.contribution_cap_reason,
         },
         process_summary: {
           verdict,

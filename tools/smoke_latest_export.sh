@@ -234,8 +234,41 @@ if le:
         ok(f"claims_forbidden : {len(claims_forbidden)} entrée(s)")
     if gates:
         ok(f"security_gates : binding_mode={gates.get('binding_mode','?')}, delta_significant={gates.get('delta_significant','?')}")
+        c_score = gates.get('contribution_score')
+        c_coherence = gates.get('contribution_coherence')
+        if c_score is not None:
+            ok(f"security_gates.contribution_score : {c_score}")
+        else:
+            warn("security_gates.contribution_score absent (ancien package)")
+        if c_coherence is not None:
+            ok(f"security_gates.contribution_coherence : {c_coherence}")
+        else:
+            warn("security_gates.contribution_coherence absent (ancien package)")
 else:
     warn("label_eligibility absent (ancien package)")
+
+# ── Contribution documentaire (champs V3) ─────────────────────────────────
+doc_v3 = p.get('document', {})
+c_score_doc = doc_v3.get('contribution_score')
+c_coherence_doc = doc_v3.get('contribution_coherence')
+c_flags_doc = doc_v3.get('contribution_flags')
+c_cap_doc = doc_v3.get('contribution_cap_reason')
+if c_score_doc is not None:
+    ok(f"document.contribution_score : {c_score_doc}")
+else:
+    warn("document.contribution_score absent (ancien package)")
+if c_coherence_doc is not None:
+    ok(f"document.contribution_coherence : {c_coherence_doc}")
+else:
+    warn("document.contribution_coherence absent (ancien package)")
+if c_flags_doc is not None:
+    ok(f"document.contribution_flags : {c_flags_doc}")
+else:
+    warn("document.contribution_flags absent (ancien package)")
+if c_cap_doc is not None:
+    ok(f"document.contribution_cap_reason : {c_cap_doc}")
+else:
+    warn("document.contribution_cap_reason absent (pas de cap, ou ancien package)")
 
 sys.exit(errors)
 PYEOF
