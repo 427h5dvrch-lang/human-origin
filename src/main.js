@@ -2222,19 +2222,7 @@ async function exportFinalProjectCertificate() {
     }
   };
 
-  const bind = await pickDocumentToBind();
-  await __hoExportMark("after-pickDocumentToBind", JSON.stringify({
-    filename: bind?.filename || null,
-    mime: bind?.mime || null,
-    path: bind?.path || null,
-    sha256: bind?.sha256 || null,
-  }));
-  if (!bind) {
-    alert("Sélection annulée. Aucun document certifié.");
-    return;
-  }
-
-  toast("Génération du certificat final projet...");
+  toast("Vérification du projet…");
 
   try {
     await __hoExportMark("before-finalize_project");
@@ -2245,6 +2233,17 @@ async function exportFinalProjectCertificate() {
 
     if (!res?.html_path) {
       alert("finalize_project n'a pas renvoyé de html_path");
+      return;
+    }
+
+    // ── GATE P0 — blocage dur : aucune session valide ──────────────────────
+    const validSessions = Number(res?.valid_sessions ?? 0);
+    if (validSessions <= 0) {
+      alert(
+        "Aucune session de travail valide n'a été enregistrée.\n\n" +
+        "HumanOrigin ne peut pas labelliser ce document.\n\n" +
+        "Lancez une observation plus longue, enregistrez votre travail, puis réessayez."
+      );
       return;
     }
 
@@ -2262,16 +2261,29 @@ async function exportFinalProjectCertificate() {
       reasons = [];
     }
 
-    // Gate soft : prévenir l'utilisateur si la preuve est faible
+    // ── Gate soft : preuve faible mais sessions enregistrées ───────────────
     const weakProof = verdict === "SUSPECT" || verdict === "PREUVE LIMITÉE";
     if (weakProof) {
       const go = confirm(
-        "La preuve observée est limitée.\n\n" +
-        "HumanOrigin peut créer un document avec une mention de preuve limitée, " +
-        "mais ce document ne doit pas être présenté comme une preuve forte.\n\n" +
-        "Continuer l'export ?"
+        "Preuve partielle uniquement.\n\n" +
+        "HumanOrigin a observé une activité limitée, insuffisante pour attester une contribution complète au document.\n\n" +
+        "Le document sera lié à une preuve partielle avec un marquage prudent (PREUVE LIMITÉE).\n\n" +
+        "Continuer ?"
       );
       if (!go) return;
+    }
+
+    // Le document est choisi APRÈS validation des sessions
+    const bind = await pickDocumentToBind();
+    await __hoExportMark("after-pickDocumentToBind", JSON.stringify({
+      filename: bind?.filename || null,
+      mime: bind?.mime || null,
+      path: bind?.path || null,
+      sha256: bind?.sha256 || null,
+    }));
+    if (!bind) {
+      alert("Sélection annulée. Aucun document certifié.");
+      return;
     }
 
     const appVersion = await app.getVersion().catch(() => "unknown");
