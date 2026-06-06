@@ -311,6 +311,7 @@ echo ""
 echo "────────────────────────────────────────────"
 if [[ $FAILURES -eq 0 ]]; then
   echo -e "${GREEN}${BOLD}✓ SMOKE TEST OK — Package destinataire cohérent.${RESET}"
+  echo -e "  Pour vérifier les invariants de preuve : ${BOLD}./tools/redteam_latest_export.sh${RESET}"
   echo ""
   exit 0
 else
