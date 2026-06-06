@@ -2865,7 +2865,13 @@ async function exportFinalProjectCertificate() {
         issued_at: issuedAt,
         issuer: {
           product: "HumanOrigin",
-          issuer_mode: "local",
+          issuer_mode: currentUser?.email ? "cloud_account" : "local",
+          app_version: appVersion,
+          security_schema_version: "2026-06-p0",
+          proof_trust_level: currentUser?.email
+            ? "account_bound_local_signature"
+            : "local_self_signed",
+          key_trust: "local_unregistered_key",
         },
         project: {
           name: hoDoc.subject.title,

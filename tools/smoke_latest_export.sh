@@ -179,12 +179,37 @@ else:
     fail("document.sha256 manquant")
     errors += 1
 
-# issuer_mode
-issuer_mode = p.get('issuer', {}).get('issuer_mode', '')
+# issuer trust metadata (champs V5 — trust P0)
+issuer = p.get('issuer', {})
+issuer_mode = issuer.get('issuer_mode', '')
 if issuer_mode:
     ok(f"issuer_mode : {issuer_mode}")
 else:
     warn("issuer_mode absent (ancien format)")
+
+app_ver = issuer.get('app_version')
+if app_ver is not None:
+    ok(f"issuer.app_version : {app_ver}")
+else:
+    warn("issuer.app_version absent (ancien package)")
+
+schema_ver = issuer.get('security_schema_version')
+if schema_ver is not None:
+    ok(f"issuer.security_schema_version : {schema_ver}")
+else:
+    warn("issuer.security_schema_version absent (ancien package)")
+
+trust_level = issuer.get('proof_trust_level')
+if trust_level is not None:
+    ok(f"issuer.proof_trust_level : {trust_level}")
+else:
+    warn("issuer.proof_trust_level absent (ancien package)")
+
+key_trust = issuer.get('key_trust')
+if key_trust is not None:
+    ok(f"issuer.key_trust : {key_trust}")
+else:
+    warn("issuer.key_trust absent (ancien package)")
 
 # Signature
 sigs = d.get('signatures', [])
