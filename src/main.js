@@ -4108,6 +4108,8 @@ async function buildCartoucheCompactSvg({ verifierUrl, certificateId, verdict, i
 
   <text x="384" y="653" text-anchor="middle" class="micro">ISSUED</text>
   <text x="384" y="675" text-anchor="middle" class="value">${xml(dateLabel)}</text>
+
+  <text x="260" y="710" text-anchor="middle" style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-size:8px;font-weight:700;fill:${NAVY};letter-spacing:0.20em;opacity:0.40;">VALID ONLY WITH HUMANORIGIN PROOF</text>
 </svg>`;
 }
 
