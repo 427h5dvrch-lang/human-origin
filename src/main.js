@@ -3993,6 +3993,7 @@ const qrInner = qrSvg.replace(/^.*?<svg[^>]*>/s, "").replace(/<\/svg>\s*$/s, "")
 
 async function buildCartoucheCompactSvg({ verifierUrl, certificateId, verdict, issuedAt }) {
   const idShort = shortId(certificateId);
+  const shortProofId = String(certificateId || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 8).toUpperCase();
   const visual = getVisualVerdictMeta(verdict);
   const dateLabel = formatDisplayDate(issuedAt);
 
@@ -4101,7 +4102,7 @@ async function buildCartoucheCompactSvg({ verifierUrl, certificateId, verdict, i
   <line x1="322" y1="638" x2="322" y2="680" stroke="${HAIRLINE}" stroke-width="1.3" stroke-dasharray="2 5"/>
 
   <text x="136" y="653" text-anchor="middle" class="micro">PROOF ID</text>
-  <text x="136" y="675" text-anchor="middle" class="value">${xml(idShort)}</text>
+  <text x="136" y="675" text-anchor="middle" class="value">${xml(shortProofId)}</text>
 
   <text x="260" y="653" text-anchor="middle" class="micro">STATUS</text>
   <text x="260" y="675" text-anchor="middle" class="status">${xml(visual.label)}</text>
