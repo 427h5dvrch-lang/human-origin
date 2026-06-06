@@ -541,6 +541,18 @@ function fileExtLower(filename) {
   return ext || "bin";
 }
 
+const SUPPORTED_DOC_EXTENSIONS = new Set(["pdf", "docx", "doc", "txt", "rtf"]);
+
+function isSupportedDocumentFile(filename) {
+  const ext = (String(filename || "").split(".").pop() || "").toLowerCase();
+  return SUPPORTED_DOC_EXTENSIONS.has(ext);
+}
+
+const _UNSUPPORTED_DOC_ALERT =
+  "Ce type de fichier n'est pas encore pris en charge par HumanOrigin Document.\n\n" +
+  "Pour cette version, liez un PDF ou un document compatible.\n" +
+  "Les images, vidéos et sons seront traités dans un futur mode média dédié.";
+
 async function pickDocumentToBind() {
   const isWindows = (navigator.platform || "").toLowerCase().includes("win");
 
@@ -552,6 +564,11 @@ async function pickDocumentToBind() {
 
       if (!picked.path || !picked.filename || !picked.sha256) {
         throw new Error("Sélection Windows incomplète.");
+      }
+
+      if (!isSupportedDocumentFile(picked.filename)) {
+        alert(_UNSUPPORTED_DOC_ALERT);
+        return null;
       }
 
       return {
@@ -570,12 +587,19 @@ async function pickDocumentToBind() {
   const selected = await open({
     multiple: false,
     directory: false,
+    filters: [{ name: "Documents supportés", extensions: ["pdf", "docx", "doc", "txt", "rtf"] }],
   });
 
   if (!selected) return null;
 
   const path = Array.isArray(selected) ? selected[0] : selected;
   const filename = basenameAnyPath(path);
+
+  if (!isSupportedDocumentFile(filename)) {
+    alert(_UNSUPPORTED_DOC_ALERT);
+    return null;
+  }
+
   const mime = guessMime(filename);
   const sha256 = await invoke("sha256_file", { path });
 
