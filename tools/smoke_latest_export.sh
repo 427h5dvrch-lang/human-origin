@@ -297,6 +297,50 @@ if ev_scope is not None:
 else:
     warn("evidence_scope absent (ancien package)")
 
+# ── Multimodal schema (champs V6) ────────────────────────────────────────
+mp = p.get('media_profile', {})
+if mp:
+    pt = mp.get('primary_type', '')
+    pm = mp.get('product_mode', '')
+    mr = mp.get('multimodal_ready')
+    if pt:
+        ok(f"media_profile.primary_type : {pt}")
+    else:
+        warn("media_profile.primary_type absent")
+    if pm:
+        ok(f"media_profile.product_mode : {pm}")
+    else:
+        warn("media_profile.product_mode absent")
+    if mr is not None:
+        ok(f"media_profile.multimodal_ready : {mr}")
+    else:
+        warn("media_profile.multimodal_ready absent")
+else:
+    warn("media_profile absent (ancien package)")
+
+bos = p.get('bound_objects', [])
+if bos:
+    bo = bos[0]
+    bo_mt = bo.get('media_type', '')
+    bo_role = bo.get('role', '')
+    bo_sha = bo.get('sha256', '')
+    ok(f"bound_objects[0].media_type : {bo_mt}")
+    ok(f"bound_objects[0].role : {bo_role}")
+    if bo_sha:
+        ok(f"bound_objects[0].sha256 : {bo_sha[:16]}…")
+    else:
+        warn("bound_objects[0].sha256 absent")
+else:
+    warn("bound_objects absent (ancien package)")
+
+op = p.get('observed_process', {})
+if op:
+    ok(f"observed_process.process_type : {op.get('process_type','—')}")
+    ok(f"observed_process.evidence_level : {op.get('evidence_level','—')}")
+    ok(f"observed_process.evidence_scope : {op.get('evidence_scope','—')}")
+else:
+    warn("observed_process absent (ancien package)")
+
 # ── Contribution documentaire (champs V3) ─────────────────────────────────
 doc_v3 = p.get('document', {})
 c_score_doc = doc_v3.get('contribution_score')

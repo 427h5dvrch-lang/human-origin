@@ -309,6 +309,60 @@ if short_evidence is True:
 else:
     ok_f("Invariant 7 — short_evidence=false (pas de trace courte, règle non applicable)")
 
+# ── Invariants multimodaux (M1-M4) ───────────────────────────────────────────
+mp = p.get('media_profile')
+bos = p.get('bound_objects') or []
+bo = bos[0] if bos else {}
+
+MEDIA_FORBIDDEN_IN_ALLOWED = {
+    "authentic_photo", "real_human_voice", "scene_authenticity_verified",
+    "image_not_ai_generated", "video_not_ai_generated", "audio_not_ai_generated",
+    "no_ai_generation",
+}
+MEDIA_FORBIDDEN_REQUIRED = {
+    "authentic_photo", "real_human_voice", "scene_authenticity_verified",
+    "image_not_ai_generated", "video_not_ai_generated", "audio_not_ai_generated",
+    "code_correctness_verified",
+}
+
+if mp is not None:
+    # Invariant M1 — media_profile.primary_type doit être "document" en V1
+    m1_type = mp.get('primary_type', '')
+    if m1_type != "document":
+        fail_f(f"Invariant M1 — media_profile.primary_type='{m1_type}' : attendu 'document' en V1")
+        failures += 1
+    else:
+        ok_f(f"Invariant M1 — media_profile.primary_type=document ✓")
+else:
+    warn_f("Invariant M1 — media_profile absent (ancien package, non vérifié)")
+
+if bo:
+    # Invariant M2 — bound_objects[0].media_type doit être "document" en V1
+    m2_type = bo.get('media_type', '')
+    if m2_type != "document":
+        fail_f(f"Invariant M2 — bound_objects[0].media_type='{m2_type}' : attendu 'document' en V1")
+        failures += 1
+    else:
+        ok_f(f"Invariant M2 — bound_objects[0].media_type=document ✓")
+else:
+    warn_f("Invariant M2 — bound_objects absent (ancien package, non vérifié)")
+
+# Invariant M3 — claims_allowed ne doit pas contenir de claims médias
+forbidden_in_allowed = set(claims_allowed) & MEDIA_FORBIDDEN_IN_ALLOWED
+if forbidden_in_allowed:
+    fail_f(f"Invariant M3 — claims_allowed contient des claims médias interdits : {forbidden_in_allowed}")
+    failures += 1
+else:
+    ok_f("Invariant M3 — claims_allowed : aucun claim média interdit présent")
+
+# Invariant M4 — claims_forbidden doit contenir les claims médias obligatoires
+missing_media_forbidden = MEDIA_FORBIDDEN_REQUIRED - set(claims_forbidden)
+if missing_media_forbidden:
+    fail_f(f"Invariant M4 — claims_forbidden manque : {missing_media_forbidden}")
+    failures += 1
+else:
+    ok_f("Invariant M4 — claims_forbidden : tous les claims médias interdits présents")
+
 # ── Résultat final ────────────────────────────────────────────────────────────
 print("")
 if failures == 0:

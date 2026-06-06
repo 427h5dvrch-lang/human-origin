@@ -346,6 +346,9 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
         "creation_complete", "no_ai_generation",
         "substantial_contribution_attested", "substantial_document_contribution_attested",
         "contribution_plausible", "strong_process_evidence",
+        "authentic_photo", "real_human_voice", "scene_authenticity_verified",
+        "image_not_ai_generated", "video_not_ai_generated", "audio_not_ai_generated",
+        "code_correctness_verified",
       ],
       security_gates: {
         session_gate: "short_observed",
@@ -364,6 +367,9 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
   const forbidden = [
     "content_certified", "truth_certified", "authorship_confirmed",
     "creation_complete", "no_ai_generation",
+    "authentic_photo", "real_human_voice", "scene_authenticity_verified",
+    "image_not_ai_generated", "video_not_ai_generated", "audio_not_ai_generated",
+    "code_correctness_verified",
   ];
   if (documentBinding?.binding_mode === "pre_observation") allowed.push("object_bound_before_observation");
   if (documentBinding?.document_modified === true) allowed.push("object_modified_after_binding");
@@ -3008,6 +3014,81 @@ async function exportFinalProjectCertificate() {
         verification: {
           verify_url: verifierUrl || null,
           verification_method: "ed25519_payload_sha256",
+        },
+        media_profile: {
+          primary_type: "document",
+          product_mode: "document_v1",
+          multimodal_ready: true,
+          supported_in_this_version: ["document"],
+          unsupported_media_in_this_version: ["image", "video", "audio", "voice", "code"],
+          user_selected_media_type: null,
+          automatic_media_detection: false,
+          analysis_scope: [
+            "behavioral_activity",
+            "document_binding",
+            "document_delta",
+            "contribution_coherence",
+            "paste_risk",
+            "trust_metadata",
+          ],
+        },
+        bound_objects: [
+          {
+            id: "primary",
+            role: "final_output",
+            media_type: "document",
+            product_mode: "document_v1",
+            filename: bind.filename ?? null,
+            mime_or_extension: bind.mime ?? null,
+            sha256: bind.sha256 ?? null,
+            size_bytes: finalSizeNum,
+            binding_mode: documentBinding.binding_mode,
+            initial_sha256: documentBinding.initial_sha256 ?? null,
+            final_sha256: bind.sha256 ?? null,
+            initial_bound_at: documentBinding.initial_bound_at ?? null,
+            final_selected_at: documentBinding.final_selected_at ?? null,
+            document_modified: documentBinding.document_modified ?? null,
+            delta: {
+              bytes: documentBinding.delta_bytes ?? null,
+              bytes_ratio: documentBinding.delta_bytes_ratio ?? null,
+              significant: documentBinding.delta_significant ?? null,
+            },
+            contribution: {
+              score: documentBinding.contribution_score ?? null,
+              coherence: documentBinding.contribution_coherence ?? null,
+              flags: documentBinding.contribution_flags ?? null,
+              cap_reason: documentBinding.contribution_cap_reason ?? null,
+            },
+            limitations: [
+              "document_mode_only",
+              "no_content_truth_certification",
+              "no_ai_absence_certification",
+              "no_media_authenticity_certification",
+            ],
+          },
+        ],
+        observed_process: {
+          process_type: "human_document_workflow",
+          evidence_level: isShortEvidence
+            ? "short_observed_activity"
+            : validSessions > 0 ? "standard_observed_process" : "insufficient",
+          evidence_scope: isShortEvidence ? "short_trace" : "document_process",
+          observed_signals: [
+            "keystroke_activity",
+            "mouse_activity",
+            "rhythm_variance",
+            "correction_pattern",
+            "paste_events",
+            "active_time",
+          ],
+          media_specific_signals: [],
+          future_media_ready: true,
+          limitations: [
+            "no_screen_content_capture",
+            "no_text_content_storage",
+            "no_identity_verification_in_local_mode",
+            "local_key_not_registered",
+          ],
         },
       },
       payload_sha256: "",
