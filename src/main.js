@@ -238,6 +238,8 @@ function resetWorkflowVisualState() {
 
 // Tracks whether at least one work session has been finalized in this project session
 let __hasRegisteredWork = false;
+// Tracks whether any session (including temporary) was saved — gates the startBtn label
+let __hasAnySession = false;
 let currentBoundDocument = null; // { path, filename, mime, sha256, bound_at } — document lié avant observation
 let currentProjectName = null;
 let currentProjectPath = null;
@@ -723,6 +725,7 @@ function resetProjectStateOnly() {
   const tbody = $("certs-tbody");
   if (tbody) tbody.innerHTML = "";
   __hasRegisteredWork = false;
+  __hasAnySession = false;
   currentBoundDocument = null;
   resetWorkflowVisualState();
 }
@@ -1830,6 +1833,7 @@ async function initProject() {
 
   try {
     __hasRegisteredWork = false;
+    __hasAnySession = false;
     await invoke("initialize_project", { projectName: name });
     currentProjectPath = await invoke("activate_project", { projectName: name });
     currentProjectName = name;
@@ -1963,6 +1967,12 @@ function updateDashboardUI(state) {
       } else {
         exportBtn.style.display = "none";
       }
+    }
+    // Adapter le label du bouton selon qu'une session existe déjà dans ce projet
+    if (startBtn) {
+      startBtn.innerText = __hasAnySession
+        ? hoPerm("Ajouter une observation", "Add an observation")
+        : hoPerm("Commencer l'observation", "Start observation");
     }
     updateBoundDocumentUI();
   } else if (state === "SCANNING") {
@@ -2121,6 +2131,7 @@ async function finalizeSession() {
 
     restoredDraftSessionId = null;
     success = true;
+    __hasAnySession = true;
 
     if (btn) {
       btn.innerText = isTemporary ? "Observation trop courte ⚠" : "Session enregistrée ✅";
@@ -2164,6 +2175,9 @@ async function finalizeSession() {
     }
 
     await checkForDrafts(true);
+
+    // Retour READY : révèle le bouton "Ajouter une observation" pour permettre une nouvelle session
+    updateDashboardUI("READY");
   } catch (e) {
     console.error("finalizeSession failed", e);
     alert("Erreur certification : " + (e?.message || e));
