@@ -610,7 +610,7 @@ function updateBoundDocumentUI() {
   if (!box) return;
   if (!currentBoundDocument) {
     if (name) name.textContent = "Aucun document lié";
-    if (meta) meta.textContent = "Optionnel : liez un document avant l'observation pour renforcer la preuve.";
+    if (meta) meta.textContent = "Pour une preuve plus forte, liez le document avant de commencer l'observation.";
     if (btn) btn.textContent = "Lier un document";
   } else {
     if (name) name.textContent = currentBoundDocument.filename;
@@ -1955,7 +1955,8 @@ function updateDashboardUI(state) {
     if (finBtn) {
       finBtn.classList.remove("hidden");
       finBtn.disabled = false;
-      if (finBtn.innerText === "Travail enregistré ✅") finBtn.innerText = "Enregistrer ce travail";
+      const _prevText = finBtn.innerText;
+      if (_prevText === "Travail enregistré ✅" || _prevText === "Session enregistrée ✅" || _prevText === "Observation trop courte ⚠") finBtn.innerText = "Enregistrer ce travail";
     }
     if (exportBtn) exportBtn.style.display = "none";
     if (draftBanner) draftBanner.style.display = "none";
@@ -2098,34 +2099,41 @@ async function finalizeSession() {
     success = true;
 
     if (btn) {
-      btn.innerText = "Travail enregistré ✅";
+      btn.innerText = isTemporary ? "Observation trop courte ⚠" : "Session enregistrée ✅";
       btn.disabled = true;
     }
 
-    __hasRegisteredWork = true;
-
-    // Activer le bouton export dès qu'un travail est enregistré
-    const exportBtnAfterWork = $("close-project-btn");
-    if (exportBtnAfterWork) {
-      exportBtnAfterWork.style.display = "block";
-      exportBtnAfterWork.disabled = false;
-      exportBtnAfterWork.title = "";
+    // Activer l'export et marquer travail enregistré uniquement pour les sessions valides
+    if (!isTemporary) {
+      __hasRegisteredWork = true;
+      const exportBtnAfterWork = $("close-project-btn");
+      if (exportBtnAfterWork) {
+        exportBtnAfterWork.style.display = "block";
+        exportBtnAfterWork.disabled = false;
+        exportBtnAfterWork.title = "";
+      }
     }
 
+    const _toastMsg = isTemporary
+      ? "Observation enregistrée — activité insuffisante. Ajoutez une session pour une preuve valide."
+      : "Session enregistrée ✅ — Vous pouvez ajouter d'autres observations au même travail.";
+
     if (cloudOk) {
-      toast(isTemporary ? "Travail enregistré (activité limitée) ✅" : "Travail enregistré ✅");
-      await refreshHistory().catch(() => {});
+      toast(_toastMsg);
+      if (!isTemporary) await refreshHistory().catch(() => {});
     } else {
-      toast(isTemporary ? "Travail enregistré localement ✅" : "Travail enregistré ✅");
+      toast(_toastMsg);
       // En mode local : ajouter une ligne visible dans l'historique
       const tbody = $("certs-tbody");
       if (tbody) {
         const now = new Date().toLocaleString("fr-FR", { hour: "2-digit", minute: "2-digit" });
         const prev = tbody.innerHTML;
         const hadPlaceholder = prev.includes("Mode local") || prev.includes("Aucun") || !prev.trim();
+        const rowColor = isTemporary ? "#f59e0b" : "#10b981";
+        const rowLabel = isTemporary ? "Trop courte ⚠" : "Session valide ✅";
         tbody.innerHTML = `<tr>
           <td style="padding:10px 6px;">${now}</td>
-          <td style="padding:10px 6px;color:#10b981;font-weight:700">Enregistré ✅</td>
+          <td style="padding:10px 6px;color:${rowColor};font-weight:700">${rowLabel}</td>
           <td style="padding:10px 6px;color:#94a3b8;font-size:11px">Local</td>
         </tr>` + (hadPlaceholder ? "" : prev);
       }
@@ -2465,9 +2473,8 @@ async function exportFinalProjectCertificate() {
     const validSessions = Number(res?.valid_sessions ?? 0);
     if (validSessions <= 0) {
       alert(
-        "Aucune session de travail valide n'a été enregistrée.\n\n" +
-        "HumanOrigin ne peut pas labelliser ce document.\n\n" +
-        "Lancez une observation plus longue, enregistrez votre travail, puis réessayez."
+        "Observation insuffisante pour créer une preuve exploitable.\n\n" +
+        "Ajoutez une nouvelle session d'observation à ce même travail, puis réessayez."
       );
       return;
     }
