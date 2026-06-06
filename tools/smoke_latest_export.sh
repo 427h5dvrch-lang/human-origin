@@ -269,8 +269,33 @@ if le:
             ok(f"security_gates.contribution_coherence : {c_coherence}")
         else:
             warn("security_gates.contribution_coherence absent (ancien package)")
+    # evidence adaptif (champs V6)
+    short_ev = le.get('short_evidence')
+    if short_ev is not None:
+        if short_ev:
+            warn(f"short_evidence : {short_ev} (PREUVE LIMITÉE trace courte)")
+        else:
+            ok(f"short_evidence : {short_ev}")
+    else:
+        warn("short_evidence absent (ancien package)")
 else:
     warn("label_eligibility absent (ancien package)")
+
+# ── Evidence level adaptatif (champs V6) ─────────────────────────────────
+ps2 = p.get('process_summary', {})
+ev_level = ps2.get('evidence_level')
+ev_scope = ps2.get('evidence_scope')
+if ev_level is not None:
+    if ev_level == "short_observed_activity":
+        warn(f"evidence_level : {ev_level}")
+    else:
+        ok(f"evidence_level : {ev_level}")
+else:
+    warn("evidence_level absent (ancien package)")
+if ev_scope is not None:
+    ok(f"evidence_scope : {ev_scope}")
+else:
+    warn("evidence_scope absent (ancien package)")
 
 # ── Contribution documentaire (champs V3) ─────────────────────────────────
 doc_v3 = p.get('document', {})

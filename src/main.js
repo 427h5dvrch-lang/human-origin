@@ -336,7 +336,30 @@ function buildDocumentDelta(initialSize, finalSize, initialMime, finalMime) {
   };
 }
 
-function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason, pasteSummary = {}) {
+function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason, pasteSummary = {}, isShortEvidence = false) {
+  if (isShortEvidence) {
+    // Trace courte : claims stricts, aucune surpromesse possible
+    return {
+      claims_allowed: ["activity_observed", "object_hash_bound", "signature_valid"],
+      claims_forbidden: [
+        "content_certified", "truth_certified", "authorship_confirmed",
+        "creation_complete", "no_ai_generation",
+        "substantial_contribution_attested", "substantial_document_contribution_attested",
+        "contribution_plausible", "strong_process_evidence",
+      ],
+      security_gates: {
+        session_gate: "short_observed",
+        binding_mode: documentBinding?.binding_mode || "unknown",
+        document_modified: documentBinding?.document_modified ?? null,
+        delta_significant: false,
+        contribution_score: 0,
+        contribution_coherence: "insufficient",
+        paste_risk: pasteSummary,
+      },
+      caps_applied: ["short_evidence_cap", ...(capReason ? [capReason] : [])],
+    };
+  }
+
   const allowed = ["activity_observed", "object_hash_bound", "signature_valid"];
   const forbidden = [
     "content_certified", "truth_certified", "authorship_confirmed",
@@ -2507,14 +2530,27 @@ async function exportFinalProjectCertificate() {
       return;
     }
 
-    // ── GATE P0 — blocage dur : aucune session valide ──────────────────────
+    // ── GATE P0 — détection des tiers d'activité ──────────────────────────
     const validSessions = Number(res?.valid_sessions ?? 0);
-    if (validSessions <= 0) {
+    const shortSessions = Number(res?.short_session_count ?? 0);
+    const isShortEvidence = validSessions <= 0 && shortSessions > 0;
+
+    if (validSessions <= 0 && shortSessions <= 0) {
       alert(
-        "Observation insuffisante pour créer une preuve exploitable.\n\n" +
+        "Activité trop courte pour produire une preuve exploitable.\n\n" +
         "Ajoutez une nouvelle session d'observation à ce même travail, puis réessayez."
       );
       return;
+    }
+
+    if (isShortEvidence) {
+      const go = confirm(
+        "Activité courte observée.\n\n" +
+        "HumanOrigin peut créer une preuve limitée indiquant qu'une activité humaine courte a été observée.\n" +
+        "Cette preuve ne doit pas être interprétée comme une contribution substantielle au document.\n\n" +
+        "Continuer ?"
+      );
+      if (!go) return;
     }
 
     const projectValid = Boolean(res?.project_valid);
@@ -2537,7 +2573,10 @@ async function exportFinalProjectCertificate() {
     let verdict = "PREUVE LIMITÉE";
     let reasons = [];
 
-    if (!projectValid) {
+    if (isShortEvidence) {
+      verdict = "PREUVE LIMITÉE";
+      reasons = ["short_observed_activity"];
+    } else if (!projectValid) {
       verdict = "PREUVE LIMITÉE";
       reasons = [String(res?.validation_reason || "VOLUME INSUFFISANT")];
     } else {
@@ -2545,9 +2584,9 @@ async function exportFinalProjectCertificate() {
       reasons = [];
     }
 
-    // ── Gate soft : preuve faible mais sessions enregistrées ───────────────
+    // ── Gate soft : preuve faible mais sessions enregistrées (hors short — déjà confirmé) ───
     const weakProof = verdict === "SUSPECT" || verdict === "PREUVE LIMITÉE";
-    if (weakProof) {
+    if (weakProof && !isShortEvidence) {
       const go = confirm(
         "Preuve partielle uniquement.\n\n" +
         "HumanOrigin a observé une activité limitée, insuffisante pour attester une contribution complète au document.\n\n" +
@@ -2952,6 +2991,10 @@ async function exportFinalProjectCertificate() {
           valid_sessions_count: Math.max(0, Number(res.valid_sessions || 0)),
           certified_sessions_count: Math.max(0, Number(res.valid_sessions || 0)),
           paste_summary: pasteSummary,
+          evidence_level: isShortEvidence
+            ? "short_observed_activity"
+            : validSessions > 0 ? "standard_observed_process" : "insufficient",
+          evidence_scope: isShortEvidence ? "short_trace" : "document_process",
         },
         label_eligibility: {
           binding_cap_applied: bindingCapReason !== null,
@@ -2959,7 +3002,8 @@ async function exportFinalProjectCertificate() {
           paste_cap_applied: pasteCapApplied,
           raw_engine_verdict: rawEngineVerdict,
           visible_verdict: verdict,
-          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason, pasteSummary),
+          short_evidence: isShortEvidence,
+          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason, pasteSummary, isShortEvidence),
         },
         verification: {
           verify_url: verifierUrl || null,

@@ -292,6 +292,23 @@ if is_coherent(visible_verdict):
 else:
     ok_f(f"Invariant 6 — visible_verdict={visible_verdict or '—'} (non COHERENT, règle non applicable)")
 
+# ── Invariant 7 : si short_evidence, visible_verdict ≠ COHERENT + claims_forbidden cohérents ──
+short_evidence = le.get('short_evidence', False) if le else False
+if short_evidence is True:
+    inv7_fail = False
+    if is_coherent(visible_verdict):
+        fail_f("Invariant 7 — short_evidence=true mais visible_verdict=COHERENT : overclaim critique")
+        failures += 1
+        inv7_fail = True
+    if "substantial_document_contribution_attested" not in claims_forbidden:
+        fail_f("Invariant 7 — short_evidence=true mais 'substantial_document_contribution_attested' absent de claims_forbidden")
+        failures += 1
+        inv7_fail = True
+    if not inv7_fail:
+        ok_f(f"Invariant 7 — short_evidence=true → visible_verdict={visible_verdict}, claims_forbidden cohérents")
+else:
+    ok_f("Invariant 7 — short_evidence=false (pas de trace courte, règle non applicable)")
+
 # ── Résultat final ────────────────────────────────────────────────────────────
 print("")
 if failures == 0:

@@ -48,6 +48,10 @@ const GATE_MIN_ACTIVE_SEC: u64 = 60;
 const GATE_MIN_WALL_SEC: u64 = 60;
 const GATE_MIN_DENSITY: f64 = 0.6;
 
+// --- PLANCHER MINIMAL EXPLOITABLE (en dessous = non exploitable) ---
+const FLOOR_MIN_KEYSTROKES: u32 = 20;
+const FLOOR_MIN_ACTIVE_SEC: u64 = 20;
+
 #[derive(Serialize)]
 struct LiveStats {
     is_scanning: bool,
@@ -110,6 +114,10 @@ struct FinalizationResult {
     project_valid: bool,
     valid_sessions: u32,
     validation_reason: String,
+    // ── Sessions courtes exploitables (au-dessus du plancher, sous le gate)
+    short_session_count: u32,
+    short_total_keystrokes: u64,
+    short_total_active_seconds: u64,
     // ── Paste risk agrégé projet
     total_paste_events: u32,
     total_pasted_chars: u32,
@@ -1355,6 +1363,21 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
 
     all_proofs.sort_by_key(|k| k.session_index);
 
+    // ── Sessions courtes exploitables : au-dessus du plancher mais sous le gate ──
+    let mut short_session_count: u32 = 0;
+    let mut short_total_keystrokes: u64 = 0;
+    let mut short_total_active_seconds: u64 = 0;
+    for proof in &all_proofs {
+        if !proof.analysis.gate_passed
+            && proof.analysis.keystrokes_count >= FLOOR_MIN_KEYSTROKES
+            && proof.analysis.active_est_sec >= FLOOR_MIN_ACTIVE_SEC
+        {
+            short_session_count += 1;
+            short_total_keystrokes += proof.analysis.keystrokes_count as u64;
+            short_total_active_seconds += proof.analysis.active_est_sec;
+        }
+    }
+
     let avg_scp = if total_weight > 0.0 {
         (weighted_score_sum / total_weight) as i32
     } else {
@@ -1385,6 +1408,9 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
         project_valid,
         valid_sessions: certified_count,
         validation_reason,
+        short_session_count,
+        short_total_keystrokes,
+        short_total_active_seconds,
         total_paste_events,
         total_pasted_chars,
         max_paste_chars,
