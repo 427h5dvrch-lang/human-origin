@@ -706,14 +706,156 @@ function updateBoundDocumentUI() {
   const btn = $("bind-document-btn");
   if (!box) return;
   if (!currentBoundDocument) {
-    if (name) name.textContent = "Aucun document lié";
+    if (name) { name.textContent = "Aucun document lié"; name.style.color = "rgba(232,238,252,.5)"; }
     if (meta) meta.textContent = "Pour une preuve plus forte, liez le document avant de commencer l'observation.";
-    if (btn) btn.textContent = "Lier un document";
+    if (btn) { btn.textContent = "Lier un document"; btn.style.fontWeight = "700"; }
   } else {
-    if (name) name.textContent = currentBoundDocument.filename;
-    if (meta) meta.textContent = "Empreinte initiale enregistrée avant observation.";
-    if (btn) btn.textContent = "Changer";
+    if (name) { name.textContent = currentBoundDocument.filename; name.style.color = "#e8eefc"; }
+    // Statut binding-aware : dépend du moment où le document a été lié par rapport aux sessions
+    let statusText = "Empreinte initiale enregistrée.";
+    let statusColor = "rgba(232,238,252,.55)";
+    if (__sessionTimestamps.length === 0) {
+      statusText = "Document lié avant observation ✅ — les prochaines sessions couvriront ce document.";
+      statusColor = "rgba(16,185,129,.8)";
+    } else {
+      const cov = computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at);
+      if (cov.binding_coverage === "full") {
+        statusText = `Document lié avant observation ✅ — ${cov.covered_session_count} session(s) couverte(s).`;
+        statusColor = "rgba(16,185,129,.8)";
+      } else if (cov.binding_coverage === "partial") {
+        statusText = `Document lié après une partie du travail ⚠ — ${cov.covered_session_count} session(s) couverte(s), ${cov.uncovered_session_count} antérieure(s).`;
+        statusColor = "rgba(245,158,11,.8)";
+      } else {
+        statusText = "Document lié après toutes les sessions ⚠ — la preuve sera limitée.";
+        statusColor = "rgba(239,68,68,.8)";
+      }
+    }
+    if (meta) { meta.textContent = statusText; meta.style.color = statusColor; }
+    if (btn) { btn.textContent = "Changer"; btn.style.fontWeight = ""; }
   }
+}
+
+// ── Statut de maturité de la preuve (UX uniquement — source de vérité = gates à l'export) ──
+function buildProofReadinessState() {
+  // Document status
+  let document_status;
+  if (!currentBoundDocument) {
+    document_status = "not_bound";
+  } else if (__sessionTimestamps.length === 0) {
+    document_status = "bound_before_sessions";
+  } else {
+    const cov = computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at);
+    if (cov.binding_coverage === "full") document_status = "bound_before_sessions";
+    else if (cov.binding_coverage === "partial") document_status = "bound_after_some_sessions";
+    else document_status = "bound_after_all_sessions";
+  }
+
+  // Observation status
+  const hasValid = __sessionTimestamps.some(s => s.is_valid);
+  const hasShort = __sessionTimestamps.some(s => !s.is_valid);
+  const observation_status = __sessionTimestamps.length === 0 ? "none"
+    : !hasValid && hasShort ? "short_only"
+    : "valid_or_standard";
+
+  // Expected proof level (UX indicatif — ne pas utiliser comme gate)
+  let expected_proof_level;
+  if (observation_status === "none") {
+    expected_proof_level = document_status === "bound_before_sessions" ? "strong_possible" : "limited";
+  } else if (observation_status === "short_only") {
+    expected_proof_level = "limited";
+  } else if (document_status === "not_bound" || document_status === "bound_after_all_sessions") {
+    expected_proof_level = "limited";
+  } else if (document_status === "bound_after_some_sessions") {
+    expected_proof_level = "partial";
+  } else {
+    expected_proof_level = "strong_possible";
+  }
+
+  // Recommended action
+  let recommended_action;
+  if (observation_status === "valid_or_standard") recommended_action = "export";
+  else if (observation_status === "short_only") recommended_action = "add_observation";
+  else if (document_status === "not_bound") recommended_action = "bind_document";
+  else recommended_action = "start_observation";
+
+  return { document_status, observation_status, expected_proof_level, recommended_action };
+}
+
+// Rendu du bloc guide (injecté avant #bound-document-box, mis à jour à chaque READY)
+function renderProofGuideBlock() {
+  let block = $("proof-guide-block");
+  if (!block) {
+    const boundBox = $("bound-document-box");
+    if (!boundBox || !boundBox.parentNode) return;
+    block = document.createElement("div");
+    block.id = "proof-guide-block";
+    boundBox.parentNode.insertBefore(block, boundBox);
+  }
+
+  const st = buildProofReadinessState();
+
+  let html = "";
+  if (st.observation_status === "valid_or_standard") {
+    const validCount = __sessionTimestamps.filter(s => s.is_valid).length;
+    const totalCount = __sessionTimestamps.length;
+    const shortCount = totalCount - validCount;
+    const proofColor = st.expected_proof_level === "strong_possible" ? "#10b981"
+      : st.expected_proof_level === "partial" ? "#f59e0b" : "#ef4444";
+    const proofLabel = st.expected_proof_level === "strong_possible" ? "Forte possible"
+      : st.expected_proof_level === "partial" ? "Partielle" : "Limitée";
+
+    let coverageNote = "";
+    if (currentBoundDocument && __sessionTimestamps.length > 0) {
+      const cov = computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at);
+      if (cov.binding_coverage === "full") {
+        coverageNote = `${cov.covered_session_count}/${totalCount} session(s) couverte(s) par le document`;
+      } else if (cov.binding_coverage === "partial") {
+        coverageNote = `${cov.covered_session_count}/${totalCount} couverte(s) — ajoutez une observation après la liaison pour renforcer la preuve`;
+      } else {
+        coverageNote = "Aucune session couverte par le document lié — la preuve sera limitée";
+      }
+    } else if (!currentBoundDocument) {
+      coverageNote = "Aucun document lié — la preuve sera limitée. Vous pouvez en lier un avant de créer.";
+    }
+
+    html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);">
+      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(16,185,129,.7);margin-bottom:8px;">Votre preuve HumanOrigin</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:${coverageNote ? '6px' : '0'};">
+        <span style="font-size:13px;font-weight:700;color:#e8eefc;">Observations : ${validCount} valide(s)${shortCount > 0 ? ', ' + shortCount + ' courte(s)' : ''}</span>
+        <span style="font-size:11px;padding:2px 10px;border-radius:20px;background:rgba(255,255,255,.07);color:${proofColor};font-weight:700;border:1px solid ${proofColor}44;">Preuve ${proofLabel}</span>
+      </div>
+      ${coverageNote ? `<div style="font-size:12px;color:rgba(232,238,252,.5);">${coverageNote}</div>` : ''}
+    </div>`;
+
+  } else if (st.observation_status === "short_only") {
+    html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.18);">
+      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(245,158,11,.65);margin-bottom:6px;">Votre preuve HumanOrigin</div>
+      <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">Session courte enregistrée ⚠</div>
+      <div style="font-size:12px;color:rgba(232,238,252,.55);">Ajoutez une observation plus longue pour renforcer la preuve.</div>
+    </div>`;
+
+  } else if (st.document_status === "not_bound") {
+    html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);">
+      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(232,238,252,.3);margin-bottom:10px;">Votre preuve HumanOrigin</div>
+      <ol style="margin:0 0 10px;padding-left:18px;color:rgba(232,238,252,.65);font-size:12px;line-height:2;">
+        <li><strong style="color:#e8eefc;">Liez votre document</strong> — pour une preuve plus forte</li>
+        <li>Travaillez normalement dans votre éditeur</li>
+        <li>Ajoutez une ou plusieurs observations</li>
+        <li>Créez votre document HumanOrigin</li>
+      </ol>
+      <div style="font-size:11px;color:rgba(232,238,252,.3);">Vous pouvez commencer sans document lié, mais la preuve sera limitée.</div>
+    </div>`;
+
+  } else {
+    // Document lié, aucune session encore
+    html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);">
+      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(16,185,129,.6);margin-bottom:6px;">Votre preuve HumanOrigin</div>
+      <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">Document lié ✅</div>
+      <div style="font-size:12px;color:rgba(232,238,252,.55);">Les prochaines observations couvriront ce document. Vous pouvez ajouter plusieurs observations au même travail.</div>
+    </div>`;
+  }
+
+  block.innerHTML = html;
 }
 
 // =========================================================
@@ -2042,15 +2184,33 @@ function updateDashboardUI(state) {
         exportBtn.style.display = "none";
       }
     }
-    // Adapter le label du bouton selon qu'une session existe déjà dans ce projet
+    // Hiérarchie des boutons et guide selon le statut de maturité de la preuve
+    const _readiness = buildProofReadinessState();
     if (startBtn) {
-      startBtn.innerText = __hasAnySession
-        ? hoPerm("Ajouter une observation", "Add an observation")
-        : hoPerm("Commencer l'observation", "Start observation");
+      startBtn.classList.remove("hidden");
+      // Label
+      if (_readiness.observation_status !== "none") {
+        startBtn.innerText = hoPerm("Ajouter une observation", "Add an observation");
+      } else {
+        startBtn.innerText = _readiness.recommended_action === "bind_document"
+          ? hoPerm("Commencer sans document lié", "Start without document")
+          : hoPerm("Commencer l'observation", "Start observation");
+      }
+      // Style : secondaire si l'export est disponible OU si l'action recommandée est de lier un doc
+      if (_readiness.recommended_action === "export" || _readiness.recommended_action === "bind_document") {
+        startBtn.classList.remove("btn-primary");
+        startBtn.classList.add("btn-ghost");
+      } else {
+        startBtn.classList.remove("btn-ghost");
+        startBtn.classList.add("btn-primary");
+      }
     }
     updateBoundDocumentUI();
+    renderProofGuideBlock();
   } else if (state === "SCANNING") {
     // Action unique : "Terminer l'observation"
+    const _guideBlock = $("proof-guide-block");
+    if (_guideBlock) _guideBlock.innerHTML = "";
     hideExportSuccessView();
     hideSendReadyBanner();
     if (stopBtn) stopBtn.classList.remove("hidden");
