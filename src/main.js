@@ -735,6 +735,33 @@ function updateBoundDocumentUI() {
   }
 }
 
+// ── Indicateur live pendant l'observation (UX uniquement — source de vérité = finalize_project) ──
+// Seuils indicatifs calqués prudemment sur les planchers Rust (20) et gates (60).
+// Aucun score technique exposé.
+function computeLiveEvidenceLevel(keystrokes, durationSec) {
+  const k = Number(keystrokes || 0);
+  const d = Number(durationSec || 0);
+  if (k < 20 && d < 20) {
+    return {
+      level: "building",
+      message: "Session en construction — continuez quelques instants.",
+      color: "rgba(148,163,184,.7)",
+    };
+  }
+  if (k < 60 && d < 60) {
+    return {
+      level: "short",
+      message: "Activité courte observée — preuve limitée possible si vous enregistrez maintenant.",
+      color: "rgba(245,158,11,.9)",
+    };
+  }
+  return {
+    level: "usable",
+    message: "Session exploitable ✅ — vous pouvez continuer pour renforcer la preuve.",
+    color: "rgba(16,185,129,.9)",
+  };
+}
+
 // ── Statut de maturité de la preuve (UX uniquement — source de vérité = gates à l'export) ──
 function buildProofReadinessState() {
   // Document status
@@ -2217,6 +2244,23 @@ function updateDashboardUI(state) {
     if (live) live.style.display = "block";
     if (exportBtn) exportBtn.style.display = "none";
     if (draftBanner) draftBanner.style.display = "none";
+    // Indicateur live : injecter ou réinitialiser dans le live-dashboard
+    if (live) {
+      let _ind = $("live-evidence-indicator");
+      if (!_ind) {
+        _ind = document.createElement("div");
+        _ind.id = "live-evidence-indicator";
+        _ind.style.cssText = [
+          "font-size:13px", "font-weight:600", "margin-top:16px",
+          "padding:10px 14px", "border-radius:12px",
+          "background:rgba(255,255,255,.04)", "border:1px solid rgba(255,255,255,.08)",
+          "line-height:1.4", "transition:color .4s",
+        ].join(";");
+        live.appendChild(_ind);
+      }
+      _ind.textContent = "Session en construction…";
+      _ind.style.color = "rgba(148,163,184,.7)";
+    }
   } else if (state === "STOPPED") {
     // Action unique : "Enregistrer ce travail"
     hideSendReadyBanner();
@@ -2464,6 +2508,13 @@ async function startScan() {
           safeText("timer", `${s.duration_sec ?? 0}s`);
           safeText("keystrokes-display", String(s.keystrokes ?? 0));
           safeText("clicks-display", String(s.clicks ?? 0));
+          // Indicateur live — UX seulement, source de vérité = finalize_project
+          const _evInd = $("live-evidence-indicator");
+          if (_evInd) {
+            const _ev = computeLiveEvidenceLevel(s.keystrokes, s.duration_sec);
+            _evInd.textContent = _ev.message;
+            _evInd.style.color = _ev.color;
+          }
         }
       } catch {}
     }, 1000);
