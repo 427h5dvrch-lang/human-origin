@@ -242,6 +242,8 @@ let __hasRegisteredWork = false;
 let __hasAnySession = false;
 // ISO timestamp of the first scan start in this project — used for binding timeline validation
 let __firstSessionStartedAt = null;
+// Sessions finalisées dans cette ouverture de projet : { started_at, is_valid } — couverture de binding
+let __sessionTimestamps = [];
 let currentBoundDocument = null; // { path, filename, mime, sha256, bound_at } — document lié avant observation
 let currentProjectName = null;
 let currentProjectPath = null;
@@ -355,6 +357,9 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
       security_gates: {
         session_gate: "short_observed",
         binding_mode: documentBinding?.binding_mode || "unknown",
+        binding_coverage: documentBinding?.binding_coverage ?? null,
+        covered_session_count: documentBinding?.covered_session_count ?? null,
+        uncovered_session_count: documentBinding?.uncovered_session_count ?? null,
         document_modified: documentBinding?.document_modified ?? null,
         delta_significant: false,
         contribution_score: 0,
@@ -403,6 +408,9 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
     security_gates: {
       session_gate: "passed",
       binding_mode: documentBinding?.binding_mode || "unknown",
+      binding_coverage: documentBinding?.binding_coverage ?? null,
+      covered_session_count: documentBinding?.covered_session_count ?? null,
+      uncovered_session_count: documentBinding?.uncovered_session_count ?? null,
       document_modified: documentBinding?.document_modified ?? null,
       delta_significant: documentBinding?.delta_significant ?? null,
       format_conversion_detected: documentBinding?.format_conversion_detected ?? null,
@@ -498,6 +506,30 @@ function buildContributionCoherence({ totalKeystrokes, activeSeconds, documentBi
   };
 }
 
+// Calcule la couverture de binding par session : combien de sessions ont démarré
+// après la liaison du document. Utilisé pour distinguer pre/partial/post/export.
+function computeBindingCoverage(sessionTimestamps, boundAt) {
+  if (!boundAt) {
+    return { binding_coverage: "export_only", covered_session_count: 0, uncovered_session_count: 0, binding_scope: "none" };
+  }
+  if (sessionTimestamps.length === 0) {
+    return { binding_coverage: "unknown", covered_session_count: null, uncovered_session_count: null, binding_scope: "unknown" };
+  }
+  let covered = 0;
+  let uncovered = 0;
+  for (const s of sessionTimestamps) {
+    if (s.started_at >= boundAt) covered++;
+    else uncovered++;
+  }
+  let binding_coverage;
+  if (covered > 0 && uncovered === 0) binding_coverage = "full";
+  else if (covered > 0 && uncovered > 0) binding_coverage = "partial";
+  else if (covered === 0 && uncovered > 0) binding_coverage = "post_session_only";
+  else binding_coverage = "none";
+  const binding_scope = binding_coverage === "full" ? "full" : binding_coverage === "partial" ? "partial" : "none";
+  return { binding_coverage, covered_session_count: covered, uncovered_session_count: uncovered, binding_scope };
+}
+
 function applyBindingVerdictCap(rawVerdict, documentBinding) {
   const mode = documentBinding?.binding_mode;
   const modified = documentBinding?.document_modified;
@@ -508,6 +540,11 @@ function applyBindingVerdictCap(rawVerdict, documentBinding) {
   }
   if (mode === "post_session_binding") {
     return { verdict: "PREUVE LIMITÉE", reason: "document_bound_after_sessions" };
+  }
+  if (mode === "partial_pre_observation") {
+    if (rawVerdict === "COHERENT") {
+      return { verdict: "ATYPIQUE", reason: "partial_session_coverage" };
+    }
   }
   if (mode === "pre_observation" && modified === false && rawVerdict === "COHERENT") {
     return { verdict: "ATYPIQUE", reason: "document_not_modified" };
@@ -761,6 +798,7 @@ function resetProjectStateOnly() {
   __hasRegisteredWork = false;
   __hasAnySession = false;
   __firstSessionStartedAt = null;
+  __sessionTimestamps = [];
   currentBoundDocument = null;
   resetWorkflowVisualState();
 }
@@ -2168,6 +2206,7 @@ async function finalizeSession() {
     restoredDraftSessionId = null;
     success = true;
     __hasAnySession = true;
+    __sessionTimestamps.push({ started_at: currentSessionStartedAt || new Date().toISOString(), is_valid: !isTemporary });
 
     if (btn) {
       btn.innerText = isTemporary ? "Observation trop courte ⚠" : "Session enregistrée ✅";
@@ -2666,13 +2705,21 @@ async function exportFinalProjectCertificate() {
       sha256: bind?.sha256 || null,
     }));
 
-    // ── Règle temporelle du binding ────────────────────────────────────────
-    // pre_observation : doc lié AVANT le démarrage de la première session
-    // post_session_binding : doc lié APRÈS la première session — preuve limitée
-    // export_time : pas de doc lié avant l'export
-    const _boundBeforeFirstSession = _useBoundDoc &&
-      currentBoundDocument &&
-      (!__firstSessionStartedAt || currentBoundDocument.bound_at < __firstSessionStartedAt);
+    // ── Couverture de binding par session ─────────────────────────────────
+    // Calcule combien de sessions ont démarré après la liaison du document.
+    // full → pre_observation   partial → partial_pre_observation
+    // post_session_only → post_session_binding   absent → export_time
+    const _bindingCoverage = (_useBoundDoc && currentBoundDocument)
+      ? computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at)
+      : { binding_coverage: "export_only", covered_session_count: 0,
+          uncovered_session_count: __sessionTimestamps.length, binding_scope: "none" };
+
+    const _bcov = _bindingCoverage.binding_coverage;
+    const _derivedBindingMode = (_useBoundDoc && currentBoundDocument)
+      ? (_bcov === "full" ? "pre_observation"
+        : _bcov === "partial" ? "partial_pre_observation"
+        : "post_session_binding")
+      : "export_time";
 
     const documentBinding = (_useBoundDoc && currentBoundDocument)
       ? (() => {
@@ -2682,7 +2729,11 @@ async function exportFinalProjectCertificate() {
             currentBoundDocument.mime, bind.mime
           );
           return {
-            binding_mode: _boundBeforeFirstSession ? "pre_observation" : "post_session_binding",
+            binding_mode: _derivedBindingMode,
+            binding_coverage: _bindingCoverage.binding_coverage,
+            covered_session_count: _bindingCoverage.covered_session_count,
+            uncovered_session_count: _bindingCoverage.uncovered_session_count,
+            binding_scope: _bindingCoverage.binding_scope,
             initial_sha256: currentBoundDocument.sha256,
             initial_filename: currentBoundDocument.filename,
             initial_bound_at: currentBoundDocument.bound_at,
@@ -2694,6 +2745,10 @@ async function exportFinalProjectCertificate() {
         })()
       : {
           binding_mode: "export_time",
+          binding_coverage: "export_only",
+          covered_session_count: 0,
+          uncovered_session_count: __sessionTimestamps.length,
+          binding_scope: "none",
           initial_sha256: null,
           initial_filename: null,
           initial_bound_at: null,
@@ -2730,8 +2785,17 @@ async function exportFinalProjectCertificate() {
       } else if (documentBinding.binding_mode === "post_session_binding") {
         capMsg =
           "Document lié après la session d'observation.\n\n" +
-          "Le document a été lié après la fin de la session — HumanOrigin ne peut pas attester que ce document était ouvert pendant l'observation.\n" +
+          "Le document a été lié après la fin de toutes les sessions — HumanOrigin ne peut pas attester que ce document était en cours lors de l'observation.\n" +
           "Le niveau visible sera limité.\n\n" +
+          "Pour une preuve plus forte, liez le document avant de démarrer l'observation.\n\n" +
+          "Continuer ?";
+      } else if (documentBinding.binding_mode === "partial_pre_observation") {
+        const cov = documentBinding.covered_session_count ?? "?";
+        const uncov = documentBinding.uncovered_session_count ?? "?";
+        capMsg =
+          `Document lié après une partie du travail (${cov} session(s) couverte(s), ${uncov} antérieure(s)).\n\n` +
+          "HumanOrigin utilisera uniquement les observations réalisées après la liaison du document pour évaluer la contribution à ce fichier.\n" +
+          "COHERENT n'est pas possible — le niveau visible sera plafonné à ATYPIQUE.\n\n" +
           "Pour une preuve plus forte, liez le document avant de démarrer l'observation.\n\n" +
           "Continuer ?";
       } else if (
@@ -3029,6 +3093,10 @@ async function exportFinalProjectCertificate() {
         },
         document: {
           binding_mode: documentBinding.binding_mode,
+          binding_coverage: documentBinding.binding_coverage,
+          covered_session_count: documentBinding.covered_session_count ?? null,
+          uncovered_session_count: documentBinding.uncovered_session_count ?? null,
+          binding_scope: documentBinding.binding_scope ?? null,
           filename: hoDoc.document.filename ?? null,
           mime: hoDoc.document.mime ?? null,
           sha256: hoDoc.document.sha256 ?? null,
@@ -3104,6 +3172,10 @@ async function exportFinalProjectCertificate() {
             sha256: bind.sha256 ?? null,
             size_bytes: finalSizeNum,
             binding_mode: documentBinding.binding_mode,
+            binding_coverage: documentBinding.binding_coverage ?? null,
+            covered_session_count: documentBinding.covered_session_count ?? null,
+            uncovered_session_count: documentBinding.uncovered_session_count ?? null,
+            binding_scope: documentBinding.binding_scope ?? null,
             initial_sha256: documentBinding.initial_sha256 ?? null,
             final_sha256: bind.sha256 ?? null,
             initial_bound_at: documentBinding.initial_bound_at ?? null,

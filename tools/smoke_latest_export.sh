@@ -228,6 +228,21 @@ if binding_mode:
 else:
     warn("binding_mode absent (ancien package)")
 
+binding_coverage = doc.get('binding_coverage')
+covered_sessions = doc.get('covered_session_count')
+uncovered_sessions = doc.get('uncovered_session_count')
+binding_scope = doc.get('binding_scope')
+if binding_coverage is not None:
+    cov_lbl = f"covered={covered_sessions}, uncovered={uncovered_sessions}, scope={binding_scope}"
+    if binding_coverage == "full":
+        ok(f"binding_coverage : {binding_coverage} ({cov_lbl})")
+    elif binding_coverage in ("partial", "post_session_only"):
+        warn(f"binding_coverage : {binding_coverage} ({cov_lbl}) — COHERENT non possible")
+    else:
+        ok(f"binding_coverage : {binding_coverage} ({cov_lbl})")
+else:
+    warn("binding_coverage absent (ancien package)")
+
 delta_significant = doc.get('delta_significant')
 if delta_significant is None:
     warn("delta_significant absent (ancien package)")

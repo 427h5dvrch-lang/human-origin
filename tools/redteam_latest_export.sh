@@ -90,6 +90,9 @@ claims_allowed  = le.get('claims_allowed') or []
 claims_forbidden = le.get('claims_forbidden') or []
 
 binding_mode       = doc.get('binding_mode', '')
+binding_coverage   = doc.get('binding_coverage')
+covered_sessions   = doc.get('covered_session_count')
+uncovered_sessions = doc.get('uncovered_session_count')
 document_modified  = doc.get('document_modified')
 delta_significant  = doc.get('delta_significant')
 delta_ratio        = doc.get('delta_bytes_ratio')
@@ -116,6 +119,9 @@ print(f"     caps_applied        : {', '.join(caps_applied) if caps_applied else
 print("")
 print("2. Binding / delta")
 print(f"     binding_mode        : {binding_mode or '—'}")
+print(f"     binding_coverage    : {binding_coverage if binding_coverage is not None else '—'}")
+print(f"     covered_sessions    : {covered_sessions if covered_sessions is not None else '—'}")
+print(f"     uncovered_sessions  : {uncovered_sessions if uncovered_sessions is not None else '—'}")
 print(f"     document_modified   : {document_modified if document_modified is not None else '—'}")
 print(f"     delta_significant   : {delta_significant if delta_significant is not None else '—'}")
 print(f"     delta_bytes_ratio   : {delta_ratio if delta_ratio is not None else '—'}")
@@ -249,9 +255,14 @@ if is_coherent(visible_verdict):
 
     if binding_mode not in ("pre_observation", ""):
         if binding_mode:
-            fail_f(f"Invariant 6 — COHERENT mais binding_mode={binding_mode} (attendu pre_observation)")
+            fail_f(f"Invariant 6 — COHERENT mais binding_mode={binding_mode} (attendu pre_observation uniquement)")
             failures += 1
             inv6_fail = True
+
+    if binding_coverage is not None and binding_coverage != "full":
+        fail_f(f"Invariant 6 — COHERENT mais binding_coverage={binding_coverage} (attendu full)")
+        failures += 1
+        inv6_fail = True
 
     if document_modified is False:
         fail_f("Invariant 6 — COHERENT mais document_modified=false")
@@ -308,6 +319,39 @@ if short_evidence is True:
         ok_f(f"Invariant 7 — short_evidence=true → visible_verdict={visible_verdict}, claims_forbidden cohérents")
 else:
     ok_f("Invariant 7 — short_evidence=false (pas de trace courte, règle non applicable)")
+
+# ── Invariants de couverture de binding (B1-B3) ───────────────────────────────
+# B1 : post_session_binding → non COHERENT
+if binding_mode == "post_session_binding":
+    if is_coherent(visible_verdict):
+        fail_f("Invariant B1 — binding_mode=post_session_binding mais visible_verdict=COHERENT : overclaim critique")
+        failures += 1
+    else:
+        ok_f(f"Invariant B1 — binding_mode=post_session_binding → visible_verdict={visible_verdict} (non COHERENT ✓)")
+else:
+    ok_f(f"Invariant B1 — binding_mode={binding_mode or '—'} (non post_session_binding, règle non applicable)")
+
+# B2 : partial_pre_observation → non COHERENT
+if binding_mode == "partial_pre_observation":
+    if is_coherent(visible_verdict):
+        fail_f("Invariant B2 — binding_mode=partial_pre_observation mais visible_verdict=COHERENT : overclaim critique")
+        failures += 1
+    else:
+        ok_f(f"Invariant B2 — binding_mode=partial_pre_observation → visible_verdict={visible_verdict} (non COHERENT ✓)")
+else:
+    ok_f(f"Invariant B2 — binding_mode={binding_mode or '—'} (non partial_pre_observation, règle non applicable)")
+
+# B3 : binding_coverage != full → non COHERENT
+if binding_coverage is not None and binding_coverage != "full" and binding_coverage != "unknown":
+    if is_coherent(visible_verdict):
+        fail_f(f"Invariant B3 — binding_coverage={binding_coverage} (non full) mais visible_verdict=COHERENT : overclaim critique")
+        failures += 1
+    else:
+        ok_f(f"Invariant B3 — binding_coverage={binding_coverage} (non full) → visible_verdict={visible_verdict} (non COHERENT ✓)")
+elif binding_coverage == "full":
+    ok_f("Invariant B3 — binding_coverage=full (règle non déclenchée)")
+else:
+    ok_f("Invariant B3 — binding_coverage absent ou unknown (ancien package, non vérifié)")
 
 # ── Invariants multimodaux (M1-M4) ───────────────────────────────────────────
 mp = p.get('media_profile')
