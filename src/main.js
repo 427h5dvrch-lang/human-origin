@@ -240,6 +240,8 @@ function resetWorkflowVisualState() {
 let __hasRegisteredWork = false;
 // Tracks whether any session (including temporary) was saved — gates the startBtn label
 let __hasAnySession = false;
+// ISO timestamp of the first scan start in this project — used for binding timeline validation
+let __firstSessionStartedAt = null;
 let currentBoundDocument = null; // { path, filename, mime, sha256, bound_at } — document lié avant observation
 let currentProjectName = null;
 let currentProjectPath = null;
@@ -504,6 +506,9 @@ function applyBindingVerdictCap(rawVerdict, documentBinding) {
   if (mode === "export_time") {
     return { verdict: "PREUVE LIMITÉE", reason: "document_bound_at_export" };
   }
+  if (mode === "post_session_binding") {
+    return { verdict: "PREUVE LIMITÉE", reason: "document_bound_after_sessions" };
+  }
   if (mode === "pre_observation" && modified === false && rawVerdict === "COHERENT") {
     return { verdict: "ATYPIQUE", reason: "document_not_modified" };
   }
@@ -755,6 +760,7 @@ function resetProjectStateOnly() {
   if (tbody) tbody.innerHTML = "";
   __hasRegisteredWork = false;
   __hasAnySession = false;
+  __firstSessionStartedAt = null;
   currentBoundDocument = null;
   resetWorkflowVisualState();
 }
@@ -1863,6 +1869,7 @@ async function initProject() {
   try {
     __hasRegisteredWork = false;
     __hasAnySession = false;
+    __firstSessionStartedAt = null;
     await invoke("initialize_project", { projectName: name });
     currentProjectPath = await invoke("activate_project", { projectName: name });
     currentProjectName = name;
@@ -2234,9 +2241,16 @@ async function startScan() {
 
   currentSessionId = crypto.randomUUID();
   currentSessionStartedAt = new Date().toISOString();
+  if (!__firstSessionStartedAt) {
+    __firstSessionStartedAt = currentSessionStartedAt;
+  }
   restoredDraftSessionId = null;
   lastSnapshot = null;
   resetPasteStats();
+
+  if (!currentBoundDocument) {
+    toast("Astuce : liez un document avant d'observer pour obtenir une preuve plus forte.");
+  }
 
   try {
     await invoke("start_scan", { sessionId: currentSessionId });
@@ -2602,25 +2616,65 @@ async function exportFinalProjectCertificate() {
       if (!go) return;
     }
 
-    // Le document est choisi APRÈS validation des sessions
-    const bind = await pickDocumentToBind();
+    // ── Sélection du document final ───────────────────────────────────────
+    const finalSelectedAt = new Date().toISOString();
+    let bind;
+    let finalSizeNum = null;
+    // tracks whether user chose to use the already-bound document
+    let _useBoundDoc = false;
+
+    if (currentBoundDocument) {
+      const useBound = confirm(
+        `Document lié : "${currentBoundDocument.filename}"\n\n` +
+        "Utiliser ce document pour créer la preuve HumanOrigin ?\n\n" +
+        "Confirmer = utiliser ce document · Annuler = choisir un autre fichier"
+      );
+      if (useBound) {
+        _useBoundDoc = true;
+        const currentSha = await invoke("sha256_file", { path: currentBoundDocument.path }).catch(() => null);
+        const currentSize = await invoke("file_size_bytes", { path: currentBoundDocument.path }).catch(() => null);
+        bind = {
+          path: currentBoundDocument.path,
+          filename: currentBoundDocument.filename,
+          mime: currentBoundDocument.mime,
+          sha256: currentSha || currentBoundDocument.sha256,
+        };
+        finalSizeNum = Number.isFinite(Number(currentSize)) ? Number(currentSize) : null;
+      } else {
+        bind = await pickDocumentToBind();
+        if (!bind) { alert("Sélection annulée. Aucun document certifié."); return; }
+        const sz = await invoke("file_size_bytes", { path: bind.path }).catch(() => null);
+        finalSizeNum = Number.isFinite(Number(sz)) ? Number(sz) : null;
+      }
+    } else {
+      const goPick = confirm(
+        "Aucun document n'a été lié avant l'observation.\n\n" +
+        "Vous pouvez choisir un document maintenant, mais la preuve sera limitée.\n\n" +
+        "Continuer ?"
+      );
+      if (!goPick) return;
+      bind = await pickDocumentToBind();
+      if (!bind) { alert("Sélection annulée. Aucun document certifié."); return; }
+      const sz = await invoke("file_size_bytes", { path: bind.path }).catch(() => null);
+      finalSizeNum = Number.isFinite(Number(sz)) ? Number(sz) : null;
+    }
+
     await __hoExportMark("after-pickDocumentToBind", JSON.stringify({
       filename: bind?.filename || null,
       mime: bind?.mime || null,
       path: bind?.path || null,
       sha256: bind?.sha256 || null,
     }));
-    if (!bind) {
-      alert("Sélection annulée. Aucun document certifié.");
-      return;
-    }
 
-    // ── Binding documentaire : comparer hash initial et final + delta ──────
-    const finalSelectedAt = new Date().toISOString();
-    const finalSizeBytes = await invoke("file_size_bytes", { path: bind.path }).catch(() => null);
-    const finalSizeNum = Number.isFinite(Number(finalSizeBytes)) ? Number(finalSizeBytes) : null;
+    // ── Règle temporelle du binding ────────────────────────────────────────
+    // pre_observation : doc lié AVANT le démarrage de la première session
+    // post_session_binding : doc lié APRÈS la première session — preuve limitée
+    // export_time : pas de doc lié avant l'export
+    const _boundBeforeFirstSession = _useBoundDoc &&
+      currentBoundDocument &&
+      (!__firstSessionStartedAt || currentBoundDocument.bound_at < __firstSessionStartedAt);
 
-    const documentBinding = currentBoundDocument
+    const documentBinding = (_useBoundDoc && currentBoundDocument)
       ? (() => {
           const hashModified = currentBoundDocument.sha256 !== bind.sha256;
           const delta = buildDocumentDelta(
@@ -2628,7 +2682,7 @@ async function exportFinalProjectCertificate() {
             currentBoundDocument.mime, bind.mime
           );
           return {
-            binding_mode: "pre_observation",
+            binding_mode: _boundBeforeFirstSession ? "pre_observation" : "post_session_binding",
             initial_sha256: currentBoundDocument.sha256,
             initial_filename: currentBoundDocument.filename,
             initial_bound_at: currentBoundDocument.bound_at,
@@ -2672,6 +2726,13 @@ async function exportFinalProjectCertificate() {
           "Document lié seulement à l'export.\n\n" +
           "HumanOrigin a observé votre activité, mais ce document n'était pas lié avant l'observation.\n" +
           "La preuve indiquera une contribution limitée au document.\n\n" +
+          "Continuer ?";
+      } else if (documentBinding.binding_mode === "post_session_binding") {
+        capMsg =
+          "Document lié après la session d'observation.\n\n" +
+          "Le document a été lié après la fin de la session — HumanOrigin ne peut pas attester que ce document était ouvert pendant l'observation.\n" +
+          "Le niveau visible sera limité.\n\n" +
+          "Pour une preuve plus forte, liez le document avant de démarrer l'observation.\n\n" +
           "Continuer ?";
       } else if (
         documentBinding.binding_mode === "pre_observation" &&
