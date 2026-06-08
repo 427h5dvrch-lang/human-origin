@@ -89,8 +89,10 @@ else
         fail "$label — pattern absent: $pattern"
       fi
     }
-    chk "buildSimpleSummaryHtml présent"  "buildSimpleSummaryHtml"
-    chk "buildTrustMetaHtml présent"      "buildTrustMetaHtml"
+    chk "buildSimpleSummaryHtml présent"     "buildSimpleSummaryHtml"
+    chk "buildTrustMetaHtml présent"         "buildTrustMetaHtml"
+    chk "HO_OFFICIAL_SERVER_KEYS présent"    "HO_OFFICIAL_SERVER_KEYS"
+    chk "verifyServerAttestation présent"    "verifyServerAttestation"
     chk "technical-details présent"       "technical-details"
     chk "explainSecurityGates présent"    "explainSecurityGates"
     chk "HumanOrigin_SEND référencé"      "HumanOrigin_SEND"
