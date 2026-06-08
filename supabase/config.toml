@@ -1,4 +1,10 @@
 
+[functions.proof-registry]
+enabled = true
+verify_jwt = false
+import_map = "./functions/proof-registry/deno.json"
+entrypoint = "./functions/proof-registry/index.ts"
+
 [functions.countersign-proof]
 enabled = true
 verify_jwt = true

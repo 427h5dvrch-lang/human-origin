@@ -132,6 +132,47 @@ else
   fail "Migration proofs table absente ($MIGRATION_FILE)"
 fi
 
+# ── 7. Edge Function proof-registry static checks ────────────────────────────
+header "7. Edge Function proof-registry (lookup public)"
+REGISTRY_FN="$REPO_DIR/supabase/functions/proof-registry/index.ts"
+if [ ! -f "$REGISTRY_FN" ]; then
+  fail "proof-registry/index.ts absent"
+else
+  rfchk() {
+    local label="$1" pattern="$2"
+    if grep -qE "$pattern" "$REGISTRY_FN"; then
+      ok "$label"
+    else
+      fail "$label — pattern absent: $pattern"
+    fi
+  }
+  rfchk "proof_not_found retourné"                 "proof_not_found"
+  rfchk "status et revoked_at retournés"          "revoked_at|\"status\""
+  rfchk "SELECT champs explicites (pas SELECT *)" "\.select\("
+  rfchk "issuer_account_id non exposé dans réponse" "proof_id.*status|status.*proof_id"
+  # Vérifier que issuer_account_id n'est PAS dans le json() de retour
+  if grep -qE '"issuer_account_id"' "$REGISTRY_FN"; then
+    fail "issuer_account_id exposé dans la réponse publique"
+  else
+    ok "issuer_account_id non exposé dans la réponse publique"
+  fi
+  rfchk "UUID validation présente"                "UUID_RE|uuid"
+fi
+
+# Vérifier que le verifier a HO_REGISTRY_LOOKUP_URL
+if [ -d "$VERIFIER_DIR" ] && [ -f "$VERIFIER_DIR/index.html" ]; then
+  if grep -qE "HO_REGISTRY_LOOKUP_URL" "$VERIFIER_DIR/index.html"; then
+    ok "HO_REGISTRY_LOOKUP_URL présent dans le verifier"
+  else
+    fail "HO_REGISTRY_LOOKUP_URL absent du verifier"
+  fi
+  if grep -qE "checkRegistryStatus" "$VERIFIER_DIR/index.html"; then
+    ok "checkRegistryStatus présent dans le verifier"
+  else
+    fail "checkRegistryStatus absent du verifier"
+  fi
+fi
+
 # ── Résultat final ────────────────────────────────────────────────────────────
 echo ""
 echo "======================================"
