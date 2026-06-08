@@ -682,7 +682,11 @@ async function pickDocumentToBind() {
 async function bindDocumentBeforeObservation() {
   try {
     const bind = await pickDocumentToBind();
-    if (!bind || !bind.path || !bind.sha256) return;
+    if (!bind) {
+      toast("Aucun document sélectionné.");
+      return;
+    }
+    if (!bind.path || !bind.sha256) return;
     const sizeBytes = await invoke("file_size_bytes", { path: bind.path }).catch(() => null);
     currentBoundDocument = {
       path: bind.path,
@@ -693,9 +697,11 @@ async function bindDocumentBeforeObservation() {
       size_bytes: Number.isFinite(Number(sizeBytes)) ? Number(sizeBytes) : null,
     };
     updateBoundDocumentUI();
-    toast("Document lié à l'observation ✅");
+    renderProofGuideBlock();
+    toast("Document de travail lié ✅");
   } catch (e) {
     console.warn("bindDocumentBeforeObservation failed", e);
+    toast("Erreur lors de la sélection du document.");
   }
 }
 
@@ -870,7 +876,10 @@ function renderProofGuideBlock() {
         <li>Ajoutez une ou plusieurs observations</li>
         <li>Créez votre document HumanOrigin</li>
       </ol>
-      <div style="font-size:11px;color:rgba(232,238,252,.3);">Vous pouvez commencer sans document lié, mais la preuve sera limitée.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
+        <button id="guide-bind-document-btn" class="btn btn-mini" type="button" style="font-weight:700;">Lier mon document</button>
+        <span style="font-size:11px;color:rgba(232,238,252,.3);">Ou commencez sans — la preuve sera limitée.</span>
+      </div>
     </div>`;
 
   } else {
@@ -883,6 +892,8 @@ function renderProofGuideBlock() {
   }
 
   block.innerHTML = html;
+  const _guideBind = block.querySelector("#guide-bind-document-btn");
+  if (_guideBind) _guideBind.onclick = bindDocumentBeforeObservation;
 }
 
 // =========================================================
@@ -4065,13 +4076,15 @@ async function exportFinalProjectCertificate() {
         console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
       }
 
-      toast(_serverAttestationAdded ? "Preuve officielle HumanOrigin ✅" : "Preuve locale HumanOrigin prête ✅");
+      const _pkgName = currentProjectName ? ` — ${currentProjectName}` : "";
+      toast(_serverAttestationAdded ? `Package HumanOrigin créé ✅${_pkgName}` : `Preuve locale HumanOrigin prête ✅${_pkgName}`);
       showSendReadyBanner();
       await invoke("open_file", { path: preferredOpenPath });
       return;
     }
 
-    toast(_serverAttestationAdded ? "Preuve officielle HumanOrigin ✅" : "Preuve locale HumanOrigin prête ✅");
+    const _pkgName = currentProjectName ? ` — ${currentProjectName}` : "";
+    toast(_serverAttestationAdded ? `Package HumanOrigin créé ✅${_pkgName}` : `Preuve locale HumanOrigin prête ✅${_pkgName}`);
     showSendReadyBanner();
     await invoke("open_file", { path: preferredOpenPath });
   } catch (e) {

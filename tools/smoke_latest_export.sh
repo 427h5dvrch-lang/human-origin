@@ -44,6 +44,15 @@ if [[ -z "$PKG" ]]; then
 fi
 
 echo "  Package : $(basename "$PKG")"
+PKG_MTIME=$(stat -f '%m' "$PKG" 2>/dev/null || stat -c '%Y' "$PKG" 2>/dev/null || echo 0)
+PKG_DATE=$(stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$PKG" 2>/dev/null || date -r "$PKG" '+%Y-%m-%d %H:%M' 2>/dev/null || echo "?")
+NOW_TS=$(date +%s)
+AGE_MIN=$(( (NOW_TS - PKG_MTIME) / 60 )) || AGE_MIN=0
+echo "  Chemin  : $PKG"
+echo "  Date    : ${PKG_DATE} (il y a ${AGE_MIN} min)"
+if [[ "$AGE_MIN" -gt 60 ]]; then
+  warn "Package vieux de ${AGE_MIN} min — peut ne pas correspondre au projet courant."
+fi
 echo ""
 
 # ── 1. Dossier 2_SEND_TO_RECIPIENT ───────────────────────────────────────────
@@ -159,6 +168,13 @@ if fmt == 'humanorigin-hojson' and ver == '1.0':
     ok(f"Format : {fmt} v{ver}")
 else:
     warn(f"Format inattendu : {fmt} v{ver}")
+
+# Nom du projet depuis le payload
+proj_name = d.get('payload', {}).get('project', {}).get('name', '')
+if proj_name:
+    ok(f"Projet : {proj_name}")
+else:
+    warn("Nom de projet absent du payload (ancien format)")
 
 # Payload
 p = d.get('payload', {})
