@@ -3941,146 +3941,207 @@ async function exportFinalProjectCertificate() {
       }
 
     if (canGeneratePublishedPdf) {
-      let sourcePdfForPublishing = publishedDocumentPath;
-
-      if (bindExtLower === "docx") {
-        const converterOutputDir = `${dir}${sep}HumanOrigin_CONVERTED`;
-
-        await createDir(converterOutputDir, { recursive: true });
-
-        const converterResult = await runConverterSidecar({
-          inputPath: publishedDocumentPath,
-          outputDir: converterOutputDir,
-        });
-
-        console.log("[CONVERTER RESULT]", converterResult);
-        sourcePdfForPublishing = converterResult.intermediate_pdf_path;
-      }
-
-      const publicationJobJson = buildPublicationJob({
-        sourcePdfPath: sourcePdfForPublishing,
-        outputPdfPath: publishedPdfPath,
-        cartouchePngPath: cartoucheCompactPngPath,
-        certificateJsonPath: hoPath,
-        verifyTxtPath,
-        certificateId,
-        verifyUrl: verifierUrl,
-        verdict,
-      });
-
-      await writeTextFile(publicationJobPath, publicationJobJson);
-
-      const publishResult = await runPublisherSidecar({
-        jobPath: publicationJobPath,
-        fallbackInput: {
-          sourcePdfPath: sourcePdfForPublishing,
-          outputPdfPath: publishedPdfPath,
-          cartoucheCompactPngPath: cartoucheCompactPngPath,
-          verifyUrl: verifierUrl,
-          certificateId,
-          verdict,
-        },
-      });
-
-      console.log("[PUBLISHER RESULT]", publishResult);
-
-      const finalPdfPath = publishResult.output_pdf_path || publishedPdfPath;
-      console.log("[PUBLISHED PDF PATH]", finalPdfPath);
-
-      const publishedOutputSha256 = await invoke("sha256_file", { path: finalPdfPath });
-
-      hoDocV1.payload.publication = {
-        status: "visible_published_copy_included",
-        relationship: bindExtLower === "docx"
-          ? "published_pdf_generated_from_bound_docx_then_marked_by_humanorigin"
-          : "published_pdf_generated_from_bound_pdf_then_marked_by_humanorigin",
-        source: {
-          role: "bound_source_document",
-          filename: hoDoc.document.filename ?? null,
-          mime: hoDoc.document.mime ?? null,
-          sha256: hoDoc.document.sha256 ?? null,
-        },
-        output: {
-          role: "published_circulation_copy",
-          filename: publishedPdfFilename,
-          mime: "application/pdf",
-          sha256: publishedOutputSha256,
-          generated_from_source_sha256: hoDoc.document.sha256 ?? null,
-          publisher_engine: publishResult.engine || "humanorigin-publisher",
-        },
-      };
-
-      await signHoDocV1();
-      await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
-
-      const _csPub = await tryCountersignHoJson(hoDocV1);
-      if (_csPub.ok) {
-        hoDocV1.server_attestation = _csPub.server_attestation;
-        await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
-        _serverAttestationAdded = true;
-      } else if (_csPub.reason !== "not_authenticated") {
-        console.info("[COUNTERSIGN] Indisponible (preuve locale conservée) :", _csPub.reason);
-      }
-
-      const manifestJsonWithPublicationHash = buildPublicationManifest({
-        projectTitle: hoDoc.subject.title,
-        documentFilename: hoDoc.document.filename,
-        publishedDocumentFilename,
-        certificateId,
-        issuedAt,
-        verdict,
-        verifierUrl,
-        documentSha256: hoDoc.document.sha256,
-        documentMime: hoDoc.document.mime,
-        publishedOutputFilename: publishedPdfFilename,
-        publishedOutputSha256,
-      });
-
-      await writeTextFile(manifestPath, manifestJsonWithPublicationHash);
+      let _pubFailed = false;
+      let _pubFailReason = null;
 
       try {
-        const rawShareProjectName = String(hoDoc?.subject?.title || "HumanOrigin Project")
-          .replace(/[\\/:*?"<>|]/g, " ")
-          .replace(/\s+/g, " ")
-          .trim() || "HumanOrigin Project";
+        let sourcePdfForPublishing = publishedDocumentPath;
 
-        const sharePackageDir = `${dir}${sep}${rawShareProjectName} — HumanOrigin Package`;
-        const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
-        const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
+        // ── Garde PDF magic bytes — vérifier %PDF- avant d'appeler Pdfium ─────
+        if (bindExtLower !== "docx") {
+          console.log("[PUBLISHER GUARD] source:", sourcePdfForPublishing, "ext:", bindExtLower);
+          let _magic = null;
+          try { _magic = await readBinaryFile(sourcePdfForPublishing); } catch {}
+          const _isPdf = _magic && _magic.length >= 5 &&
+            _magic[0] === 0x25 && _magic[1] === 0x50 && _magic[2] === 0x44 &&
+            _magic[3] === 0x46 && _magic[4] === 0x2D;
+          console.log("[PUBLISHER GUARD] magic check:", _isPdf ? "%PDF- ok" : "NOT a valid PDF header");
+          if (!_isPdf) {
+            const _e = new Error("NOT_A_VALID_PDF");
+            _e._guardReason = "not_a_valid_pdf";
+            throw _e;
+          }
+        }
 
-        const sendSourceBasename = String(hoDoc.document.filename || "Document")
-          .replace(/\.[^.]+$/, "")
-          .replace(/[/\\:*?"<>|]/g, " ")
-          .replace(/\s+/g, " ")
-          .trim() || "Document";
-        const sendPublishedPdfFilename = `${sendSourceBasename} — HumanOrigin.pdf`;
-        const sendProofFilename = "HumanOrigin_PROOF.v1.ho.json";
+        if (bindExtLower === "docx") {
+          const converterOutputDir = `${dir}${sep}HumanOrigin_CONVERTED`;
 
-        await createDir(sendDir, { recursive: true });
-        await createDir(technicalDir, { recursive: true });
+          await createDir(converterOutputDir, { recursive: true });
 
-        await copyFile(finalPdfPath, `${sendDir}${sep}${sendPublishedPdfFilename}`);
-        preferredOpenPath = `${sendDir}${sep}${sendPublishedPdfFilename}`;
-        await copyFile(hoPathV1, `${sendDir}${sep}${sendProofFilename}`);
+          const converterResult = await runConverterSidecar({
+            inputPath: publishedDocumentPath,
+            outputDir: converterOutputDir,
+          });
 
-        // Le PDF labellisé est maintenant dans sendDir — régénérer le ZIP pour l'inclure
-        await createSendZip(
-          sendDir,
-          `${sharePackageDir}${sep}HumanOrigin_SEND.zip`
-        ).catch(e => console.warn("[ZIP] post-publication regen failed", e));
+          console.log("[CONVERTER RESULT]", converterResult);
+          sourcePdfForPublishing = converterResult.intermediate_pdf_path;
+        }
 
-        await copyFile(finalPdfPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`);
-        await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`);
-        await copyFile(manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`);
-      } catch (syncErr) {
-        console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
+        const publicationJobJson = buildPublicationJob({
+          sourcePdfPath: sourcePdfForPublishing,
+          outputPdfPath: publishedPdfPath,
+          cartouchePngPath: cartoucheCompactPngPath,
+          certificateJsonPath: hoPath,
+          verifyTxtPath,
+          certificateId,
+          verifyUrl: verifierUrl,
+          verdict,
+        });
+
+        await writeTextFile(publicationJobPath, publicationJobJson);
+
+        console.log("[PUBLISHER GUARD] calling publisher, source:", sourcePdfForPublishing);
+        const publishResult = await runPublisherSidecar({
+          jobPath: publicationJobPath,
+          fallbackInput: {
+            sourcePdfPath: sourcePdfForPublishing,
+            outputPdfPath: publishedPdfPath,
+            cartoucheCompactPngPath: cartoucheCompactPngPath,
+            verifyUrl: verifierUrl,
+            certificateId,
+            verdict,
+          },
+        });
+
+        console.log("[PUBLISHER RESULT]", publishResult);
+
+        const finalPdfPath = publishResult.output_pdf_path || publishedPdfPath;
+        console.log("[PUBLISHED PDF PATH]", finalPdfPath);
+
+        const publishedOutputSha256 = await invoke("sha256_file", { path: finalPdfPath });
+
+        hoDocV1.payload.publication = {
+          status: "visible_published_copy_included",
+          relationship: bindExtLower === "docx"
+            ? "published_pdf_generated_from_bound_docx_then_marked_by_humanorigin"
+            : "published_pdf_generated_from_bound_pdf_then_marked_by_humanorigin",
+          source: {
+            role: "bound_source_document",
+            filename: hoDoc.document.filename ?? null,
+            mime: hoDoc.document.mime ?? null,
+            sha256: hoDoc.document.sha256 ?? null,
+          },
+          output: {
+            role: "published_circulation_copy",
+            filename: publishedPdfFilename,
+            mime: "application/pdf",
+            sha256: publishedOutputSha256,
+            generated_from_source_sha256: hoDoc.document.sha256 ?? null,
+            publisher_engine: publishResult.engine || "humanorigin-publisher",
+          },
+        };
+
+        await signHoDocV1();
+        await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
+
+        const _csPub = await tryCountersignHoJson(hoDocV1);
+        if (_csPub.ok) {
+          hoDocV1.server_attestation = _csPub.server_attestation;
+          await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
+          _serverAttestationAdded = true;
+        } else if (_csPub.reason !== "not_authenticated") {
+          console.info("[COUNTERSIGN] Indisponible (preuve locale conservée) :", _csPub.reason);
+        }
+
+        const manifestJsonWithPublicationHash = buildPublicationManifest({
+          projectTitle: hoDoc.subject.title,
+          documentFilename: hoDoc.document.filename,
+          publishedDocumentFilename,
+          certificateId,
+          issuedAt,
+          verdict,
+          verifierUrl,
+          documentSha256: hoDoc.document.sha256,
+          documentMime: hoDoc.document.mime,
+          publishedOutputFilename: publishedPdfFilename,
+          publishedOutputSha256,
+        });
+
+        await writeTextFile(manifestPath, manifestJsonWithPublicationHash);
+
+        try {
+          const rawShareProjectName = String(hoDoc?.subject?.title || "HumanOrigin Project")
+            .replace(/[\\/:*?"<>|]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim() || "HumanOrigin Project";
+
+          const sharePackageDir = `${dir}${sep}${rawShareProjectName} — HumanOrigin Package`;
+          const sendDir = `${sharePackageDir}${sep}2_SEND_TO_RECIPIENT`;
+          const technicalDir = `${sharePackageDir}${sep}3_TECHNICAL_PROOF_ARCHIVE`;
+
+          const sendSourceBasename = String(hoDoc.document.filename || "Document")
+            .replace(/\.[^.]+$/, "")
+            .replace(/[/\\:*?"<>|]/g, " ")
+            .replace(/\s+/g, " ")
+            .trim() || "Document";
+          const sendPublishedPdfFilename = `${sendSourceBasename} — HumanOrigin.pdf`;
+          const sendProofFilename = "HumanOrigin_PROOF.v1.ho.json";
+
+          await createDir(sendDir, { recursive: true });
+          await createDir(technicalDir, { recursive: true });
+
+          await copyFile(finalPdfPath, `${sendDir}${sep}${sendPublishedPdfFilename}`);
+          preferredOpenPath = `${sendDir}${sep}${sendPublishedPdfFilename}`;
+          await copyFile(hoPathV1, `${sendDir}${sep}${sendProofFilename}`);
+
+          // Le PDF labellisé est maintenant dans sendDir — régénérer le ZIP pour l'inclure
+          await createSendZip(
+            sendDir,
+            `${sharePackageDir}${sep}HumanOrigin_SEND.zip`
+          ).catch(e => console.warn("[ZIP] post-publication regen failed", e));
+
+          await copyFile(finalPdfPath, `${technicalDir}${sep}HumanOrigin_PUBLISHED.pdf`);
+          await copyFile(hoPathV1, `${technicalDir}${sep}CERTIFICAT_FINAL.v1.ho.json`);
+          await copyFile(manifestPath, `${technicalDir}${sep}HumanOrigin_MANIFEST.json`);
+        } catch (syncErr) {
+          console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
+        }
+
+        const _pkgName = currentProjectName ? ` — ${currentProjectName}` : "";
+        toast(_serverAttestationAdded ? `Package HumanOrigin créé ✅${_pkgName}` : `Preuve locale HumanOrigin prête ✅${_pkgName}`);
+        showSendReadyBanner();
+        await invoke("open_file", { path: preferredOpenPath });
+        return;
+
+      } catch (pubErr) {
+        _pubFailed = true;
+        const _pubErrMsg = String(pubErr?.message || pubErr);
+        console.warn("[PUBLISHER GUARD] publication failed:", _pubErrMsg);
+        if (pubErr._guardReason === "not_a_valid_pdf") {
+          _pubFailReason = "not_a_valid_pdf";
+        } else if (_pubErrMsg.includes("FormatError") || _pubErrMsg.includes("PdfiumLibrary")) {
+          _pubFailReason = "corrupted_pdf";
+        } else {
+          _pubFailReason = "publisher_error";
+        }
       }
 
-      const _pkgName = currentProjectName ? ` — ${currentProjectName}` : "";
-      toast(_serverAttestationAdded ? `Package HumanOrigin créé ✅${_pkgName}` : `Preuve locale HumanOrigin prête ✅${_pkgName}`);
-      showSendReadyBanner();
-      await invoke("open_file", { path: preferredOpenPath });
-      return;
+      // Publication PDF échouée — message ciblé, countersign, fall-through vers banner sans PDF
+      if (_pubFailed) {
+        if (_pubFailReason === "not_a_valid_pdf") {
+          alert(
+            "Ce format ne peut pas être publié en PDF labellisé dans cette version.\n\n" +
+            "La preuve HumanOrigin a été créée, mais aucun PDF labellisé n'a pu être généré."
+          );
+        } else if (_pubFailReason === "corrupted_pdf") {
+          alert(
+            "Ce PDF ne peut pas être ouvert par HumanOrigin.\n\n" +
+            "Essayez de l'exporter à nouveau en PDF depuis Word, Pages ou Aperçu, puis relancez l'export."
+          );
+        } else {
+          alert(
+            "La publication PDF a échoué.\n\n" +
+            "La preuve HumanOrigin a été créée. Vous pouvez la partager sans PDF labellisé."
+          );
+        }
+        const _csF = await tryCountersignHoJson(hoDocV1);
+        if (_csF.ok) {
+          hoDocV1.server_attestation = _csF.server_attestation;
+          await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
+          _serverAttestationAdded = true;
+        }
+        // Fall through : la preuve locale est prête, le banner s'affiche ci-dessous
+      }
     }
 
     const _pkgName = currentProjectName ? ` — ${currentProjectName}` : "";
