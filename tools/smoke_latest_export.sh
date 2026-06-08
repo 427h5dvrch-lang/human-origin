@@ -405,6 +405,18 @@ if paste_risk_gate is not None:
 else:
     warn("security_gates.paste_risk absent (ancien package)")
 
+server_att = doc.get('server_attestation')
+if server_att:
+    ok(f"server_attestation présent — proof_id : {str(server_att.get('proof_id','—'))[:8]}…")
+    ok(f"server_attestation.server_key_id : {server_att.get('server_key_id','—')}")
+    reg_url = server_att.get('registry_url')
+    if reg_url:
+        ok(f"server_attestation.registry_url : {reg_url}")
+    else:
+        warn("server_attestation.registry_url absent (P0 — normal)")
+else:
+    warn("server_attestation absent — preuve locale (normal si countersign non configuré)")
+
 sys.exit(errors)
 PYEOF
   PROOF_EXIT=$?

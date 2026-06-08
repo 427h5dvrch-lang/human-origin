@@ -2757,6 +2757,44 @@ async function runConverterSidecar({ inputPath, outputDir }) {
   return parsed;
 }
 // =========================================================
+// COUNTERSIGN — appel serveur post-signature locale (non-bloquant)
+// =========================================================
+async function tryCountersignHoJson(hoDocV1) {
+  if (!currentUser?.id || currentUser?.isLocal) {
+    return { ok: false, reason: "not_authenticated" };
+  }
+  if (
+    !hoDocV1?.payload ||
+    !hoDocV1?.payload_sha256 ||
+    !Array.isArray(hoDocV1?.signatures) ||
+    !hoDocV1.signatures[0]?.signature
+  ) {
+    return { ok: false, reason: "incomplete_hodoc" };
+  }
+  try {
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("countersign timeout")), 7000)
+    );
+    const invokePromise = supabase.functions.invoke("countersign-proof", {
+      body: hoDocV1,
+    });
+    const result = await Promise.race([invokePromise, timeout]);
+    const { data, error } = result;
+    if (error) {
+      console.warn("[COUNTERSIGN] Server error:", error);
+      return { ok: false, reason: "server_error", error: String(error?.message || error) };
+    }
+    if (!data?.server_attestation) {
+      console.warn("[COUNTERSIGN] No server_attestation in response");
+      return { ok: false, reason: "no_attestation" };
+    }
+    return { ok: true, server_attestation: data.server_attestation };
+  } catch (e) {
+    console.warn("[COUNTERSIGN] Non-blocking failure:", String(e));
+    return { ok: false, reason: "error", error: String(e) };
+  }
+}
+// =========================================================
 // FINAL PROJECT CERTIFICATE (HTML + HO-JSON + PUBLICATION KIT)
 // =========================================================
 async function exportFinalProjectCertificate() {
@@ -3460,6 +3498,7 @@ async function exportFinalProjectCertificate() {
     };
 
     await signHoDocV1();
+    let _serverAttestationAdded = false;
 
     await writeTextFile(badgePath, badgeSvg);
     await writeTextFile(cartouchePath, cartoucheSvg);
@@ -3471,6 +3510,17 @@ async function exportFinalProjectCertificate() {
     await writeTextFile(manifestPath, manifestJson);
     await writeTextFile(hoPath, JSON.stringify(hoDoc, null, 2));
     await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
+
+    if (!canGeneratePublishedPdf) {
+      const _cs = await tryCountersignHoJson(hoDocV1);
+      if (_cs.ok) {
+        hoDocV1.server_attestation = _cs.server_attestation;
+        await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
+        _serverAttestationAdded = true;
+      } else if (_cs.reason !== "not_authenticated") {
+        console.info("[COUNTERSIGN] Indisponible (preuve locale conservée) :", _cs.reason);
+      }
+    }
 
     await invoke("copy_file", {
       srcPath: bind.path,
@@ -3952,6 +4002,15 @@ async function exportFinalProjectCertificate() {
       await signHoDocV1();
       await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
 
+      const _csPub = await tryCountersignHoJson(hoDocV1);
+      if (_csPub.ok) {
+        hoDocV1.server_attestation = _csPub.server_attestation;
+        await writeTextFile(hoPathV1, JSON.stringify(hoDocV1, null, 2));
+        _serverAttestationAdded = true;
+      } else if (_csPub.reason !== "not_authenticated") {
+        console.info("[COUNTERSIGN] Indisponible (preuve locale conservée) :", _csPub.reason);
+      }
+
       const manifestJsonWithPublicationHash = buildPublicationManifest({
         projectTitle: hoDoc.subject.title,
         documentFilename: hoDoc.document.filename,
@@ -4006,13 +4065,13 @@ async function exportFinalProjectCertificate() {
         console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
       }
 
-      toast("Document HumanOrigin prêt ✅");
+      toast(_serverAttestationAdded ? "Preuve officielle HumanOrigin ✅" : "Preuve locale HumanOrigin prête ✅");
       showSendReadyBanner();
       await invoke("open_file", { path: preferredOpenPath });
       return;
     }
 
-    toast("Document HumanOrigin prêt ✅");
+    toast(_serverAttestationAdded ? "Preuve officielle HumanOrigin ✅" : "Preuve locale HumanOrigin prête ✅");
     showSendReadyBanner();
     await invoke("open_file", { path: preferredOpenPath });
   } catch (e) {
