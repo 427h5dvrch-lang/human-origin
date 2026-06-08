@@ -103,6 +103,35 @@ else
   fi
 fi
 
+# ── 6. Edge Function countersign-proof static checks ─────────────────────────
+header "6. Edge Function countersign-proof"
+COUNTERSIGN_FN="$REPO_DIR/supabase/functions/countersign-proof/index.ts"
+if [ ! -f "$COUNTERSIGN_FN" ]; then
+  fail "countersign-proof/index.ts absent"
+else
+  fchk() {
+    local label="$1" pattern="$2"
+    if grep -qE "$pattern" "$COUNTERSIGN_FN"; then
+      ok "$label"
+    else
+      fail "$label — pattern absent: $pattern"
+    fi
+  }
+  fchk "HUMANORIGIN_SERVER_SIGNING_PRIVATE_KEY_B64 référencé"  "HUMANORIGIN_SERVER_SIGNING_PRIVATE_KEY_B64"
+  fchk "server_attestation construit"                          "server_attestation"
+  fchk "canonicalize présent"                                  "canonicalize"
+  fchk "verifyServerAttestation compatible (ed.verify)"        "ed\.verify"
+  fchk "Anti-replay payload_sha256 unique"                     "payload_sha256"
+  fchk "Rejet document content"                                "document_content"
+fi
+
+MIGRATION_FILE="$REPO_DIR/supabase/migrations/20260608000000_create_proofs_table.sql"
+if [ -f "$MIGRATION_FILE" ]; then
+  ok "Migration proofs table présente"
+else
+  fail "Migration proofs table absente ($MIGRATION_FILE)"
+fi
+
 # ── Résultat final ────────────────────────────────────────────────────────────
 echo ""
 echo "======================================"

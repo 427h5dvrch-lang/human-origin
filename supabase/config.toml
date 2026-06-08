@@ -1,4 +1,10 @@
 
+[functions.countersign-proof]
+enabled = true
+verify_jwt = true
+import_map = "./functions/countersign-proof/deno.json"
+entrypoint = "./functions/countersign-proof/index.ts"
+
 [functions.sign-cert]
 enabled = true
 verify_jwt = true
