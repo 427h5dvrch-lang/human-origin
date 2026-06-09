@@ -461,7 +461,7 @@ else:
 if pol is not None:
     lvl = pol.get('level','—')
     if lvl == 'strong':
-        ok(f"process_object_link.level : {lvl} ✅ — lien fort confirmé par extraction texte + cohérence activité (confiance : {pol.get('confidence','—')})")
+        ok(f"process_object_link.level : {lvl} ✅ — lien fort confirmé par extraction texte + cohérence activité (confiance : {pol.get('confidence','—')}) · verdict global : {vis or '—'}")
     elif lvl == 'plausible':
         ok(f"process_object_link.level : {lvl} (confiance : {pol.get('confidence','—')})")
     elif lvl == 'partial':
@@ -524,10 +524,10 @@ if ext_conf not in (None, 'none'):
     # Synthèse strong
     pol2 = doc_v7.get('process_object_link', {}) or {}
     if pol2.get('level') == 'strong':
-        if dca is True and tac == 'consistent' and wcd is not None and abs(wcd) >= 30 and thc is True:
-            ok("P1 strong — toutes conditions vérifiées : DCA=true, coherence=consistent, text_hash_changed=true, word_count_delta>=30 ✅")
+        if dca is True and tac == 'consistent' and wcd is not None and abs(wcd) >= 30 and thc is True and vis == 'COHERENT':
+            ok(f"P1 strong — toutes conditions vérifiées : DCA=true, coherence=consistent, text_hash_changed=true, word_count_delta>=30, verdict=COHERENT ✅")
         else:
-            warn(f"P1 strong — conditions partielles (dca={dca}, coherence={tac}, wcd={wcd}, thc={thc})")
+            warn(f"P1 strong — conditions partielles (dca={dca}, coherence={tac}, wcd={wcd}, thc={thc}, verdict={vis})")
 else:
     warn("P1 structural extraction : non disponible (format non supporté ou ancien package)")
 

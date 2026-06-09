@@ -832,12 +832,13 @@ function buildDocumentContributionAttested(
   );
 }
 
-function maybePromoteProcessObjectLinkToStrong(objectEvidence, documentContributionAttested, textActivityCoherence) {
+function maybePromoteProcessObjectLinkToStrong(objectEvidence, documentContributionAttested, textActivityCoherence, globalVerdict) {
   if (!objectEvidence) return;
   const pol = objectEvidence.process_object_link;
   const od  = objectEvidence.object_delta;
   if (
-    pol?.level === "plausible"
+    globalVerdict === "COHERENT"
+    && pol?.level === "plausible"
     && documentContributionAttested === true
     && textActivityCoherence === "consistent"
     && od?.text_hash_changed === true
@@ -3521,8 +3522,8 @@ async function exportFinalProjectCertificate() {
       documentBinding, _objectEvidence, isShortEvidence, pasteCapApplied, pasteSummary, _textActivityCoherence
     );
 
-    // ── Promotion strong — uniquement si DCA=true + cohérence "consistent" ─
-    maybePromoteProcessObjectLinkToStrong(_objectEvidence, _documentContributionAttested, _textActivityCoherence);
+    // ── Promotion strong — uniquement si DCA=true + cohérence "consistent" + verdict COHERENT ─
+    maybePromoteProcessObjectLinkToStrong(_objectEvidence, _documentContributionAttested, _textActivityCoherence, verdict);
 
     // UX : message non-bloquant si le document n'a pas changé pendant l'observation
     if (_objectEvidence && !_objectEvidence.object_delta.changed_during_observed_sessions

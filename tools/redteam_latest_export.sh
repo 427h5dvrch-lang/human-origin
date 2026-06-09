@@ -565,8 +565,18 @@ if obj_delta is not None:
     else:
         ok_f(f"Invariant OE15 — (non strong, règle non applicable)")
 
+    # OE16 : strong → visible_verdict = COHERENT
+    if pol_level == 'strong':
+        if visible_verdict != 'COHERENT':
+            fail_f(f"Invariant OE16 — process_object_link=strong mais visible_verdict={visible_verdict!r} (doit être COHERENT) : incohérence verdict/lien objet")
+            failures += 1
+        else:
+            ok_f("Invariant OE16 — strong / visible_verdict=COHERENT ✓")
+    else:
+        ok_f(f"Invariant OE16 — (non strong, règle non applicable)")
+
 else:
-    warn_f("Invariants OE1–OE15 non applicables (object_delta absent — ancien package)")
+    warn_f("Invariants OE1–OE16 non applicables (object_delta absent — ancien package)")
 
 # ── Résultat final ────────────────────────────────────────────────────────────
 print("")
