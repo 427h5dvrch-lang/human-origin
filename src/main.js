@@ -106,8 +106,24 @@ function applyExportSuccessCopy(verdict) {
   const subtitle = $("export-success-subtitle");
   const badge = $("export-success-primary-badge");
   const note = $("export-success-note");
+  const ctx = __lastExportContext || {};
 
-  if (v === "SUSPECT") {
+  if (ctx.dca === false && ctx.hashChanged === false) {
+    if (kicker) kicker.textContent = hoPerm("Activité observée", "Activity observed");
+    if (title) title.textContent = hoPerm(
+      "Activité observée — contribution au document non démontrée",
+      "Activity observed — document contribution not demonstrated"
+    );
+    if (subtitle) subtitle.textContent = hoPerm(
+      "HumanOrigin a enregistré votre activité humaine, mais le document suivi n'a pas changé pendant l'observation. Cette preuve atteste uniquement que vous avez travaillé sur votre ordinateur.",
+      "HumanOrigin recorded your human activity, but the tracked document did not change during the observation. This proof only attests that you worked on your computer."
+    );
+    if (badge) badge.textContent = hoPerm("Contribution non attestée", "Contribution not attested");
+    if (note) note.textContent = hoPerm(
+      "Ce PDF ne doit pas être présenté comme preuve de contribution à ce document. Il atteste uniquement une activité humaine pendant l'observation.",
+      "This PDF should not be presented as proof of contribution to this document. It only attests to human activity during the observation."
+    );
+  } else if (v === "SUSPECT") {
     if (kicker) kicker.textContent = hoPerm("Preuve limitée générée", "Limited proof generated");
     if (title) title.textContent = hoPerm(
       "Votre document contient une preuve HumanOrigin limitée.",
@@ -359,6 +375,7 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
         "authentic_photo", "real_human_voice", "scene_authenticity_verified",
         "image_not_ai_generated", "video_not_ai_generated", "audio_not_ai_generated",
         "code_correctness_verified",
+        "document_work_link_not_demonstrated", "document_creation_attested",
       ],
       security_gates: {
         session_gate: "short_observed",
@@ -4165,6 +4182,9 @@ async function exportFinalProjectCertificate() {
         docName: sendPublishedPdfFilename,
         projectName: rawShareProjectName,
         verdict,
+        dca: _documentContributionAttested ?? null,
+        hashChanged: _objectEvidence?.object_delta?.hash_changed ?? null,
+        polLevel: _objectEvidence?.process_object_link?.level ?? null,
       };
 
       const technicalCopies = [
