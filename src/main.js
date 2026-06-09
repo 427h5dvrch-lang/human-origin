@@ -346,7 +346,7 @@ function buildDocumentDelta(initialSize, finalSize, initialMime, finalMime) {
   };
 }
 
-function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason, pasteSummary = {}, isShortEvidence = false, objectEvidence = null, documentContributionAttested = null) {
+function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason, pasteSummary = {}, isShortEvidence = false, objectEvidence = null, documentContributionAttested = null, textActivityCoherence = null) {
   if (isShortEvidence) {
     // Trace courte : claims stricts, aucune surpromesse possible
     return {
@@ -439,6 +439,15 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
       meaningful_delta: od?.meaningful_delta ?? null,
       process_object_link_level: objectEvidence?.process_object_link?.level ?? null,
       document_contribution_attested: documentContributionAttested ?? null,
+      extraction_status_initial: objectEvidence?.object_state_initial?.extraction_status ?? null,
+      extraction_status_final: objectEvidence?.object_state_final?.extraction_status ?? null,
+      text_hash_changed: od?.text_hash_changed ?? null,
+      text_length_delta: od?.text_length_delta ?? null,
+      word_count_delta: od?.word_count_delta ?? null,
+      page_delta: od?.page_delta ?? null,
+      structural_delta: od?.structural_delta ?? null,
+      extraction_confidence: od?.extraction_confidence ?? null,
+      text_activity_coherence: textActivityCoherence ?? null,
     },
     caps_applied: capReason ? [capReason] : [],
   };
@@ -629,7 +638,7 @@ function stopDocumentPolling() {
   }
 }
 
-function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt, finalMtimeIso) {
+function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt, finalMtimeIso, finalStructure = null) {
   if (!boundDoc) return null;
 
   const objectStateInitial = {
@@ -639,7 +648,11 @@ function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt,
     extension: fileExtLower(boundDoc.filename || ""),
     mime_or_kind: boundDoc.mime || null,
     bound_at: boundDoc.bound_at,
-    extraction_status: "not_attempted",
+    page_count: boundDoc.structure_t0?.page_count ?? null,
+    text_length: boundDoc.structure_t0?.text_length ?? null,
+    word_count: boundDoc.structure_t0?.word_count ?? null,
+    text_extract_hash: boundDoc.structure_t0?.text_extract_hash ?? null,
+    extraction_status: boundDoc.structure_t0?.extraction_status ?? "not_attempted",
   };
 
   const objectStateFinal = {
@@ -647,8 +660,33 @@ function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt,
     size_bytes: finalSizeNum,
     mtime_iso: finalMtimeIso || null,
     finalized_at: finalSelectedAt,
-    extraction_status: "not_attempted",
+    page_count: finalStructure?.page_count ?? null,
+    text_length: finalStructure?.text_length ?? null,
+    word_count: finalStructure?.word_count ?? null,
+    text_extract_hash: finalStructure?.text_extract_hash ?? null,
+    extraction_status: finalStructure?.extraction_status ?? "not_attempted",
   };
+
+  // P1 : delta structurel — métriques texte/page
+  const textExtractionOk = objectStateInitial.extraction_status === "ok" && objectStateFinal.extraction_status === "ok";
+  const pdfExtractionOk  = objectStateInitial.extraction_status === "page_count_only" && objectStateFinal.extraction_status === "page_count_only";
+  const textHashChanged = textExtractionOk
+    ? (!!objectStateInitial.text_extract_hash && !!objectStateFinal.text_extract_hash
+       && objectStateInitial.text_extract_hash !== objectStateFinal.text_extract_hash)
+    : null;
+  const textLengthDelta = textExtractionOk
+    ? Math.abs((objectStateFinal.text_length || 0) - (objectStateInitial.text_length || 0)) : null;
+  const wordCountDelta = textExtractionOk
+    ? ((objectStateFinal.word_count || 0) - (objectStateInitial.word_count || 0)) : null;
+  const pageDelta = pdfExtractionOk
+    ? ((objectStateFinal.page_count || 0) - (objectStateInitial.page_count || 0)) : null;
+  const structuralDelta = textExtractionOk
+    ? (textHashChanged === true)
+    : pdfExtractionOk ? (pageDelta !== 0) : null;
+  const textDeltaRatio = (textExtractionOk && (objectStateInitial.text_length || 0) > 0)
+    ? Math.round(Math.abs((objectStateFinal.text_length || 0) - (objectStateInitial.text_length || 0)) / Math.max(objectStateInitial.text_length, 1) * 10000) / 10000
+    : null;
+  const extractionConfidence = textExtractionOk ? "ok" : pdfExtractionOk ? "page_count_only" : "none";
 
   const hashChanged = !!objectStateInitial.sha256 && !!objectStateFinal.sha256
     && objectStateInitial.sha256 !== objectStateFinal.sha256;
@@ -675,10 +713,16 @@ function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt,
 
   const hasSnapshotData = __sessionTimestamps.some(s => s.doc_snapshot_start || s.doc_snapshot_end);
 
-  // meaningful_delta : changement de hash + taille >= 512 octets ET ratio >= 1%
-  const meaningfulDelta = hashChanged
+  // P0 : delta taille — fallback quand extraction non disponible
+  const p0MeaningfulDelta = hashChanged
     && (sizeDeltaBytes === null || sizeDeltaBytes >= 512)
     && (sizeDeltaRatio === null || sizeDeltaRatio >= 0.01);
+  // P1 : signal structurel prioritaire quand extraction disponible
+  const meaningfulDelta = textExtractionOk
+    ? (textHashChanged === true)
+    : pdfExtractionOk
+    ? ((pageDelta !== 0) || p0MeaningfulDelta)
+    : p0MeaningfulDelta;
 
   // Construire la liste consolidée des événements (polling + snapshots session)
   const snapshotEvents = __sessionTimestamps
@@ -717,6 +761,13 @@ function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt,
     last_change_at: lastChangeAt,
     meaningful_delta: meaningfulDelta,
     delta_confidence: deltaConfidence,
+    text_hash_changed: textHashChanged,
+    text_length_delta: textLengthDelta,
+    word_count_delta: wordCountDelta,
+    page_delta: pageDelta,
+    structural_delta: structuralDelta,
+    text_delta_ratio: textDeltaRatio,
+    extraction_confidence: extractionConfidence,
   };
 
   let polLevel, polReason, polConfidence;
@@ -729,6 +780,8 @@ function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt,
     polConfidence = 0.2;
   } else if (!meaningfulDelta) {
     polLevel = "partial"; polReason = "changed_during_session_delta_not_meaningful"; polConfidence = 0.4;
+  } else if (textExtractionOk && textHashChanged === true) {
+    polLevel = "strong"; polReason = "extraction_confirmed_structural_delta"; polConfidence = 0.85;
   } else {
     polLevel = "plausible"; polReason = "changed_during_session_with_meaningful_delta"; polConfidence = 0.65;
   }
@@ -743,12 +796,19 @@ function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt,
 }
 
 function buildDocumentContributionAttested(
-  documentBinding, objectEvidence, isShortEvidence, pasteCapApplied, pasteSummary
+  documentBinding, objectEvidence, isShortEvidence, pasteCapApplied, pasteSummary, textActivityCoherence = null
 ) {
   if (!objectEvidence) return false;
   const od = objectEvidence.object_delta;
   const pasteRisk = Number(pasteSummary?.paste_dominant_sessions || 0) > 0
     || Number(pasteSummary?.paste_heavy_sessions || 0) > 0;
+  // P1: si extraction textuelle disponible, exiger text_hash_changed=true
+  const textExtractionOk =
+    objectEvidence.object_state_initial?.extraction_status === "ok" &&
+    objectEvidence.object_state_final?.extraction_status === "ok";
+  const textHashGate = !textExtractionOk || od.text_hash_changed === true;
+  // P1: activité incohérente → dca=false
+  const coherenceGate = textActivityCoherence !== "suspicious_low_keystrokes";
   return (
     documentBinding.binding_mode === "pre_observation"
     && documentBinding.binding_coverage === "full"
@@ -763,7 +823,55 @@ function buildDocumentContributionAttested(
     && !pasteRisk
     && !pasteCapApplied
     && documentBinding.format_conversion_detected === false
+    && textHashGate
+    && coherenceGate
   );
+}
+
+async function extractDocumentStructure(path, extension) {
+  const ext = String(extension || "").replace(/^\./, "").toLowerCase();
+  try {
+    if (ext === "pdf") {
+      const pageCount = await invoke("pdf_page_count", { path }).catch(() => null);
+      if (pageCount === null) return { extraction_status: "failed_pdf" };
+      return { page_count: Number(pageCount), extraction_status: "page_count_only" };
+    }
+    if (ext === "docx") {
+      const r = await invoke("extract_docx_text_metrics", { path }).catch(() => null);
+      if (!r) return { extraction_status: "failed_docx" };
+      return {
+        text_length: r.text_length ?? null,
+        word_count: r.word_count ?? null,
+        text_extract_hash: r.text_extract_hash ?? null,
+        extraction_status: r.extraction_status || "ok",
+      };
+    }
+    if (["txt", "md", "rst", "text"].includes(ext)) {
+      const raw = await invoke("read_text_file", { path }).catch(() => null);
+      if (raw === null) return { extraction_status: "failed_txt" };
+      const normalized = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+      const textLength = normalized.length;
+      const wordCount = normalized ? normalized.split(/\s+/).filter(Boolean).length : 0;
+      const textExtractHash = await sha256Hex(normalized).catch(() => null);
+      return { text_length: textLength, word_count: wordCount, text_extract_hash: textExtractHash, extraction_status: "ok" };
+    }
+    if (ext === "rtf") {
+      const raw = await invoke("read_text_file", { path }).catch(() => null);
+      if (raw === null) return { extraction_status: "failed_rtf" };
+      const stripped = raw
+        .replace(/\\[a-zA-Z]+[-]?\d*\s?/g, " ")
+        .replace(/[\\{}]/g, " ");
+      const normalized = stripped.split(/\s+/).filter(Boolean).join(" ");
+      const textLength = normalized.length;
+      const wordCount = normalized ? normalized.split(/\s+/).filter(Boolean).length : 0;
+      const textExtractHash = await sha256Hex(normalized).catch(() => null);
+      return { text_length: textLength, word_count: wordCount, text_extract_hash: textExtractHash, extraction_status: "partial_rtf" };
+    }
+    return { extraction_status: "not_supported" };
+  } catch (err) {
+    console.warn("[extractDocumentStructure] error:", err);
+    return { extraction_status: "error" };
+  }
 }
 
 function verdictFromScp(scp) {
@@ -887,6 +995,7 @@ async function bindDocumentBeforeObservation() {
     if (!bind.path || !bind.sha256) return;
     const sizeBytes = await invoke("file_size_bytes", { path: bind.path }).catch(() => null);
     const mtimeIso  = await invoke("file_mtime_iso",   { path: bind.path }).catch(() => null);
+    const structureT0 = await extractDocumentStructure(bind.path, fileExtLower(bind.filename || "")).catch(() => ({ extraction_status: "error" }));
     currentBoundDocument = {
       path: bind.path,
       filename: bind.filename || "Document",
@@ -895,6 +1004,7 @@ async function bindDocumentBeforeObservation() {
       bound_at: new Date().toISOString(),
       size_bytes: Number.isFinite(Number(sizeBytes)) ? Number(sizeBytes) : null,
       mtime_iso: mtimeIso || null,
+      structure_t0: structureT0,
     };
     // Nouveau document lié — réinitialiser les événements de surveillance
     __docChangeEvents = [];
@@ -3273,9 +3383,23 @@ async function exportFinalProjectCertificate() {
     // ── Object Evidence Core — construit avant le cap ─────────────────────
     const _finalMtimeIso = (_useBoundDoc && currentBoundDocument)
       ? await invoke("file_mtime_iso", { path: bind.path }).catch(() => null) : null;
-    const _objectEvidence = (_useBoundDoc && currentBoundDocument)
-      ? buildObjectEvidence(currentBoundDocument, bind, finalSizeNum, finalSelectedAt, _finalMtimeIso)
+    const _finalStructure = (_useBoundDoc && currentBoundDocument)
+      ? await extractDocumentStructure(bind.path, fileExtLower(currentBoundDocument.filename || "")).catch(() => ({ extraction_status: "error" }))
       : null;
+    const _objectEvidence = (_useBoundDoc && currentBoundDocument)
+      ? buildObjectEvidence(currentBoundDocument, bind, finalSizeNum, finalSelectedAt, _finalMtimeIso, _finalStructure)
+      : null;
+    const _textActivityCoherence = (() => {
+      const od = _objectEvidence?.object_delta;
+      if (!od || od.word_count_delta === null || od.word_count_delta === undefined) return null;
+      const wcd = od.word_count_delta;
+      const ks = Number(res.total_keystrokes || 0);
+      if (!od.text_hash_changed && wcd === 0) return "text_unchanged";
+      if (od.text_hash_changed && wcd === 0) return "reformatting_possible";
+      if (ks > 0 && Math.abs(wcd) > 0 && ks < Math.abs(wcd) * 3) return "suspicious_low_keystrokes";
+      if (ks > 0 && Math.abs(wcd) > 0) return "consistent";
+      return "not_determined";
+    })();
 
     // ── Plafonner le verdict selon le binding documentaire ─────────────────
     const rawEngineVerdict = verdict;
@@ -3368,7 +3492,7 @@ async function exportFinalProjectCertificate() {
 
     // ── document_contribution_attested — calculé après tous les caps ───────
     const _documentContributionAttested = buildDocumentContributionAttested(
-      documentBinding, _objectEvidence, isShortEvidence, pasteCapApplied, pasteSummary
+      documentBinding, _objectEvidence, isShortEvidence, pasteCapApplied, pasteSummary, _textActivityCoherence
     );
 
     // UX : message non-bloquant si le document n'a pas changé pendant l'observation
@@ -3669,7 +3793,7 @@ async function exportFinalProjectCertificate() {
           raw_engine_verdict: rawEngineVerdict,
           visible_verdict: verdict,
           short_evidence: isShortEvidence,
-          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason, pasteSummary, isShortEvidence, _objectEvidence, _documentContributionAttested),
+          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason, pasteSummary, isShortEvidence, _objectEvidence, _documentContributionAttested, _textActivityCoherence),
         },
         verification: {
           verify_url: verifierUrl || null,

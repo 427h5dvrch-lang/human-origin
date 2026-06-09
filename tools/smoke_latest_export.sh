@@ -478,6 +478,50 @@ elif dca is False:
 else:
     warn("document_contribution_attested : absent (ancien package)")
 
+# ── Object Evidence P1 — extraction structurelle (V7.1) ──────────────────
+obj_state_init = doc_v7.get('object_state_initial') or {}
+ext_init  = obj_state_init.get('extraction_status')
+ext_conf  = (obj_delta or {}).get('extraction_confidence', 'none')
+if ext_conf not in (None, 'none'):
+    if ext_init in ('ok', 'partial_rtf'):
+        ok(f"P1 extraction_status_initial : {ext_init}")
+    elif ext_init == 'page_count_only':
+        ok(f"P1 extraction_status_initial : {ext_init} (PDF — page count uniquement)")
+    else:
+        warn(f"P1 extraction_status_initial : {ext_init}")
+    thc = (obj_delta or {}).get('text_hash_changed')
+    wcd = (obj_delta or {}).get('word_count_delta')
+    pgd = (obj_delta or {}).get('page_delta')
+    sd  = (obj_delta or {}).get('structural_delta')
+    tdr = (obj_delta or {}).get('text_delta_ratio')
+    tac = (le or {}).get('security_gates', {}).get('text_activity_coherence')
+    if thc is True:
+        ok(f"P1 text_hash_changed : {thc} ✅ (modification textuelle confirmée)")
+    elif thc is False:
+        warn(f"P1 text_hash_changed : {thc} (aucune modification textuelle détectée)")
+    if wcd is not None:
+        ok(f"P1 word_count_delta : {wcd:+d} mot(s)")
+    if pgd is not None:
+        lbl = f"{pgd:+d}" if pgd != 0 else "0 (aucun changement de pages)"
+        ok(f"P1 page_delta : {lbl}")
+    if sd is True:
+        ok(f"P1 structural_delta : {sd} ✅")
+    elif sd is False:
+        warn(f"P1 structural_delta : {sd}")
+    if tdr is not None:
+        ok(f"P1 text_delta_ratio : {tdr}")
+    if tac:
+        if tac == 'consistent':
+            ok(f"P1 text_activity_coherence : {tac}")
+        elif tac == 'reformatting_possible':
+            warn(f"P1 text_activity_coherence : {tac} (reformatage possible sans création)")
+        elif 'suspicious' in tac:
+            warn(f"P1 text_activity_coherence : {tac} ⚠️")
+        else:
+            ok(f"P1 text_activity_coherence : {tac}")
+else:
+    warn("P1 structural extraction : non disponible (format non supporté ou ancien package)")
+
 sys.exit(errors)
 PYEOF
   PROOF_EXIT=$?

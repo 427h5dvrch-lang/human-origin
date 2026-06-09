@@ -1119,6 +1119,49 @@ fn file_mtime_iso(path: String) -> Result<String, String> {
     Ok(dt.to_rfc3339())
 }
 #[tauri::command]
+fn pdf_page_count(path: String) -> Result<u32, String> {
+    use pdfium_auto::bind_pdfium_silent;
+    use pdfium_render::prelude::*;
+    let pdfium = bind_pdfium_silent().map_err(|e| format!("{:?}", e))?;
+    let doc = pdfium.load_pdf_from_file(&path, None).map_err(|e| format!("{:?}", e))?;
+    Ok(doc.pages().len() as u32)
+}
+#[tauri::command]
+fn extract_docx_text_metrics(path: String) -> Result<serde_json::Value, String> {
+    let file = File::open(&path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+    let mut archive = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
+    let mut xml_content = String::new();
+    {
+        let mut xml_file = archive.by_name("word/document.xml")
+            .map_err(|_| "no_document_xml".to_string())?;
+        xml_file.read_to_string(&mut xml_content).map_err(|e| e.to_string())?;
+    }
+    let mut text = String::with_capacity(xml_content.len() / 4);
+    let mut in_tag = false;
+    for ch in xml_content.chars() {
+        match ch {
+            '<' => { in_tag = true; text.push(' '); }
+            '>' => { in_tag = false; }
+            _ if !in_tag => text.push(ch),
+            _ => {}
+        }
+    }
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let word_count = words.len();
+    let normalized = words.join(" ");
+    let text_length = normalized.chars().count();
+    let mut hasher = Sha256::new();
+    hasher.update(normalized.as_bytes());
+    let text_extract_hash = format!("{:x}", hasher.finalize());
+    Ok(serde_json::json!({
+        "text_length": text_length,
+        "word_count": word_count,
+        "text_extract_hash": text_extract_hash,
+        "extraction_status": "ok"
+    }))
+}
+#[tauri::command]
 fn copy_file(src_path: String, dest_path: String) -> Result<(), String> {
     use std::path::Path;
 
@@ -1781,6 +1824,8 @@ thread::spawn(move || {
             sha256_file,
             file_size_bytes,
             file_mtime_iso,
+            pdf_page_count,
+            extract_docx_text_metrics,
             copy_file,
             copy_file_to_clipboard,
             publish_pdf_native,

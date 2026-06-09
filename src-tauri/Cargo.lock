@@ -2143,6 +2143,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-deep-link",
  "uuid",
+ "zip",
 ]
 
 [[package]]
@@ -7150,6 +7151,7 @@ dependencies = [
  "byteorder",
  "crc32fast",
  "crossbeam-utils",
+ "flate2",
 ]
 
 [[package]]

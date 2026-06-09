@@ -469,8 +469,39 @@ if obj_delta is not None:
         ok_f("Invariant OE6 — dca=true (règle non déclenchée)")
     else:
         warn_f("Invariant OE6 — document_contribution_attested absent (ancien package, non vérifié)")
+
+    # OE7 : extraction ok + text_hash_changed=false → dca=false
+    text_hash_changed_oe = obj_delta.get('text_hash_changed')
+    ext_conf_oe = obj_delta.get('extraction_confidence', 'none')
+    if ext_conf_oe == 'ok' and text_hash_changed_oe is False and dca is True:
+        fail_f("Invariant OE7 — extraction ok + text_hash_changed=false mais document_contribution_attested=true : overclaim")
+        failures += 1
+    elif ext_conf_oe == 'ok':
+        ok_f(f"Invariant OE7 — extraction ok / text_hash_changed={text_hash_changed_oe} / dca={dca} (cohérent)")
+    else:
+        ok_f(f"Invariant OE7 — extraction_confidence={ext_conf_oe} (règle non applicable)")
+
+    # OE8 : suspicious_low_keystrokes → dca=false
+    tac_oe = (gates or {}).get('text_activity_coherence')
+    if tac_oe == 'suspicious_low_keystrokes' and dca is True:
+        fail_f("Invariant OE8 — text_activity_coherence=suspicious_low_keystrokes mais dca=true : overclaim")
+        failures += 1
+    elif tac_oe == 'suspicious_low_keystrokes':
+        ok_f(f"Invariant OE8 — text_activity_coherence={tac_oe} / dca={dca} (cohérent)")
+    else:
+        ok_f(f"Invariant OE8 — text_activity_coherence={tac_oe or '—'} (règle non applicable)")
+
+    # OE9 : process_object_link=strong → extraction_confidence=ok requis
+    if pol_level == 'strong' and ext_conf_oe != 'ok':
+        fail_f(f"Invariant OE9 — process_object_link=strong mais extraction_confidence={ext_conf_oe} (doit être ok)")
+        failures += 1
+    elif pol_level == 'strong':
+        ok_f(f"Invariant OE9 — process_object_link=strong / extraction_confidence={ext_conf_oe} (cohérent)")
+    else:
+        ok_f(f"Invariant OE9 — process_object_link.level={pol_level or '—'} (non strong, règle non applicable)")
+
 else:
-    warn_f("Invariants OE1–OE6 non applicables (object_delta absent — ancien package)")
+    warn_f("Invariants OE1–OE9 non applicables (object_delta absent — ancien package)")
 
 # ── Résultat final ────────────────────────────────────────────────────────────
 print("")
