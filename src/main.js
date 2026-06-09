@@ -1155,6 +1155,31 @@ function buildProofReadinessState() {
   return { document_status, observation_status, expected_proof_level, recommended_action };
 }
 
+function buildExportReadinessState() {
+  const hasValid  = __sessionTimestamps.some(s => s.is_valid);
+  const hasShort  = __sessionTimestamps.some(s => !s.is_valid);
+  const hasDoc    = !!currentBoundDocument;
+  const hasProj   = !!currentProjectPath;
+
+  let canExport  = hasProj && __hasRegisteredWork;
+  let level      = "none";
+  let reason     = "no_session";
+  let nextAction = hasDoc ? "start_observation" : "bind_document";
+
+  if (!hasProj) {
+    level = "none"; reason = "no_project"; nextAction = "start_observation";
+  } else if (hasValid) {
+    level = "standard"; reason = "valid_session"; nextAction = "export"; canExport = true;
+  } else if (hasShort) {
+    level = "limited"; reason = "short_session_only"; nextAction = "add_observation"; canExport = true;
+  } else {
+    level = "none"; reason = "no_session";
+  }
+
+  return { canExport, level, reason, nextAction, hasDoc, hasValid, hasShort,
+    sessionCount: __sessionTimestamps.length };
+}
+
 // Rendu du bloc guide (injecté avant #bound-document-box, mis à jour à chaque READY)
 function renderProofGuideBlock() {
   let block = $("proof-guide-block");
@@ -1205,7 +1230,8 @@ function renderProofGuideBlock() {
     html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.18);">
       <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(245,158,11,.65);margin-bottom:6px;">Votre preuve HumanOrigin</div>
       <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">Session courte enregistrée ⚠</div>
-      <div style="font-size:12px;color:rgba(232,238,252,.55);">Ajoutez une observation plus longue pour renforcer la preuve.</div>
+      <div style="font-size:12px;color:rgba(232,238,252,.55);margin-bottom:6px;">Vous pouvez créer une <strong style="color:rgba(232,238,252,.8);">preuve limitée</strong> maintenant, ou ajouter une observation plus longue pour une preuve plus forte.</div>
+      <div style="font-size:11px;color:rgba(245,158,11,.6);">→ Utilisez le bouton "Créer mon document" ci-dessous.</div>
     </div>`;
 
   } else if (st.document_status === "not_bound") {
@@ -2582,6 +2608,19 @@ function updateDashboardUI(state) {
     }
     // Hiérarchie des boutons et guide selon le statut de maturité de la preuve
     const _readiness = buildProofReadinessState();
+    const _exportReady = buildExportReadinessState();
+    console.log("[HO export readiness]", {
+      canExport: _exportReady.canExport,
+      level: _exportReady.level,
+      reason: _exportReady.reason,
+      nextAction: _exportReady.nextAction,
+      hasDoc: _exportReady.hasDoc,
+      hasValid: _exportReady.hasValid,
+      hasShort: _exportReady.hasShort,
+      sessionCount: _exportReady.sessionCount,
+      hasRegisteredWork: __hasRegisteredWork,
+      currentProject: !!currentProjectPath,
+    });
     if (startBtn) {
       startBtn.classList.remove("hidden");
       // Label
@@ -2791,15 +2830,13 @@ async function finalizeSession() {
       btn.disabled = true;
     }
 
-    // Activer l'export et marquer travail enregistré uniquement pour les sessions valides
-    if (!isTemporary) {
-      __hasRegisteredWork = true;
-      const exportBtnAfterWork = $("close-project-btn");
-      if (exportBtnAfterWork) {
-        exportBtnAfterWork.style.display = "block";
-        exportBtnAfterWork.disabled = false;
-        exportBtnAfterWork.title = "";
-      }
+    // Activer l'export pour toutes les sessions finalisées (preuve limitée si session courte)
+    __hasRegisteredWork = true;
+    const exportBtnAfterWork = $("close-project-btn");
+    if (exportBtnAfterWork) {
+      exportBtnAfterWork.style.display = "block";
+      exportBtnAfterWork.disabled = false;
+      exportBtnAfterWork.title = isTemporary ? "Session courte — la preuve sera limitée" : "";
     }
 
     const _toastMsg = isTemporary
