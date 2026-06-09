@@ -25,7 +25,7 @@ import * as app from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/api/process";
 import QRCode from "qrcode";
 import { Command } from "@tauri-apps/api/shell";
-import { zip as fflateZip } from "fflate";
+import { zip as fflateZip, zipSync as fflateZipSync } from "fflate";
 
 console.log("HumanOrigin main.js V3.2.1 FULL + Publication Kit V1 loaded ✅");
 
@@ -139,20 +139,37 @@ function applyExportSuccessCopy(verdict) {
       "You may send the PDF, but it should not be presented as strong proof of a human process."
     );
   } else if (v === "PREUVE LIMITÉE" || v === "PREUVE LIMITEE") {
-    if (kicker) kicker.textContent = hoPerm("Preuve partielle générée", "Partial proof generated");
-    if (title) title.textContent = hoPerm(
-      "Le volume observé est limité.",
-      "The observed activity is limited."
-    );
-    if (subtitle) subtitle.textContent = hoPerm(
-      "HumanOrigin a créé une preuve partielle. Le dossier complet contient les éléments de vérification disponibles.",
-      "HumanOrigin created a partial proof. The complete folder contains the available verification elements."
-    );
-    if (badge) badge.textContent = hoPerm("Preuve partielle", "Partial proof");
-    if (note) note.textContent = hoPerm(
-      "Pour renforcer cette preuve, réalisez une observation plus longue avant de générer un nouveau document.",
-      "To strengthen this proof, complete a longer observation before generating a new document."
-    );
+    if (ctx.dca === false && ctx.hashChanged === true && ctx.polLevel === "plausible") {
+      if (kicker) kicker.textContent = hoPerm("Document modifié pendant l'observation", "Document modified during observation");
+      if (title) title.textContent = hoPerm(
+        "Document modifié pendant l'observation — preuve limitée",
+        "Document modified during observation — limited proof"
+      );
+      if (subtitle) subtitle.textContent = hoPerm(
+        "HumanOrigin a détecté une modification du document pendant l'observation. Le volume observé reste toutefois insuffisant pour attester une contribution documentaire forte.",
+        "HumanOrigin detected a document change during the observation. However, the observed volume is insufficient to strongly attest documentary contribution."
+      );
+      if (badge) badge.textContent = hoPerm("Lien plausible — preuve limitée", "Plausible link — limited proof");
+      if (note) note.textContent = hoPerm(
+        "Pour renforcer cette preuve, réalisez une observation plus longue en travaillant dans le document suivi, puis enregistrez-le avant l'export.",
+        "To strengthen this proof, run a longer observation while working in the tracked document, then save before exporting."
+      );
+    } else {
+      if (kicker) kicker.textContent = hoPerm("Preuve partielle générée", "Partial proof generated");
+      if (title) title.textContent = hoPerm(
+        "Le volume observé est limité.",
+        "The observed activity is limited."
+      );
+      if (subtitle) subtitle.textContent = hoPerm(
+        "HumanOrigin a créé une preuve partielle. Le dossier complet contient les éléments de vérification disponibles.",
+        "HumanOrigin created a partial proof. The complete folder contains the available verification elements."
+      );
+      if (badge) badge.textContent = hoPerm("Preuve partielle", "Partial proof");
+      if (note) note.textContent = hoPerm(
+        "Pour renforcer cette preuve, réalisez une observation plus longue avant de générer un nouveau document.",
+        "To strengthen this proof, complete a longer observation before generating a new document."
+      );
+    }
   } else if (v === "ATYPIQUE" || v === "ATYPICAL") {
     if (kicker) kicker.textContent = hoPerm("Document HumanOrigin créé", "HumanOrigin document created");
     if (title) title.textContent = hoPerm(
@@ -4185,6 +4202,9 @@ async function exportFinalProjectCertificate() {
         dca: _documentContributionAttested ?? null,
         hashChanged: _objectEvidence?.object_delta?.hash_changed ?? null,
         polLevel: _objectEvidence?.process_object_link?.level ?? null,
+        shortEvidence: isShortEvidence ?? null,
+        wordCountDelta: _objectEvidence?.object_delta?.word_count_delta ?? null,
+        changedDuring: _objectEvidence?.object_delta?.changed_during_observed_sessions ?? null,
       };
 
       const technicalCopies = [
@@ -4584,6 +4604,16 @@ async function exportFinalProjectCertificate() {
           console.warn("[SHARE PACKAGE] post-publication sync failed", syncErr);
         }
 
+        // Garantit HumanOrigin_SEND.zip après publication (zipSync — fiable pour gros fichiers)
+        try {
+          const _gn = String(hoDoc?.subject?.title || "HumanOrigin Project")
+            .replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim() || "HumanOrigin Project";
+          const _gd = `${dir}${sep}${_gn} — HumanOrigin Package`;
+          const _gz = `${_gd}${sep}HumanOrigin_SEND.zip`;
+          await createSendZipSync(`${_gd}${sep}2_SEND_TO_RECIPIENT`, _gz);
+          if (__lastExportContext) __lastExportContext.zipPath = _gz;
+        } catch (zipGErr) { console.warn("[ZIP GUARANTEE pub]", zipGErr); }
+
         const _pkgName = currentProjectName ? ` — ${currentProjectName}` : "";
         toast(_serverAttestationAdded ? `Package HumanOrigin créé ✅${_pkgName}` : `Preuve locale HumanOrigin prête ✅${_pkgName}`);
         showSendReadyBanner();
@@ -4630,6 +4660,22 @@ async function exportFinalProjectCertificate() {
         // Fall through : la preuve locale est prête, le banner s'affiche ci-dessous
       }
     }
+
+    // Garantit HumanOrigin_SEND.zip si preuve + README présents (chemin sans publisher ou publisher échoué)
+    try {
+      const _fn = String(hoDoc?.subject?.title || "HumanOrigin Project")
+        .replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim() || "HumanOrigin Project";
+      const _fd = `${dir}${sep}${_fn} — HumanOrigin Package`;
+      const _fs = `${_fd}${sep}2_SEND_TO_RECIPIENT`;
+      const _fz = `${_fd}${sep}HumanOrigin_SEND.zip`;
+      let _fp = false, _fr = false;
+      try { await readBinaryFile(`${_fs}${sep}HumanOrigin_PROOF.v1.ho.json`); _fp = true; } catch {}
+      try { await readBinaryFile(`${_fs}${sep}README_SEND_FIRST.txt`); _fr = true; } catch {}
+      if (_fp && _fr) {
+        await createSendZipSync(_fs, _fz);
+        if (__lastExportContext) __lastExportContext.zipPath = _fz;
+      }
+    } catch (zipGErr) { console.warn("[ZIP GUARANTEE fallback]", zipGErr); }
 
     const _pkgName = currentProjectName ? ` — ${currentProjectName}` : "";
     toast(_serverAttestationAdded ? `Package HumanOrigin créé ✅${_pkgName}` : `Preuve locale HumanOrigin prête ✅${_pkgName}`);
@@ -6920,6 +6966,19 @@ async function createSendZip(sendDir, zipOutputPath) {
       writeBinaryFile(zipOutputPath, data).then(resolve).catch(reject);
     });
   });
+}
+
+async function createSendZipSync(sendDir, zipOutputPath) {
+  const entries = await readDir(sendDir, { recursive: false });
+  const fileMap = {};
+  for (const entry of entries) {
+    if (entry.children !== undefined) continue;
+    if (!entry.name) continue;
+    const bytes = await readBinaryFile(entry.path);
+    fileMap[entry.name] = new Uint8Array(bytes);
+  }
+  const zipped = fflateZipSync(fileMap, { level: 6 });
+  await writeBinaryFile(zipOutputPath, zipped);
 }
 
 async function renderPublicationKitPngs({
