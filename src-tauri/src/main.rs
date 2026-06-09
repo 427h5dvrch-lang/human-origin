@@ -1106,6 +1106,19 @@ fn file_size_bytes(path: String) -> Result<u64, String> {
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
+fn file_mtime_iso(path: String) -> Result<String, String> {
+    use std::time::UNIX_EPOCH;
+    let meta = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+    let mtime = meta.modified().map_err(|e| e.to_string())?;
+    let secs = mtime
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_secs();
+    let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(secs as i64, 0)
+        .ok_or_else(|| "mtime_overflow".to_string())?;
+    Ok(dt.to_rfc3339())
+}
+#[tauri::command]
 fn copy_file(src_path: String, dest_path: String) -> Result<(), String> {
     use std::path::Path;
 
@@ -1767,6 +1780,7 @@ thread::spawn(move || {
             pick_document_to_bind_windows,
             sha256_file,
             file_size_bytes,
+            file_mtime_iso,
             copy_file,
             copy_file_to_clipboard,
             publish_pdf_native,

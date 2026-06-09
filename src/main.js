@@ -242,9 +242,15 @@ let __hasRegisteredWork = false;
 let __hasAnySession = false;
 // ISO timestamp of the first scan start in this project — used for binding timeline validation
 let __firstSessionStartedAt = null;
-// Sessions finalisées dans cette ouverture de projet : { started_at, is_valid } — couverture de binding
+// Sessions finalisées dans cette ouverture de projet : { started_at, is_valid, doc_snapshot_start?, doc_snapshot_end? }
 let __sessionTimestamps = [];
-let currentBoundDocument = null; // { path, filename, mime, sha256, bound_at } — document lié avant observation
+let currentBoundDocument = null; // { path, filename, mime, sha256, bound_at, size_bytes, mtime_iso? }
+
+// Object Evidence Core — surveillance de l'évolution de l'objet de travail
+let __docChangeEvents = [];           // { timestamp, event_type, detected_how, session_id, within_session, sha256?, size_bytes? }
+let __currentSessionDocSnapshotStart = null; // snapshot au démarrage de la session courante
+let __currentSessionDocSnapshotEnd   = null; // snapshot à l'arrêt de la session courante
+let __docPollInterval = null;
 let currentProjectName = null;
 let currentProjectPath = null;
 
@@ -340,7 +346,7 @@ function buildDocumentDelta(initialSize, finalSize, initialMime, finalMime) {
   };
 }
 
-function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason, pasteSummary = {}, isShortEvidence = false) {
+function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReason, pasteSummary = {}, isShortEvidence = false, objectEvidence = null, documentContributionAttested = null) {
   if (isShortEvidence) {
     // Trace courte : claims stricts, aucune surpromesse possible
     return {
@@ -402,6 +408,15 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
     forbidden.push("substantial_document_contribution_attested");
     forbidden.push("no_external_generation");
   }
+  // Object Evidence Core claims
+  if (documentContributionAttested === true) {
+    allowed.push("document_contribution_attested");
+  } else if (documentContributionAttested === false) {
+    forbidden.push("document_work_link_not_demonstrated");
+    forbidden.push("substantial_document_contribution_attested");
+    forbidden.push("document_creation_attested");
+  }
+  const od = objectEvidence?.object_delta;
   return {
     claims_allowed: allowed,
     claims_forbidden: [...new Set(forbidden)],
@@ -419,6 +434,11 @@ function buildClaimsForProof(boundVerdict, rawVerdict, documentBinding, capReaso
       contribution_flags: documentBinding?.contribution_flags ?? null,
       contribution_cap_reason: documentBinding?.contribution_cap_reason ?? null,
       paste_risk: pasteSummary,
+      changed_during_observed_sessions: od?.changed_during_observed_sessions ?? null,
+      changed_after_last_observed_session: od?.changed_after_last_observed_session ?? null,
+      meaningful_delta: od?.meaningful_delta ?? null,
+      process_object_link_level: objectEvidence?.process_object_link?.level ?? null,
+      document_contribution_attested: documentContributionAttested ?? null,
     },
     caps_applied: capReason ? [capReason] : [],
   };
@@ -530,7 +550,7 @@ function computeBindingCoverage(sessionTimestamps, boundAt) {
   return { binding_coverage, covered_session_count: covered, uncovered_session_count: uncovered, binding_scope };
 }
 
-function applyBindingVerdictCap(rawVerdict, documentBinding) {
+function applyBindingVerdictCap(rawVerdict, documentBinding, objectEvidence = null) {
   const mode = documentBinding?.binding_mode;
   const modified = documentBinding?.document_modified;
   const deltaSignificant = documentBinding?.delta_significant;
@@ -565,7 +585,185 @@ function applyBindingVerdictCap(rawVerdict, documentBinding) {
       reason: contributionCapReason || "contribution_coherence_too_low",
     };
   }
+  // Object evidence cap : document modifié APRÈS la dernière session observée
+  if (rawVerdict === "COHERENT" && objectEvidence?.object_delta?.changed_after_last_observed_session === true) {
+    return { verdict: "ATYPIQUE", reason: "changed_after_last_observed_session" };
+  }
   return { verdict: rawVerdict, reason: null };
+}
+
+// ── Object Evidence Core ──────────────────────────────────────────────────────
+
+function startDocumentPolling() {
+  stopDocumentPolling();
+  if (!currentBoundDocument?.path) return;
+  let _lastKnownSize = currentBoundDocument.size_bytes;
+  __docPollInterval = setInterval(async () => {
+    if (!currentBoundDocument?.path) return;
+    try {
+      const _sz = await invoke("file_size_bytes", { path: currentBoundDocument.path }).catch(() => null);
+      const _sizeNum = _sz !== null ? Number(_sz) : null;
+      if (_sizeNum === null || _sizeNum === _lastKnownSize) return;
+      // Taille changée → calcul du hash complet
+      const _hash = await invoke("sha256_file", { path: currentBoundDocument.path }).catch(() => null);
+      if (_hash) {
+        __docChangeEvents.push({
+          timestamp: new Date().toISOString(),
+          event_type: "hash_changed",
+          detected_how: "polling",
+          session_id: currentSessionId || null,
+          within_session: !!isScanningUI,
+          sha256: _hash,
+          size_bytes: _sizeNum,
+        });
+      }
+      _lastKnownSize = _sizeNum;
+    } catch {}
+  }, 60_000);
+}
+
+function stopDocumentPolling() {
+  if (__docPollInterval) {
+    clearInterval(__docPollInterval);
+    __docPollInterval = null;
+  }
+}
+
+function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt, finalMtimeIso) {
+  if (!boundDoc) return null;
+
+  const objectStateInitial = {
+    sha256: boundDoc.sha256,
+    size_bytes: boundDoc.size_bytes,
+    mtime_iso: boundDoc.mtime_iso || null,
+    extension: fileExtLower(boundDoc.filename || ""),
+    mime_or_kind: boundDoc.mime || null,
+    bound_at: boundDoc.bound_at,
+    extraction_status: "not_attempted",
+  };
+
+  const objectStateFinal = {
+    sha256: finalBind.sha256,
+    size_bytes: finalSizeNum,
+    mtime_iso: finalMtimeIso || null,
+    finalized_at: finalSelectedAt,
+    extraction_status: "not_attempted",
+  };
+
+  const hashChanged = !!objectStateInitial.sha256 && !!objectStateFinal.sha256
+    && objectStateInitial.sha256 !== objectStateFinal.sha256;
+  const sizeDeltaBytes = (objectStateInitial.size_bytes !== null && finalSizeNum !== null)
+    ? Math.abs(finalSizeNum - objectStateInitial.size_bytes) : null;
+  const sizeDeltaRatio = (sizeDeltaBytes !== null && objectStateInitial.size_bytes > 0)
+    ? Math.round(sizeDeltaBytes / Math.max(objectStateInitial.size_bytes, 1) * 10000) / 10000 : null;
+  const mtimeChanged = !!(objectStateInitial.mtime_iso && finalMtimeIso
+    && objectStateInitial.mtime_iso !== finalMtimeIso);
+
+  // changed_during_observed_sessions : polling OU comparaison snapshot start/end par session
+  const changedDuringSessions = __docChangeEvents.some(e => e.within_session === true)
+    || __sessionTimestamps.some(s =>
+        s.doc_snapshot_start?.sha256 && s.doc_snapshot_end?.sha256
+        && s.doc_snapshot_start.sha256 !== s.doc_snapshot_end.sha256
+      );
+
+  // changed_after_last_observed_session : le fichier final diffère du snapshot de fin de dernière session
+  const lastSession = __sessionTimestamps.length > 0
+    ? __sessionTimestamps[__sessionTimestamps.length - 1] : null;
+  const lastSnapEnd = lastSession?.doc_snapshot_end || null;
+  const changedAfterLastSession = !changedDuringSessions
+    && !!(lastSnapEnd?.sha256 && finalBind.sha256 && lastSnapEnd.sha256 !== finalBind.sha256);
+
+  const hasSnapshotData = __sessionTimestamps.some(s => s.doc_snapshot_start || s.doc_snapshot_end);
+
+  // meaningful_delta : changement de hash + taille >= 512 octets ET ratio >= 1%
+  const meaningfulDelta = hashChanged
+    && (sizeDeltaBytes === null || sizeDeltaBytes >= 512)
+    && (sizeDeltaRatio === null || sizeDeltaRatio >= 0.01);
+
+  // Construire la liste consolidée des événements (polling + snapshots session)
+  const snapshotEvents = __sessionTimestamps
+    .filter(s => s.doc_snapshot_start?.sha256 && s.doc_snapshot_end?.sha256
+              && s.doc_snapshot_start.sha256 !== s.doc_snapshot_end.sha256)
+    .map(s => ({
+      timestamp: s.doc_snapshot_end.captured_at,
+      event_type: "hash_changed",
+      detected_how: "snapshot",
+      session_id: s.doc_snapshot_end.session_id || null,
+      within_session: true,
+      sha256: s.doc_snapshot_end.sha256,
+      size_bytes: s.doc_snapshot_end.size_bytes,
+    }));
+  const allChangeEvents = [...__docChangeEvents, ...snapshotEvents]
+    .sort((a, b) => a.timestamp < b.timestamp ? -1 : 1);
+
+  const firstChangeAt = allChangeEvents.length > 0 ? allChangeEvents[0].timestamp : null;
+  const lastChangeAt  = allChangeEvents.length > 0 ? allChangeEvents[allChangeEvents.length - 1].timestamp : null;
+
+  let deltaConfidence;
+  if (!hashChanged)                    deltaConfidence = "none";
+  else if (changedDuringSessions)      deltaConfidence = "session_confirmed";
+  else if (hasSnapshotData)            deltaConfidence = "hash_only";
+  else                                 deltaConfidence = "unverified";
+
+  const objectDelta = {
+    hash_changed: hashChanged,
+    size_delta_bytes: sizeDeltaBytes,
+    size_delta_ratio: sizeDeltaRatio,
+    mtime_changed: mtimeChanged,
+    changed_during_observed_sessions: changedDuringSessions,
+    changed_after_last_observed_session: changedAfterLastSession,
+    change_event_count: allChangeEvents.length,
+    first_change_at: firstChangeAt,
+    last_change_at: lastChangeAt,
+    meaningful_delta: meaningfulDelta,
+    delta_confidence: deltaConfidence,
+  };
+
+  let polLevel, polReason, polConfidence;
+  if (!hashChanged) {
+    polLevel = "none"; polReason = "document_hash_unchanged"; polConfidence = 0.0;
+  } else if (!changedDuringSessions) {
+    polLevel = "weak";
+    polReason = changedAfterLastSession
+      ? "changed_after_last_observed_session" : "changed_not_during_observed_session";
+    polConfidence = 0.2;
+  } else if (!meaningfulDelta) {
+    polLevel = "partial"; polReason = "changed_during_session_delta_not_meaningful"; polConfidence = 0.4;
+  } else {
+    polLevel = "plausible"; polReason = "changed_during_session_with_meaningful_delta"; polConfidence = 0.65;
+  }
+
+  return {
+    object_state_initial: objectStateInitial,
+    object_state_final: objectStateFinal,
+    object_delta: objectDelta,
+    process_object_link: { level: polLevel, reason: polReason, confidence: polConfidence },
+    object_change_events: allChangeEvents,
+  };
+}
+
+function buildDocumentContributionAttested(
+  documentBinding, objectEvidence, isShortEvidence, pasteCapApplied, pasteSummary
+) {
+  if (!objectEvidence) return false;
+  const od = objectEvidence.object_delta;
+  const pasteRisk = Number(pasteSummary?.paste_dominant_sessions || 0) > 0
+    || Number(pasteSummary?.paste_heavy_sessions || 0) > 0;
+  return (
+    documentBinding.binding_mode === "pre_observation"
+    && documentBinding.binding_coverage === "full"
+    && isShortEvidence === false
+    && od.hash_changed === true
+    && od.meaningful_delta === true
+    && od.changed_during_observed_sessions === true
+    && od.changed_after_last_observed_session === false
+    && documentBinding.contribution_score >= 55
+    && documentBinding.contribution_coherence !== "weak"
+    && documentBinding.contribution_coherence !== "insufficient"
+    && !pasteRisk
+    && !pasteCapApplied
+    && documentBinding.format_conversion_detected === false
+  );
 }
 
 function verdictFromScp(scp) {
@@ -688,6 +886,7 @@ async function bindDocumentBeforeObservation() {
     }
     if (!bind.path || !bind.sha256) return;
     const sizeBytes = await invoke("file_size_bytes", { path: bind.path }).catch(() => null);
+    const mtimeIso  = await invoke("file_mtime_iso",   { path: bind.path }).catch(() => null);
     currentBoundDocument = {
       path: bind.path,
       filename: bind.filename || "Document",
@@ -695,7 +894,12 @@ async function bindDocumentBeforeObservation() {
       sha256: bind.sha256,
       bound_at: new Date().toISOString(),
       size_bytes: Number.isFinite(Number(sizeBytes)) ? Number(sizeBytes) : null,
+      mtime_iso: mtimeIso || null,
     };
+    // Nouveau document lié — réinitialiser les événements de surveillance
+    __docChangeEvents = [];
+    __currentSessionDocSnapshotStart = null;
+    __currentSessionDocSnapshotEnd = null;
     updateBoundDocumentUI();
     renderProofGuideBlock();
     toast("Document de travail lié ✅");
@@ -980,6 +1184,10 @@ function resetProjectStateOnly() {
   __firstSessionStartedAt = null;
   __sessionTimestamps = [];
   currentBoundDocument = null;
+  __docChangeEvents = [];
+  __currentSessionDocSnapshotStart = null;
+  __currentSessionDocSnapshotEnd = null;
+  stopDocumentPolling();
   resetWorkflowVisualState();
 }
 
@@ -2159,6 +2367,19 @@ async function stopScan() {
     const snap = await invoke("stop_scan", { paste: pasteStats });
     lastSnapshot = snap;
 
+    // Object Evidence: snapshot de fin de session + arrêt du polling
+    stopDocumentPolling();
+    if (currentBoundDocument?.path) {
+      try {
+        const _sh = await invoke("sha256_file",   { path: currentBoundDocument.path }).catch(() => null);
+        const _sz = await invoke("file_size_bytes", { path: currentBoundDocument.path }).catch(() => null);
+        __currentSessionDocSnapshotEnd = {
+          sha256: _sh, size_bytes: _sz !== null ? Number(_sz) : null,
+          captured_at: new Date().toISOString(), session_id: currentSessionId,
+        };
+      } catch {}
+    }
+
     updateDashboardUI("STOPPED");
     toast("Observation terminée. Travail sauvegardé localement.");
 
@@ -2421,7 +2642,12 @@ async function finalizeSession() {
     restoredDraftSessionId = null;
     success = true;
     __hasAnySession = true;
-    __sessionTimestamps.push({ started_at: currentSessionStartedAt || new Date().toISOString(), is_valid: !isTemporary });
+    __sessionTimestamps.push({
+      started_at: currentSessionStartedAt || new Date().toISOString(),
+      is_valid: !isTemporary,
+      doc_snapshot_start: __currentSessionDocSnapshotStart,
+      doc_snapshot_end: __currentSessionDocSnapshotEnd,
+    });
 
     if (btn) {
       btn.innerText = isTemporary ? "Observation trop courte ⚠" : "Session enregistrée ✅";
@@ -2508,6 +2734,21 @@ async function startScan() {
 
   try {
     await invoke("start_scan", { sessionId: currentSessionId });
+
+    // Object Evidence: snapshot de début de session
+    __currentSessionDocSnapshotStart = null;
+    __currentSessionDocSnapshotEnd = null;
+    if (currentBoundDocument?.path) {
+      try {
+        const _sh = await invoke("sha256_file",   { path: currentBoundDocument.path }).catch(() => null);
+        const _sz = await invoke("file_size_bytes", { path: currentBoundDocument.path }).catch(() => null);
+        __currentSessionDocSnapshotStart = {
+          sha256: _sh, size_bytes: _sz !== null ? Number(_sz) : null,
+          captured_at: new Date().toISOString(), session_id: currentSessionId,
+        };
+        startDocumentPolling();
+      } catch {}
+    }
 
     isScanningUI = true;
     updateDashboardUI("SCANNING");
@@ -3029,10 +3270,17 @@ async function exportFinalProjectCertificate() {
     documentBinding.contribution_flags = contribution.contribution_flags;
     documentBinding.contribution_cap_reason = contribution.contribution_cap_reason;
 
+    // ── Object Evidence Core — construit avant le cap ─────────────────────
+    const _finalMtimeIso = (_useBoundDoc && currentBoundDocument)
+      ? await invoke("file_mtime_iso", { path: bind.path }).catch(() => null) : null;
+    const _objectEvidence = (_useBoundDoc && currentBoundDocument)
+      ? buildObjectEvidence(currentBoundDocument, bind, finalSizeNum, finalSelectedAt, _finalMtimeIso)
+      : null;
+
     // ── Plafonner le verdict selon le binding documentaire ─────────────────
     const rawEngineVerdict = verdict;
     const { verdict: boundVerdict, reason: bindingCapReason } =
-      applyBindingVerdictCap(rawEngineVerdict, documentBinding);
+      applyBindingVerdictCap(rawEngineVerdict, documentBinding, _objectEvidence);
 
     if (boundVerdict !== rawEngineVerdict) {
       let capMsg = "";
@@ -3092,6 +3340,13 @@ async function exportFinalProjectCertificate() {
           "HumanOrigin a observé votre activité, mais l'effort mesuré et le changement du document ne sont pas assez cohérents pour attester une contribution substantielle.\n" +
           "Le niveau visible sera limité.\n\n" +
           "Continuer ?";
+      } else if (bindingCapReason === "changed_after_last_observed_session") {
+        capMsg =
+          "Le document a changé après la dernière session observée.\n\n" +
+          "HumanOrigin a observé votre activité, mais le document a été modifié après la fin de l'observation.\n" +
+          "La contribution au document ne peut pas être attestée.\n" +
+          "Le niveau visible sera limité.\n\n" +
+          "Continuer ?";
       }
       if (capMsg && !confirm(capMsg)) return;
     }
@@ -3109,6 +3364,17 @@ async function exportFinalProjectCertificate() {
       if (!confirm(pasteCapMsg)) return;
       verdict = "ATYPIQUE";
       pasteCapApplied = true;
+    }
+
+    // ── document_contribution_attested — calculé après tous les caps ───────
+    const _documentContributionAttested = buildDocumentContributionAttested(
+      documentBinding, _objectEvidence, isShortEvidence, pasteCapApplied, pasteSummary
+    );
+
+    // UX : message non-bloquant si le document n'a pas changé pendant l'observation
+    if (_objectEvidence && !_objectEvidence.object_delta.changed_during_observed_sessions
+        && _objectEvidence.object_delta.hash_changed === false) {
+      console.info("[OBJECT-EVIDENCE] Document inchangé pendant l'observation.");
     }
 
     const appVersion = await app.getVersion().catch(() => "unknown");
@@ -3377,6 +3643,11 @@ async function exportFinalProjectCertificate() {
           contribution_coherence: documentBinding.contribution_coherence,
           contribution_flags: documentBinding.contribution_flags,
           contribution_cap_reason: documentBinding.contribution_cap_reason,
+          object_state_initial: _objectEvidence?.object_state_initial ?? null,
+          object_state_final: _objectEvidence?.object_state_final ?? null,
+          object_delta: _objectEvidence?.object_delta ?? null,
+          process_object_link: _objectEvidence?.process_object_link ?? null,
+          document_contribution_attested: _documentContributionAttested,
         },
         process_summary: {
           verdict,
@@ -3398,7 +3669,7 @@ async function exportFinalProjectCertificate() {
           raw_engine_verdict: rawEngineVerdict,
           visible_verdict: verdict,
           short_evidence: isShortEvidence,
-          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason, pasteSummary, isShortEvidence),
+          ...buildClaimsForProof(verdict, rawEngineVerdict, documentBinding, bindingCapReason, pasteSummary, isShortEvidence, _objectEvidence, _documentContributionAttested),
         },
         verification: {
           verify_url: verifierUrl || null,
@@ -3452,6 +3723,11 @@ async function exportFinalProjectCertificate() {
               flags: documentBinding.contribution_flags ?? null,
               cap_reason: documentBinding.contribution_cap_reason ?? null,
             },
+            object_state_initial: _objectEvidence?.object_state_initial ?? null,
+            object_state_final: _objectEvidence?.object_state_final ?? null,
+            object_delta: _objectEvidence?.object_delta ?? null,
+            process_object_link: _objectEvidence?.process_object_link ?? null,
+            document_contribution_attested: _documentContributionAttested,
             limitations: [
               "document_mode_only",
               "no_content_truth_certification",

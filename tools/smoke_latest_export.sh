@@ -433,6 +433,51 @@ if server_att:
 else:
     warn("server_attestation absent — preuve locale (normal si countersign non configuré)")
 
+# ── Object Evidence Core (V7) ─────────────────────────────────────────────
+doc_v7 = p.get('document', {})
+obj_delta = doc_v7.get('object_delta')
+pol = doc_v7.get('process_object_link')
+dca = doc_v7.get('document_contribution_attested')
+if obj_delta is not None:
+    ok(f"object_delta.hash_changed : {obj_delta.get('hash_changed','—')}")
+    ok(f"object_delta.meaningful_delta : {obj_delta.get('meaningful_delta','—')}")
+    cds = obj_delta.get('changed_during_observed_sessions')
+    cal = obj_delta.get('changed_after_last_observed_session')
+    if cds is True:
+        ok(f"object_delta.changed_during_observed_sessions : {cds}")
+    elif cds is False:
+        warn(f"object_delta.changed_during_observed_sessions : {cds} (aucune modification détectée pendant les sessions)")
+    else:
+        warn(f"object_delta.changed_during_observed_sessions : — (absent ou null)")
+    if cal is True:
+        warn(f"object_delta.changed_after_last_observed_session : {cal} (modification post-session détectée)")
+    else:
+        ok(f"object_delta.changed_after_last_observed_session : {cal}")
+    ok(f"object_delta.delta_confidence : {obj_delta.get('delta_confidence','—')}")
+    ok(f"object_delta.change_event_count : {obj_delta.get('change_event_count', 0)}")
+else:
+    warn("object_delta absent (ancien package)")
+
+if pol is not None:
+    lvl = pol.get('level','—')
+    if lvl in ('plausible', 'strong'):
+        ok(f"process_object_link.level : {lvl} (confiance : {pol.get('confidence','—')})")
+    elif lvl == 'partial':
+        warn(f"process_object_link.level : {lvl} — contribution partielle")
+    elif lvl in ('weak', 'none'):
+        warn(f"process_object_link.level : {lvl} — lien objet non démontré")
+    else:
+        warn(f"process_object_link.level : {lvl}")
+else:
+    warn("process_object_link absent (ancien package)")
+
+if dca is True:
+    ok("document_contribution_attested : true ✅")
+elif dca is False:
+    warn("document_contribution_attested : false (lien contribution non attesté)")
+else:
+    warn("document_contribution_attested : absent (ancien package)")
+
 sys.exit(errors)
 PYEOF
   PROOF_EXIT=$?

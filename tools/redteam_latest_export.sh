@@ -407,6 +407,71 @@ if missing_media_forbidden:
 else:
     ok_f("Invariant M4 — claims_forbidden : tous les claims médias interdits présents")
 
+# ── Invariants Object Evidence Core (OE1–OE6) ────────────────────────────────
+print("")
+print("7. Object Evidence Core invariants")
+
+doc_oe  = p.get('document', {})
+obj_delta = doc_oe.get('object_delta')
+pol_oe    = doc_oe.get('process_object_link', {})
+dca       = doc_oe.get('document_contribution_attested')
+
+if obj_delta is not None:
+    hash_changed   = obj_delta.get('hash_changed')
+    meaningful     = obj_delta.get('meaningful_delta')
+    chg_during     = obj_delta.get('changed_during_observed_sessions')
+    chg_after      = obj_delta.get('changed_after_last_observed_session')
+    pol_level      = pol_oe.get('level') if pol_oe else None
+
+    # OE1 : hash_changed=false → document_contribution_attested=false
+    if hash_changed is False and dca is True:
+        fail_f("Invariant OE1 — hash_changed=false mais document_contribution_attested=true : overclaim critique")
+        failures += 1
+    else:
+        ok_f(f"Invariant OE1 — hash_changed={hash_changed} / dca={dca} (cohérent)")
+
+    # OE2 : meaningful_delta=false → document_contribution_attested=false
+    if meaningful is False and dca is True:
+        fail_f("Invariant OE2 — meaningful_delta=false mais document_contribution_attested=true : overclaim")
+        failures += 1
+    else:
+        ok_f(f"Invariant OE2 — meaningful_delta={meaningful} / dca={dca} (cohérent)")
+
+    # OE3 : changed_after_last_observed_session=true → document_contribution_attested=false
+    if chg_after is True and dca is True:
+        fail_f("Invariant OE3 — changed_after_last_observed_session=true mais document_contribution_attested=true")
+        failures += 1
+    else:
+        ok_f(f"Invariant OE3 — changed_after={chg_after} / dca={dca} (cohérent)")
+
+    # OE4 : changed_during_observed_sessions=false (avec données) → dca=false
+    if chg_during is False and dca is True:
+        fail_f("Invariant OE4 — changed_during_observed_sessions=false mais document_contribution_attested=true")
+        failures += 1
+    else:
+        ok_f(f"Invariant OE4 — changed_during={chg_during} / dca={dca} (cohérent)")
+
+    # OE5 : process_object_link=none → COHERENT impossible
+    if pol_level == "none" and is_coherent(visible_verdict):
+        fail_f("Invariant OE5 — process_object_link.level=none mais visible_verdict=COHERENT : overclaim critique")
+        failures += 1
+    else:
+        ok_f(f"Invariant OE5 — process_object_link.level={pol_level or '—'} / verdict={visible_verdict} (cohérent)")
+
+    # OE6 : document_contribution_attested=false → claims_forbidden contient document_work_link_not_demonstrated
+    if dca is False:
+        if "document_work_link_not_demonstrated" not in claims_forbidden:
+            fail_f("Invariant OE6 — dca=false mais 'document_work_link_not_demonstrated' absent de claims_forbidden")
+            failures += 1
+        else:
+            ok_f("Invariant OE6 — dca=false → document_work_link_not_demonstrated dans claims_forbidden ✓")
+    elif dca is True:
+        ok_f("Invariant OE6 — dca=true (règle non déclenchée)")
+    else:
+        warn_f("Invariant OE6 — document_contribution_attested absent (ancien package, non vérifié)")
+else:
+    warn_f("Invariants OE1–OE6 non applicables (object_delta absent — ancien package)")
+
 # ── Résultat final ────────────────────────────────────────────────────────────
 print("")
 if failures == 0:
