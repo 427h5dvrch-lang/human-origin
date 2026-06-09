@@ -500,8 +500,73 @@ if obj_delta is not None:
     else:
         ok_f(f"Invariant OE9 — process_object_link.level={pol_level or '—'} (non strong, règle non applicable)")
 
+    # OE10 : strong → text_hash_changed=true
+    if pol_level == 'strong':
+        if text_hash_changed_oe is not True:
+            fail_f(f"Invariant OE10 — process_object_link=strong mais text_hash_changed={text_hash_changed_oe} (doit être true)")
+            failures += 1
+        else:
+            ok_f("Invariant OE10 — strong / text_hash_changed=true ✓")
+    else:
+        ok_f(f"Invariant OE10 — (non strong, règle non applicable)")
+
+    # OE11 : strong → changed_during_observed_sessions=true
+    if pol_level == 'strong':
+        if chg_during is not True:
+            fail_f(f"Invariant OE11 — process_object_link=strong mais changed_during_observed_sessions={chg_during} (doit être true)")
+            failures += 1
+        else:
+            ok_f("Invariant OE11 — strong / changed_during_observed_sessions=true ✓")
+    else:
+        ok_f(f"Invariant OE11 — (non strong, règle non applicable)")
+
+    # OE12 : strong → changed_after_last_observed_session=false
+    if pol_level == 'strong':
+        if chg_after is not False:
+            fail_f(f"Invariant OE12 — process_object_link=strong mais changed_after_last_observed_session={chg_after} (doit être false)")
+            failures += 1
+        else:
+            ok_f("Invariant OE12 — strong / changed_after_last_observed_session=false ✓")
+    else:
+        ok_f(f"Invariant OE12 — (non strong, règle non applicable)")
+
+    # OE13 : strong → abs(word_count_delta) >= 30
+    wcd_oe = obj_delta.get('word_count_delta')
+    if pol_level == 'strong':
+        if wcd_oe is None:
+            fail_f("Invariant OE13 — process_object_link=strong mais word_count_delta absent : overclaim")
+            failures += 1
+        elif abs(wcd_oe) < 30:
+            fail_f(f"Invariant OE13 — process_object_link=strong mais abs(word_count_delta)={abs(wcd_oe)} < 30 : seuil non atteint")
+            failures += 1
+        else:
+            ok_f(f"Invariant OE13 — strong / abs(word_count_delta)={abs(wcd_oe)} ≥ 30 ✓")
+    else:
+        ok_f(f"Invariant OE13 — (non strong, règle non applicable)")
+
+    # OE14 : strong → text_activity_coherence = "consistent"
+    tac_strong = (gates or {}).get('text_activity_coherence')
+    if pol_level == 'strong':
+        if tac_strong != 'consistent':
+            fail_f(f"Invariant OE14 — process_object_link=strong mais text_activity_coherence={tac_strong!r} (doit être 'consistent')")
+            failures += 1
+        else:
+            ok_f("Invariant OE14 — strong / text_activity_coherence=consistent ✓")
+    else:
+        ok_f(f"Invariant OE14 — (non strong, règle non applicable)")
+
+    # OE15 : strong → document_contribution_attested=true
+    if pol_level == 'strong':
+        if dca is not True:
+            fail_f(f"Invariant OE15 — process_object_link=strong mais document_contribution_attested={dca} : incohérence critique")
+            failures += 1
+        else:
+            ok_f("Invariant OE15 — strong / document_contribution_attested=true ✓")
+    else:
+        ok_f(f"Invariant OE15 — (non strong, règle non applicable)")
+
 else:
-    warn_f("Invariants OE1–OE9 non applicables (object_delta absent — ancien package)")
+    warn_f("Invariants OE1–OE15 non applicables (object_delta absent — ancien package)")
 
 # ── Résultat final ────────────────────────────────────────────────────────────
 print("")

@@ -780,10 +780,14 @@ function buildObjectEvidence(boundDoc, finalBind, finalSizeNum, finalSelectedAt,
     polConfidence = 0.2;
   } else if (!meaningfulDelta) {
     polLevel = "partial"; polReason = "changed_during_session_delta_not_meaningful"; polConfidence = 0.4;
-  } else if (textExtractionOk && textHashChanged === true) {
-    polLevel = "strong"; polReason = "extraction_confirmed_structural_delta"; polConfidence = 0.85;
   } else {
-    polLevel = "plausible"; polReason = "changed_during_session_with_meaningful_delta"; polConfidence = 0.65;
+    // P1 : text extraction confirme un hash différent → plausible élevé
+    // La promotion vers strong se fait dans maybePromoteProcessObjectLinkToStrong,
+    // après que _textActivityCoherence et document_contribution_attested sont connus.
+    const textConfirmed = textExtractionOk && textHashChanged === true;
+    polLevel = "plausible";
+    polReason = textConfirmed ? "extraction_confirmed_text_hash_changed" : "changed_during_session_with_meaningful_delta";
+    polConfidence = textConfirmed ? 0.70 : 0.65;
   }
 
   return {
@@ -826,6 +830,28 @@ function buildDocumentContributionAttested(
     && textHashGate
     && coherenceGate
   );
+}
+
+function maybePromoteProcessObjectLinkToStrong(objectEvidence, documentContributionAttested, textActivityCoherence) {
+  if (!objectEvidence) return;
+  const pol = objectEvidence.process_object_link;
+  const od  = objectEvidence.object_delta;
+  if (
+    pol?.level === "plausible"
+    && documentContributionAttested === true
+    && textActivityCoherence === "consistent"
+    && od?.text_hash_changed === true
+    && Math.abs(od?.word_count_delta ?? 0) >= 30
+    && od?.changed_during_observed_sessions === true
+    && od?.changed_after_last_observed_session === false
+    && od?.meaningful_delta === true
+  ) {
+    objectEvidence.process_object_link = {
+      level: "strong",
+      reason: "extraction_text_activity_coherence_confirmed",
+      confidence: 0.85,
+    };
+  }
 }
 
 async function extractDocumentStructure(path, extension) {
@@ -3494,6 +3520,9 @@ async function exportFinalProjectCertificate() {
     const _documentContributionAttested = buildDocumentContributionAttested(
       documentBinding, _objectEvidence, isShortEvidence, pasteCapApplied, pasteSummary, _textActivityCoherence
     );
+
+    // ── Promotion strong — uniquement si DCA=true + cohérence "consistent" ─
+    maybePromoteProcessObjectLinkToStrong(_objectEvidence, _documentContributionAttested, _textActivityCoherence);
 
     // UX : message non-bloquant si le document n'a pas changé pendant l'observation
     if (_objectEvidence && !_objectEvidence.object_delta.changed_during_observed_sessions
