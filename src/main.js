@@ -676,6 +676,7 @@ function startDocumentPolling() {
           sha256: _hash,
           size_bytes: _sizeNum,
         });
+        updateLiveDocIndicator();
       }
       _lastKnownSize = _sizeNum;
     } catch {}
@@ -1104,32 +1105,45 @@ function updateBoundDocumentUI() {
   const btn = $("bind-document-btn");
   if (!box) return;
   if (!currentBoundDocument) {
-    if (name) { name.textContent = "Aucun document lié"; name.style.color = "rgba(232,238,252,.5)"; }
-    if (meta) meta.textContent = "Pour une preuve plus forte, liez le document avant de commencer l'observation.";
-    if (btn) { btn.textContent = "Lier un document"; btn.style.fontWeight = "700"; }
+    if (name) { name.textContent = "Aucun document sélectionné"; name.style.color = "rgba(232,238,252,.5)"; }
+    if (meta) meta.textContent = "Choisissez le document à protéger avant de commencer pour une preuve plus forte.";
+    if (btn) { btn.textContent = "Choisir un document"; btn.style.fontWeight = "700"; }
   } else {
     if (name) { name.textContent = currentBoundDocument.filename; name.style.color = "#e8eefc"; }
-    // Statut binding-aware : dépend du moment où le document a été lié par rapport aux sessions
     let statusText = "Empreinte initiale enregistrée.";
     let statusColor = "rgba(232,238,252,.55)";
     if (__sessionTimestamps.length === 0) {
-      statusText = "Document lié avant observation ✅ — les prochaines sessions couvriront ce document.";
+      statusText = "Document choisi ✅ — les prochaines sessions l'observeront.";
       statusColor = "rgba(16,185,129,.8)";
     } else {
       const cov = computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at);
       if (cov.binding_coverage === "full") {
-        statusText = `Document lié avant observation ✅ — ${cov.covered_session_count} session(s) couverte(s).`;
+        statusText = `Document choisi ✅ — ${cov.covered_session_count} session(s) observée(s).`;
         statusColor = "rgba(16,185,129,.8)";
       } else if (cov.binding_coverage === "partial") {
-        statusText = `Document lié après une partie du travail ⚠ — ${cov.covered_session_count} session(s) couverte(s), ${cov.uncovered_session_count} antérieure(s).`;
+        statusText = `Document ajouté en cours de travail ⚠ — ${cov.covered_session_count} session(s) couverte(s).`;
         statusColor = "rgba(245,158,11,.8)";
       } else {
-        statusText = "Document lié après toutes les sessions ⚠ — la preuve sera limitée.";
+        statusText = "Document ajouté après vos sessions ⚠ — la preuve sera limitée.";
         statusColor = "rgba(239,68,68,.8)";
       }
     }
     if (meta) { meta.textContent = statusText; meta.style.color = statusColor; }
     if (btn) { btn.textContent = "Changer"; btn.style.fontWeight = ""; }
+  }
+}
+
+function updateLiveDocIndicator() {
+  const ind = $("live-doc-indicator");
+  if (!ind) return;
+  if (!currentBoundDocument) { ind.style.display = "none"; return; }
+  ind.style.display = "block";
+  if (__docChangeEvents.length > 0) {
+    ind.textContent = "Modification détectée dans le document";
+    ind.style.color = "rgba(16,185,129,.9)";
+  } else {
+    ind.textContent = "Aucune modification détectée pour l'instant";
+    ind.style.color = "rgba(148,163,184,.7)";
   }
 }
 
@@ -1258,14 +1272,17 @@ function renderProofGuideBlock() {
     if (currentBoundDocument && __sessionTimestamps.length > 0) {
       const cov = computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at);
       if (cov.binding_coverage === "full") {
-        coverageNote = `${cov.covered_session_count}/${totalCount} session(s) couverte(s) par le document`;
+        coverageNote = `${cov.covered_session_count}/${totalCount} session(s) observée(s)`;
+        if (__docChangeEvents.length === 0) {
+          coverageNote += " — aucun changement détecté. Assurez-vous d'avoir sauvegardé votre document.";
+        }
       } else if (cov.binding_coverage === "partial") {
-        coverageNote = `${cov.covered_session_count}/${totalCount} couverte(s) — ajoutez une observation après la liaison pour renforcer la preuve`;
+        coverageNote = `${cov.covered_session_count}/${totalCount} couverte(s) — ajoutez une observation après avoir choisi le document pour renforcer la preuve`;
       } else {
-        coverageNote = "Aucune session couverte par le document lié — la preuve sera limitée";
+        coverageNote = "Aucune session couverte par ce document — la preuve sera limitée";
       }
     } else if (!currentBoundDocument) {
-      coverageNote = "Aucun document lié — la preuve sera limitée. Vous pouvez en lier un avant de créer.";
+      coverageNote = "Aucun document sélectionné — la preuve sera limitée. Vous pouvez en choisir un avant de créer.";
     }
 
     html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);">
@@ -1289,13 +1306,13 @@ function renderProofGuideBlock() {
     html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);">
       <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(232,238,252,.3);margin-bottom:10px;">Votre preuve HumanOrigin</div>
       <ol style="margin:0 0 10px;padding-left:18px;color:rgba(232,238,252,.65);font-size:12px;line-height:2;">
-        <li><strong style="color:#e8eefc;">Liez votre document</strong> — pour une preuve plus forte</li>
+        <li><strong style="color:#e8eefc;">Choisissez le document à protéger</strong> — pour une preuve plus forte</li>
         <li>Travaillez normalement dans votre éditeur</li>
         <li>Ajoutez une ou plusieurs observations</li>
         <li>Créez votre document HumanOrigin</li>
       </ol>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
-        <button id="guide-bind-document-btn" class="btn btn-mini" type="button" style="font-weight:700;">Lier mon document</button>
+        <button id="guide-bind-document-btn" class="btn btn-mini" type="button" style="font-weight:700;">Choisir mon document</button>
         <span style="font-size:11px;color:rgba(232,238,252,.3);">Ou commencez sans — la preuve sera limitée.</span>
       </div>
     </div>`;
@@ -1304,7 +1321,7 @@ function renderProofGuideBlock() {
     // Document lié, aucune session encore
     html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);">
       <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(16,185,129,.6);margin-bottom:6px;">Votre preuve HumanOrigin</div>
-      <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">Document lié ✅</div>
+      <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">Document choisi ✅</div>
       <div style="font-size:12px;color:rgba(232,238,252,.55);">Les prochaines observations couvriront ce document. Vous pouvez ajouter plusieurs observations au même travail.</div>
     </div>`;
   }
@@ -2648,18 +2665,21 @@ function updateDashboardUI(state) {
     // Nettoyage visuel complet, puis action unique : "Commencer l'observation"
     resetWorkflowVisualState();
     // Bouton export : visible et actif seulement si un travail a déjà été enregistré
+    // Hiérarchie des boutons et guide selon le statut de maturité de la preuve
+    const _readiness = buildProofReadinessState();
+    const _exportReady = buildExportReadinessState();
     if (exportBtn) {
       if (currentProjectPath && __hasRegisteredWork && !__isExportSuccessVisible) {
         exportBtn.style.display = "block";
         exportBtn.disabled = false;
         exportBtn.title = "";
+        exportBtn.textContent = _exportReady.level === "limited"
+          ? hoPerm("📄 Créer — preuve limitée", "📄 Create — limited proof")
+          : hoPerm("📄 Créer mon document HumanOrigin", "📄 Create my document");
       } else {
         exportBtn.style.display = "none";
       }
     }
-    // Hiérarchie des boutons et guide selon le statut de maturité de la preuve
-    const _readiness = buildProofReadinessState();
-    const _exportReady = buildExportReadinessState();
     console.log("[HO export readiness]", {
       canExport: _exportReady.canExport,
       level: _exportReady.level,
@@ -2719,6 +2739,22 @@ function updateDashboardUI(state) {
       }
       _ind.textContent = "Session en construction…";
       _ind.style.color = "rgba(148,163,184,.7)";
+      // Indicateur de modification du document (UX uniquement)
+      if (currentBoundDocument) {
+        let _docInd = $("live-doc-indicator");
+        if (!_docInd) {
+          _docInd = document.createElement("div");
+          _docInd.id = "live-doc-indicator";
+          _docInd.style.cssText = [
+            "font-size:13px", "font-weight:600", "margin-top:8px",
+            "padding:10px 14px", "border-radius:12px",
+            "background:rgba(255,255,255,.04)", "border:1px solid rgba(255,255,255,.08)",
+            "line-height:1.4", "transition:color .4s",
+          ].join(";");
+          live.appendChild(_docInd);
+        }
+        updateLiveDocIndicator();
+      }
     }
   } else if (state === "STOPPED") {
     // Action unique : "Enregistrer ce travail"
