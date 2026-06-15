@@ -575,8 +575,79 @@ if obj_delta is not None:
     else:
         ok_f(f"Invariant OE16 — (non strong, règle non applicable)")
 
+    # OE17 : DCA=true impossible si abs(word_count_delta) < 50 quand extraction disponible
+    if dca is True and wcd_oe is not None and ext_conf_oe == 'ok':
+        if abs(wcd_oe) < 50:
+            fail_f(f"Invariant OE17 — DCA=true mais abs(word_count_delta)={abs(wcd_oe)} < 50 : seuil minimal non atteint")
+            failures += 1
+        else:
+            ok_f(f"Invariant OE17 — DCA=true / abs(word_count_delta)={abs(wcd_oe)} ≥ 50 ✓")
+    else:
+        ok_f(f"Invariant OE17 — (DCA={dca}, word_count_delta={wcd_oe}, extraction={ext_conf_oe!r} — règle non applicable)")
+
+    # OE18 : DCA=true + extraction ok → text_activity_coherence doit être "consistent"
+    if dca is True and ext_conf_oe == 'ok':
+        if tac_oe not in ('consistent', None):
+            fail_f(f"Invariant OE18 — DCA=true + extraction ok mais text_activity_coherence={tac_oe!r} (attendu: consistent)")
+            failures += 1
+        else:
+            ok_f(f"Invariant OE18 — DCA=true + extraction ok / text_activity_coherence={tac_oe!r} ✓")
+    else:
+        ok_f(f"Invariant OE18 — (DCA={dca}, extraction={ext_conf_oe!r} — règle non applicable)")
+
+    # OE19 : DCA=true + extraction ok → extraction_status initial et final doivent être "ok"
+    osi_oe = doc_oe.get('object_state_initial') or (bo.get('object_state_initial') if bo else {}) or {}
+    osf_oe = doc_oe.get('object_state_final') or (bo.get('object_state_final') if bo else {}) or {}
+    osi_status = osi_oe.get('extraction_status') if osi_oe else None
+    osf_status = osf_oe.get('extraction_status') if osf_oe else None
+    if dca is True and ext_conf_oe == 'ok':
+        if osi_status != 'ok' or osf_status != 'ok':
+            fail_f(f"Invariant OE19 — DCA=true mais extraction_status : initial={osi_status!r}, final={osf_status!r} (attendu ok/ok)")
+            failures += 1
+        else:
+            ok_f(f"Invariant OE19 — DCA=true / extraction_status initial=ok, final=ok ✓")
+    else:
+        ok_f(f"Invariant OE19 — (DCA={dca}, extraction={ext_conf_oe!r} — règle non applicable)")
+
+    # OE20 : visible_verdict=COHERENT + media_type=document → DCA=true obligatoire
+    bo_type = bo.get('media_type') if bo else None
+    if is_coherent(visible_verdict) and bo_type == 'document':
+        if dca is not True:
+            fail_f(f"Invariant OE20 — visible_verdict=COHERENT + media_type=document mais DCA={dca} : incohérence critique")
+            failures += 1
+        else:
+            ok_f("Invariant OE20 — COHERENT + media_type=document / DCA=true ✓")
+    else:
+        ok_f(f"Invariant OE20 — (visible_verdict={visible_verdict!r}, media_type={bo_type!r} — règle non applicable)")
+
+    # OE22 : DCA=true impossible si binding_coverage != "full"
+    if dca is True and binding_coverage is not None and binding_coverage != 'full':
+        fail_f(f"Invariant OE22 — DCA=true mais binding_coverage={binding_coverage!r} (doit être full)")
+        failures += 1
+    elif dca is True:
+        ok_f(f"Invariant OE22 — DCA=true / binding_coverage={binding_coverage!r} ✓")
+    else:
+        ok_f(f"Invariant OE22 — DCA={dca} (règle non applicable)")
+
+    # OE23 : DCA=true impossible si paste_dominant > 0 ou paste_heavy > 0
+    if dca is True and (paste_dominant > 0 or paste_heavy > 0):
+        fail_f(f"Invariant OE23 — DCA=true mais paste risk (dominant={paste_dominant}, heavy={paste_heavy})")
+        failures += 1
+    else:
+        ok_f(f"Invariant OE23 — paste_dominant={paste_dominant}, paste_heavy={paste_heavy} / DCA={dca} (cohérent)")
+
+    # OE24 : DCA=true + extraction ok → word_count_delta non null et non zéro
+    if dca is True and ext_conf_oe == 'ok':
+        if wcd_oe is None or wcd_oe == 0:
+            fail_f(f"Invariant OE24 — DCA=true + extraction ok mais word_count_delta={wcd_oe} (modification textuelle attendue)")
+            failures += 1
+        else:
+            ok_f(f"Invariant OE24 — DCA=true + extraction ok / word_count_delta={wcd_oe} ✓")
+    else:
+        ok_f(f"Invariant OE24 — (DCA={dca}, extraction={ext_conf_oe!r} — règle non applicable)")
+
 else:
-    warn_f("Invariants OE1–OE16 non applicables (object_delta absent — ancien package)")
+    warn_f("Invariants OE1–OE24 non applicables (object_delta absent — ancien package)")
 
 # ── Résultat final ────────────────────────────────────────────────────────────
 print("")

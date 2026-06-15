@@ -171,20 +171,37 @@ function applyExportSuccessCopy(verdict) {
       );
     }
   } else if (v === "ATYPIQUE" || v === "ATYPICAL") {
-    if (kicker) kicker.textContent = hoPerm("Document HumanOrigin créé", "HumanOrigin document created");
-    if (title) title.textContent = hoPerm(
-      "Votre PDF labellisé est prêt à être envoyé.",
-      "Your labeled PDF is ready to send."
-    );
-    if (subtitle) subtitle.textContent = hoPerm(
-      "Le processus observé est utilisable, avec certains signaux atypiques indiqués dans la preuve portable.",
-      "The observed process is usable, with some atypical signals documented in the portable proof."
-    );
-    if (badge) badge.textContent = hoPerm("PDF labellisé", "Labeled PDF");
-    if (note) note.textContent = hoPerm(
-      "Le PDF contient une marque HumanOrigin visible. La preuve portable reste disponible dans le dossier complet.",
-      "The PDF contains a visible HumanOrigin mark. The portable proof remains available in the complete folder."
-    );
+    if (ctx.dca === false && ctx.hashChanged === true && ctx.polLevel === "plausible" && ctx.shortEvidence !== true) {
+      if (kicker) kicker.textContent = hoPerm("Document modifié pendant l'observation", "Document modified during observation");
+      if (title) title.textContent = hoPerm(
+        "Lien au document observé — contribution non encore attestée",
+        "Link to observed document — contribution not yet attested"
+      );
+      if (subtitle) subtitle.textContent = hoPerm(
+        "HumanOrigin a confirmé une modification textuelle du document pendant l'observation, avec une activité cohérente. Le volume de transformation reste toutefois insuffisant pour une attestation complète de contribution documentaire.",
+        "HumanOrigin confirmed a textual modification of the document during the observation, with coherent activity. However, the volume of transformation is insufficient for a complete documentary contribution attestation."
+      );
+      if (badge) badge.textContent = hoPerm("Lien plausible — contribution partielle", "Plausible link — partial contribution");
+      if (note) note.textContent = hoPerm(
+        "Pour renforcer cette preuve, continuez le travail dans ce document et exportez après avoir produit un volume plus significatif.",
+        "To strengthen this proof, continue working in this document and export after producing a more significant volume of changes."
+      );
+    } else {
+      if (kicker) kicker.textContent = hoPerm("Document HumanOrigin créé", "HumanOrigin document created");
+      if (title) title.textContent = hoPerm(
+        "Votre PDF labellisé est prêt à être envoyé.",
+        "Your labeled PDF is ready to send."
+      );
+      if (subtitle) subtitle.textContent = hoPerm(
+        "Le processus observé est utilisable, avec certains signaux atypiques indiqués dans la preuve portable.",
+        "The observed process is usable, with some atypical signals documented in the portable proof."
+      );
+      if (badge) badge.textContent = hoPerm("PDF labellisé", "Labeled PDF");
+      if (note) note.textContent = hoPerm(
+        "Le PDF contient une marque HumanOrigin visible. La preuve portable reste disponible dans le dossier complet.",
+        "The PDF contains a visible HumanOrigin mark. The portable proof remains available in the complete folder."
+      );
+    }
   } else {
     // COHERENT / défaut
     if (kicker) kicker.textContent = hoPerm("Document HumanOrigin créé avec succès", "HumanOrigin document created successfully");
