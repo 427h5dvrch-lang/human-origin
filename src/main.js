@@ -1103,14 +1103,17 @@ function updateBoundDocumentUI() {
   const name = $("bound-document-name");
   const meta = $("bound-document-meta");
   const btn = $("bind-document-btn");
+  const kicker = $("bound-doc-kicker");
   if (!box) return;
   if (!currentBoundDocument) {
+    if (kicker) kicker.textContent = "Document à protéger";
     if (name) { name.textContent = "Aucun document sélectionné"; name.style.color = "rgba(232,238,252,.5)"; }
-    if (meta) meta.textContent = "Choisissez le document à protéger avant de commencer pour une preuve plus forte.";
-    if (btn) { btn.textContent = "Choisir un document"; btn.style.fontWeight = "700"; }
+    if (meta) { meta.textContent = ""; meta.style.color = "rgba(232,238,252,.55)"; }
+    if (btn) { btn.style.display = "none"; }
   } else {
+    if (kicker) kicker.textContent = "Document suivi";
     if (name) { name.textContent = currentBoundDocument.filename; name.style.color = "#e8eefc"; }
-    let statusText = "Empreinte initiale enregistrée.";
+    let statusText = "Travaillez dans ce document avec votre logiciel habituel. Enregistrez-le avant de terminer l'observation.";
     let statusColor = "rgba(232,238,252,.55)";
     if (__sessionTimestamps.length === 0) {
       statusText = "Document choisi ✅ — les prochaines sessions l'observeront.";
@@ -1129,7 +1132,7 @@ function updateBoundDocumentUI() {
       }
     }
     if (meta) { meta.textContent = statusText; meta.style.color = statusColor; }
-    if (btn) { btn.textContent = "Changer"; btn.style.fontWeight = ""; }
+    if (btn) { btn.textContent = "Changer"; btn.style.display = ""; btn.style.fontWeight = ""; }
   }
 }
 
@@ -1138,12 +1141,13 @@ function updateLiveDocIndicator() {
   if (!ind) return;
   if (!currentBoundDocument) { ind.style.display = "none"; return; }
   ind.style.display = "block";
+  const docName = currentBoundDocument.filename || "Document";
   if (__docChangeEvents.length > 0) {
-    ind.textContent = "Modification détectée dans le document";
-    ind.style.color = "rgba(16,185,129,.9)";
+    ind.innerHTML = `<div style="font-size:11px;opacity:.65;margin-bottom:2px;">Document suivi : ${docName}</div>`
+      + `<div style="color:rgba(16,185,129,.9);">Modification enregistrée ✅</div>`;
   } else {
-    ind.textContent = "Aucune modification détectée pour l'instant";
-    ind.style.color = "rgba(148,163,184,.7)";
+    ind.innerHTML = `<div style="font-size:11px;opacity:.65;margin-bottom:2px;">Document suivi : ${docName}</div>`
+      + `<div style="color:rgba(148,163,184,.8);">Aucune modification enregistrée — pensez à enregistrer avant de terminer.</div>`;
   }
 }
 
@@ -1273,9 +1277,6 @@ function renderProofGuideBlock() {
       const cov = computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at);
       if (cov.binding_coverage === "full") {
         coverageNote = `${cov.covered_session_count}/${totalCount} session(s) observée(s)`;
-        if (__docChangeEvents.length === 0) {
-          coverageNote += " — aucun changement détecté. Assurez-vous d'avoir sauvegardé votre document.";
-        }
       } else if (cov.binding_coverage === "partial") {
         coverageNote = `${cov.covered_session_count}/${totalCount} couverte(s) — ajoutez une observation après avoir choisi le document pour renforcer la preuve`;
       } else {
@@ -1285,7 +1286,14 @@ function renderProofGuideBlock() {
       coverageNote = "Aucun document sélectionné — la preuve sera limitée. Vous pouvez en choisir un avant de créer.";
     }
 
-    html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);">
+    const showNoChangeWarning = currentBoundDocument && __docChangeEvents.length === 0;
+    const noChangeWarningHtml = showNoChangeWarning ? `<div style="margin:0 0 10px;padding:14px 18px;border-radius:18px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.28);">
+      <div style="font-size:12px;font-weight:700;color:rgba(245,158,11,.9);margin-bottom:4px;">⚠ Aucune modification détectée dans le document suivi.</div>
+      <div style="font-size:12px;color:rgba(232,238,252,.65);margin-bottom:10px;">La preuve attestera uniquement une activité humaine, pas une contribution à ce document. Enregistrez votre document puis revenez ici, ou créez une preuve d'activité limitée.</div>
+      <button id="guide-add-observation-btn" class="btn btn-mini btn-ghost" type="button">Ajouter une observation</button>
+    </div>` : "";
+
+    html = noChangeWarningHtml + `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);">
       <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(16,185,129,.7);margin-bottom:8px;">Votre preuve HumanOrigin</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:${coverageNote ? '6px' : '0'};">
         <span style="font-size:13px;font-weight:700;color:#e8eefc;">Observations : ${validCount} valide(s)${shortCount > 0 ? ', ' + shortCount + ' courte(s)' : ''}</span>
@@ -1329,6 +1337,8 @@ function renderProofGuideBlock() {
   block.innerHTML = html;
   const _guideBind = block.querySelector("#guide-bind-document-btn");
   if (_guideBind) _guideBind.onclick = bindDocumentBeforeObservation;
+  const _guideAddObs = block.querySelector("#guide-add-observation-btn");
+  if (_guideAddObs) _guideAddObs.onclick = () => $("start-btn")?.click();
 }
 
 // =========================================================
@@ -2698,9 +2708,7 @@ function updateDashboardUI(state) {
       if (_readiness.observation_status !== "none") {
         startBtn.innerText = hoPerm("Ajouter une observation", "Add an observation");
       } else {
-        startBtn.innerText = _readiness.recommended_action === "bind_document"
-          ? hoPerm("Commencer sans document lié", "Start without document")
-          : hoPerm("Commencer l'observation", "Start observation");
+        startBtn.innerText = hoPerm("Commencer l'observation", "Start observation");
       }
       // Style : secondaire si l'export est disponible OU si l'action recommandée est de lier un doc
       if (_readiness.recommended_action === "export" || _readiness.recommended_action === "bind_document") {
@@ -3426,9 +3434,7 @@ async function exportFinalProjectCertificate() {
 
     if (currentBoundDocument) {
       const useBound = confirm(
-        `Document lié : "${currentBoundDocument.filename}"\n\n` +
-        "Utiliser ce document pour créer la preuve HumanOrigin ?\n\n" +
-        "Confirmer = utiliser ce document · Annuler = choisir un autre fichier"
+        `Créer la preuve pour :\n« ${currentBoundDocument.filename} »\n\nConfirmer pour continuer, Annuler pour choisir un autre fichier.`
       );
       if (useBound) {
         _useBoundDoc = true;
