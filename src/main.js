@@ -220,6 +220,12 @@ function applyExportSuccessCopy(verdict) {
     );
   }
 
+  // Disclaimer anti-IA — tous les cas A/B/C (évite l'overclaim "COHERENT = pas d'IA / original")
+  if (note) note.textContent += " " + hoPerm(
+    "HumanOrigin ne certifie pas l'absence d'IA ni l'originalité du contenu.",
+    "HumanOrigin does not certify the absence of AI or the originality of the content."
+  );
+
   // Libellés des boutons d'action
   const copyPdfBtn = $("export-success-copy-pdf-btn");
   const copyFolderBtn = $("export-success-copy-folder-btn");
@@ -1346,11 +1352,24 @@ function renderProofGuideBlock() {
     </div>`;
   }
 
+  // Bannière "prochaine étape" : un travail vient d'être enregistré et l'export
+  // n'a pas encore été lancé → éviter que l'utilisateur croie le parcours terminé.
+  if (__hasRegisteredWork) {
+    const postFinalizeHtml = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.32);">
+      <div style="font-size:13px;font-weight:800;color:rgba(16,185,129,.95);margin-bottom:4px;">${hoPerm("Travail enregistré ✅", "Work saved ✅")}</div>
+      <div style="font-size:12px;color:rgba(232,238,252,.7);margin-bottom:10px;">${hoPerm("Prochaine étape : créez votre document HumanOrigin", "Next step: create your HumanOrigin document")}</div>
+      <button id="guide-create-now-btn" class="btn btn-mini" type="button" style="font-weight:700;">${hoPerm("📄 Créer maintenant", "📄 Create now")}</button>
+    </div>`;
+    html = postFinalizeHtml + html;
+  }
+
   block.innerHTML = html;
   const _guideBind = block.querySelector("#guide-bind-document-btn");
   if (_guideBind) _guideBind.onclick = bindDocumentBeforeObservation;
   const _guideAddObs = block.querySelector("#guide-add-observation-btn");
   if (_guideAddObs) _guideAddObs.onclick = () => $("start-btn")?.click();
+  const _guideCreateNow = block.querySelector("#guide-create-now-btn");
+  if (_guideCreateNow) _guideCreateNow.onclick = () => $("close-project-btn")?.click();
 }
 
 // =========================================================
@@ -1839,6 +1858,12 @@ function applySessionScreenCopy() {
   if (ths[0]) ths[0].innerText = hoPerm("Moment", "Date/Time");
   if (ths[1]) ths[1].innerText = hoPerm("État", "Status");
   if (ths[2]) ths[2].innerText = hoPerm("Preuve", "Proof");
+
+  const aiDisclaimer = $("dashboard-ai-disclaimer");
+  if (aiDisclaimer) aiDisclaimer.innerText = hoPerm(
+    "HumanOrigin mesure un processus humain. Il ne détecte pas l'IA.",
+    "HumanOrigin measures a human work process. It does not detect AI."
+  );
 }
 
 function ensureLoginLangToggle() {
