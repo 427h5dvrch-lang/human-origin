@@ -1068,7 +1068,7 @@ async function bindDocumentBeforeObservation() {
   try {
     const bind = await pickDocumentToBind();
     if (!bind) {
-      toast("Aucun document sélectionné.");
+      toast(hoPerm("Aucun document sélectionné.", "No document selected."));
       return;
     }
     if (!bind.path || !bind.sha256) return;
@@ -1106,33 +1106,36 @@ function updateBoundDocumentUI() {
   const kicker = $("bound-doc-kicker");
   if (!box) return;
   if (!currentBoundDocument) {
-    if (kicker) kicker.textContent = "Document à protéger";
-    if (name) { name.textContent = "Aucun document sélectionné"; name.style.color = "rgba(232,238,252,.5)"; }
+    if (kicker) kicker.textContent = hoPerm("Document à protéger", "Document to protect");
+    if (name) { name.textContent = hoPerm("Aucun document sélectionné", "No document selected"); name.style.color = "rgba(232,238,252,.5)"; }
     if (meta) { meta.textContent = ""; meta.style.color = "rgba(232,238,252,.55)"; }
     if (btn) { btn.style.display = "none"; }
   } else {
-    if (kicker) kicker.textContent = "Document suivi";
+    if (kicker) kicker.textContent = hoPerm("Document suivi", "Tracked document");
     if (name) { name.textContent = currentBoundDocument.filename; name.style.color = "#e8eefc"; }
-    let statusText = "Travaillez dans ce document avec votre logiciel habituel. Enregistrez-le avant de terminer l'observation.";
+    let statusText = hoPerm(
+      "Travaillez dans ce document avec votre logiciel habituel. Enregistrez-le avant de terminer l'observation.",
+      "Work in this document with your usual software. Save it before ending the observation."
+    );
     let statusColor = "rgba(232,238,252,.55)";
     if (__sessionTimestamps.length === 0) {
-      statusText = "Document choisi ✅ — les prochaines sessions l'observeront.";
+      statusText = hoPerm("Document choisi ✅ — les prochaines sessions l'observeront.", "Document selected ✅ — upcoming sessions will track it.");
       statusColor = "rgba(16,185,129,.8)";
     } else {
       const cov = computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at);
       if (cov.binding_coverage === "full") {
-        statusText = `Document choisi ✅ — ${cov.covered_session_count} session(s) observée(s).`;
+        statusText = hoPerm(`Document choisi ✅ — ${cov.covered_session_count} session(s) observée(s).`, `Document selected ✅ — ${cov.covered_session_count} session(s) observed.`);
         statusColor = "rgba(16,185,129,.8)";
       } else if (cov.binding_coverage === "partial") {
-        statusText = `Document ajouté en cours de travail ⚠ — ${cov.covered_session_count} session(s) couverte(s).`;
+        statusText = hoPerm(`Document ajouté en cours de travail ⚠ — ${cov.covered_session_count} session(s) couverte(s).`, `Document added mid-work ⚠ — ${cov.covered_session_count} session(s) covered.`);
         statusColor = "rgba(245,158,11,.8)";
       } else {
-        statusText = "Document ajouté après vos sessions ⚠ — la preuve sera limitée.";
+        statusText = hoPerm("Document ajouté après vos sessions ⚠ — la preuve sera limitée.", "Document added after your sessions ⚠ — the proof will be limited.");
         statusColor = "rgba(239,68,68,.8)";
       }
     }
     if (meta) { meta.textContent = statusText; meta.style.color = statusColor; }
-    if (btn) { btn.textContent = "Changer"; btn.style.display = ""; btn.style.fontWeight = ""; }
+    if (btn) { btn.textContent = hoPerm("Changer", "Change"); btn.style.display = ""; btn.style.fontWeight = ""; }
   }
 }
 
@@ -1142,12 +1145,13 @@ function updateLiveDocIndicator() {
   if (!currentBoundDocument) { ind.style.display = "none"; return; }
   ind.style.display = "block";
   const docName = currentBoundDocument.filename || "Document";
+  const _trackedLabel = hoPerm("Document suivi", "Tracked document");
   if (__docChangeEvents.length > 0) {
-    ind.innerHTML = `<div style="font-size:11px;opacity:.65;margin-bottom:2px;">Document suivi : ${docName}</div>`
-      + `<div style="color:rgba(16,185,129,.9);">Modification enregistrée ✅</div>`;
+    ind.innerHTML = `<div style="font-size:11px;opacity:.65;margin-bottom:2px;">${_trackedLabel} : ${docName}</div>`
+      + `<div style="color:rgba(16,185,129,.9);">${hoPerm("Modification enregistrée ✅", "Saved modification detected ✅")}</div>`;
   } else {
-    ind.innerHTML = `<div style="font-size:11px;opacity:.65;margin-bottom:2px;">Document suivi : ${docName}</div>`
-      + `<div style="color:rgba(148,163,184,.8);">Aucune modification enregistrée — pensez à enregistrer avant de terminer.</div>`;
+    ind.innerHTML = `<div style="font-size:11px;opacity:.65;margin-bottom:2px;">${_trackedLabel} : ${docName}</div>`
+      + `<div style="color:rgba(148,163,184,.8);">${hoPerm("Aucune modification enregistrée — pensez à enregistrer avant de terminer.", "No saved modification detected — remember to save before finishing.")}</div>`;
   }
 }
 
@@ -1269,68 +1273,76 @@ function renderProofGuideBlock() {
     const shortCount = totalCount - validCount;
     const proofColor = st.expected_proof_level === "strong_possible" ? "#10b981"
       : st.expected_proof_level === "partial" ? "#f59e0b" : "#ef4444";
-    const proofLabel = st.expected_proof_level === "strong_possible" ? "Forte possible"
-      : st.expected_proof_level === "partial" ? "Partielle" : "Limitée";
+    const proofLabel = st.expected_proof_level === "strong_possible"
+      ? hoPerm("Forte possible", "Strong possible")
+      : st.expected_proof_level === "partial" ? hoPerm("Partielle", "Partial") : hoPerm("Limitée", "Limited");
 
     let coverageNote = "";
     if (currentBoundDocument && __sessionTimestamps.length > 0) {
       const cov = computeBindingCoverage(__sessionTimestamps, currentBoundDocument.bound_at);
       if (cov.binding_coverage === "full") {
-        coverageNote = `${cov.covered_session_count}/${totalCount} session(s) observée(s)`;
+        coverageNote = hoPerm(`${cov.covered_session_count}/${totalCount} session(s) observée(s)`, `${cov.covered_session_count}/${totalCount} session(s) observed`);
       } else if (cov.binding_coverage === "partial") {
-        coverageNote = `${cov.covered_session_count}/${totalCount} couverte(s) — ajoutez une observation après avoir choisi le document pour renforcer la preuve`;
+        coverageNote = hoPerm(`${cov.covered_session_count}/${totalCount} couverte(s) — ajoutez une observation après avoir choisi le document pour renforcer la preuve`, `${cov.covered_session_count}/${totalCount} covered — add an observation after choosing the document to strengthen the proof`);
       } else {
-        coverageNote = "Aucune session couverte par ce document — la preuve sera limitée";
+        coverageNote = hoPerm("Aucune session couverte par ce document — la preuve sera limitée", "No session covered by this document — the proof will be limited");
       }
     } else if (!currentBoundDocument) {
-      coverageNote = "Aucun document sélectionné — la preuve sera limitée. Vous pouvez en choisir un avant de créer.";
+      coverageNote = hoPerm("Aucun document sélectionné — la preuve sera limitée. Vous pouvez en choisir un avant de créer.", "No document selected — the proof will be limited. You can choose one before creating.");
     }
+
+    const _obsLabel = hoPerm(
+      `Observations : ${validCount} valide(s)${shortCount > 0 ? ', ' + shortCount + ' courte(s)' : ''}`,
+      `Observations: ${validCount} valid${shortCount > 0 ? `, ${shortCount} short` : ''}`
+    );
+    const _proofKicker = hoPerm("Votre preuve HumanOrigin", "Your HumanOrigin proof");
+    const _proofBadge = hoPerm("Preuve", "Proof");
 
     const showNoChangeWarning = currentBoundDocument && __docChangeEvents.length === 0;
     const noChangeWarningHtml = showNoChangeWarning ? `<div style="margin:0 0 10px;padding:14px 18px;border-radius:18px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.28);">
-      <div style="font-size:12px;font-weight:700;color:rgba(245,158,11,.9);margin-bottom:4px;">⚠ Aucune modification détectée dans le document suivi.</div>
-      <div style="font-size:12px;color:rgba(232,238,252,.65);margin-bottom:10px;">La preuve attestera uniquement une activité humaine, pas une contribution à ce document. Enregistrez votre document puis revenez ici, ou créez une preuve d'activité limitée.</div>
-      <button id="guide-add-observation-btn" class="btn btn-mini btn-ghost" type="button">Ajouter une observation</button>
+      <div style="font-size:12px;font-weight:700;color:rgba(245,158,11,.9);margin-bottom:4px;">${hoPerm("⚠ Aucune modification détectée dans le document suivi.", "⚠ No modification detected in the tracked document.")}</div>
+      <div style="font-size:12px;color:rgba(232,238,252,.65);margin-bottom:10px;">${hoPerm("La preuve attestera uniquement une activité humaine, pas une contribution à ce document. Enregistrez votre document puis revenez ici, ou créez une preuve d'activité limitée.", "The proof will attest to human activity only, not a contribution to this document. Save your document and come back, or create a limited activity proof.")}</div>
+      <button id="guide-add-observation-btn" class="btn btn-mini btn-ghost" type="button">${hoPerm("Ajouter une observation", "Add an observation")}</button>
     </div>` : "";
 
     html = noChangeWarningHtml + `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.18);">
-      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(16,185,129,.7);margin-bottom:8px;">Votre preuve HumanOrigin</div>
+      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(16,185,129,.7);margin-bottom:8px;">${_proofKicker}</div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:${coverageNote ? '6px' : '0'};">
-        <span style="font-size:13px;font-weight:700;color:#e8eefc;">Observations : ${validCount} valide(s)${shortCount > 0 ? ', ' + shortCount + ' courte(s)' : ''}</span>
-        <span style="font-size:11px;padding:2px 10px;border-radius:20px;background:rgba(255,255,255,.07);color:${proofColor};font-weight:700;border:1px solid ${proofColor}44;">Preuve ${proofLabel}</span>
+        <span style="font-size:13px;font-weight:700;color:#e8eefc;">${_obsLabel}</span>
+        <span style="font-size:11px;padding:2px 10px;border-radius:20px;background:rgba(255,255,255,.07);color:${proofColor};font-weight:700;border:1px solid ${proofColor}44;">${_proofBadge} ${proofLabel}</span>
       </div>
       ${coverageNote ? `<div style="font-size:12px;color:rgba(232,238,252,.5);">${coverageNote}</div>` : ''}
     </div>`;
 
   } else if (st.observation_status === "short_only") {
     html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.18);">
-      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(245,158,11,.65);margin-bottom:6px;">Votre preuve HumanOrigin</div>
-      <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">Session courte enregistrée ⚠</div>
-      <div style="font-size:12px;color:rgba(232,238,252,.55);margin-bottom:6px;">Vous pouvez créer une <strong style="color:rgba(232,238,252,.8);">preuve limitée</strong> maintenant, ou ajouter une observation plus longue pour une preuve plus forte.</div>
-      <div style="font-size:11px;color:rgba(245,158,11,.6);">→ Utilisez le bouton "Créer mon document" ci-dessous.</div>
+      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(245,158,11,.65);margin-bottom:6px;">${hoPerm("Votre preuve HumanOrigin", "Your HumanOrigin proof")}</div>
+      <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">${hoPerm("Session courte enregistrée ⚠", "Short session recorded ⚠")}</div>
+      <div style="font-size:12px;color:rgba(232,238,252,.55);margin-bottom:6px;">${hoPerm('Vous pouvez créer une <strong style="color:rgba(232,238,252,.8);">preuve limitée</strong> maintenant, ou ajouter une observation plus longue pour une preuve plus forte.', 'You can create a <strong style="color:rgba(232,238,252,.8);">limited proof</strong> now, or add a longer observation for a stronger proof.')}</div>
+      <div style="font-size:11px;color:rgba(245,158,11,.6);">${hoPerm('→ Utilisez le bouton "Créer mon document" ci-dessous.', '→ Use the "Create my document" button below.')}</div>
     </div>`;
 
   } else if (st.document_status === "not_bound") {
     html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.09);">
-      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(232,238,252,.3);margin-bottom:10px;">Votre preuve HumanOrigin</div>
+      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(232,238,252,.3);margin-bottom:10px;">${hoPerm("Votre preuve HumanOrigin", "Your HumanOrigin proof")}</div>
       <ol style="margin:0 0 10px;padding-left:18px;color:rgba(232,238,252,.65);font-size:12px;line-height:2;">
-        <li><strong style="color:#e8eefc;">Choisissez le document à protéger</strong> — pour une preuve plus forte</li>
-        <li>Travaillez normalement dans votre éditeur</li>
-        <li>Ajoutez une ou plusieurs observations</li>
-        <li>Créez votre document HumanOrigin</li>
+        <li><strong style="color:#e8eefc;">${hoPerm("Choisissez le document à protéger", "Choose the document to protect")}</strong> — ${hoPerm("pour une preuve plus forte", "for a stronger proof")}</li>
+        <li>${hoPerm("Travaillez normalement dans votre éditeur", "Work normally in your editor")}</li>
+        <li>${hoPerm("Ajoutez une ou plusieurs observations", "Add one or more observations")}</li>
+        <li>${hoPerm("Créez votre document HumanOrigin", "Create your HumanOrigin document")}</li>
       </ol>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px;">
-        <button id="guide-bind-document-btn" class="btn btn-mini" type="button" style="font-weight:700;">Choisir mon document</button>
-        <span style="font-size:11px;color:rgba(232,238,252,.3);">Ou commencez sans — la preuve sera limitée.</span>
+        <button id="guide-bind-document-btn" class="btn btn-mini" type="button" style="font-weight:700;">${hoPerm("Choisir mon document", "Choose my document")}</button>
+        <span style="font-size:11px;color:rgba(232,238,252,.3);">${hoPerm("Ou commencez sans — la preuve sera limitée.", "Or start without one — the proof will be limited.")}</span>
       </div>
     </div>`;
 
   } else {
     // Document lié, aucune session encore
     html = `<div style="margin:0 0 14px;padding:14px 18px;border-radius:18px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);">
-      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(16,185,129,.6);margin-bottom:6px;">Votre preuve HumanOrigin</div>
-      <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">Document choisi ✅</div>
-      <div style="font-size:12px;color:rgba(232,238,252,.55);">Les prochaines observations couvriront ce document. Vous pouvez ajouter plusieurs observations au même travail.</div>
+      <div style="font-size:10px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:rgba(16,185,129,.6);margin-bottom:6px;">${hoPerm("Votre preuve HumanOrigin", "Your HumanOrigin proof")}</div>
+      <div style="font-size:13px;font-weight:700;color:#e8eefc;margin-bottom:4px;">${hoPerm("Document choisi ✅", "Document selected ✅")}</div>
+      <div style="font-size:12px;color:rgba(232,238,252,.55);">${hoPerm("Les prochaines observations couvriront ce document. Vous pouvez ajouter plusieurs observations au même travail.", "Upcoming observations will cover this document. You can add multiple observations to the same work.")}</div>
     </div>`;
   }
 
@@ -3073,7 +3085,7 @@ async function refreshHistory() {
       return;
     }
     if (currentUser?.isLocal) {
-      tbody.innerHTML = `<tr><td colspan="3" style="color:#888;padding:15px">Preuve locale — historique cloud non disponible.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="3" style="color:#888;padding:15px">${hoPerm("Preuve locale — historique cloud non disponible.", "Local proof — cloud history unavailable.")}</td></tr>`;
       return;
     }
 
@@ -3434,7 +3446,7 @@ async function exportFinalProjectCertificate() {
 
     if (currentBoundDocument) {
       const useBound = confirm(
-        `Créer la preuve pour :\n« ${currentBoundDocument.filename} »\n\nConfirmer pour continuer, Annuler pour choisir un autre fichier.`
+        `${hoPerm("Créer la preuve pour :", "Create the proof for:")}\n« ${currentBoundDocument.filename} »\n\n${hoPerm("Confirmer pour continuer, Annuler pour choisir un autre fichier.", "Confirm to continue, Cancel to choose a different file.")}`
       );
       if (useBound) {
         _useBoundDoc = true;
