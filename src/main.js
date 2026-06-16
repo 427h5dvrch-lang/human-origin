@@ -220,8 +220,14 @@ function applyExportSuccessCopy(verdict) {
     );
   }
 
+  // Microcopy envoi — kit complet recommandé, PDF seul utile mais vérification limitée
+  if (note) note.textContent += "  " + hoPerm(
+    "Pour une vérification complète, envoyez le kit complet. Le PDF seul permet une lecture rapide mais peut limiter la vérification.",
+    "For complete verification, send the full kit. The PDF alone is useful for quick reading but may limit verification."
+  );
+
   // Disclaimer anti-IA — tous les cas A/B/C (évite l'overclaim "COHERENT = pas d'IA / original")
-  if (note) note.textContent += " " + hoPerm(
+  if (note) note.textContent += "  " + hoPerm(
     "HumanOrigin ne certifie pas l'absence d'IA ni l'originalité du contenu.",
     "HumanOrigin does not certify the absence of AI or the originality of the content."
   );
@@ -233,8 +239,17 @@ function applyExportSuccessCopy(verdict) {
   const copyMsgBtn = $("export-success-copy-msg-btn");
   const backBtn = $("export-success-back-btn");
   const openVerifierBtn = $("export-success-open-verifier-btn");
-  if (copyPdfBtn) copyPdfBtn.textContent = hoPerm("Copier le PDF à envoyer", "Copy PDF to send");
-  if (copyFolderBtn) copyFolderBtn.textContent = hoPerm("Copier le kit de vérification (.zip)", "Copy verification kit (.zip)");
+  // Hiérarchie d'envoi : kit complet (.zip) = action primaire recommandée, PDF seul = secondaire
+  if (copyFolderBtn) {
+    copyFolderBtn.textContent = hoPerm("📦 Envoyer le kit complet (recommandé)", "📦 Send the full kit (recommended)");
+    copyFolderBtn.classList.add("btn-primary", "ho-success-primary");
+    copyFolderBtn.classList.remove("btn-ghost");
+  }
+  if (copyPdfBtn) {
+    copyPdfBtn.textContent = hoPerm("Copier le PDF seul", "Copy PDF only");
+    copyPdfBtn.classList.add("btn-ghost");
+    copyPdfBtn.classList.remove("btn-primary", "ho-success-primary");
+  }
   if (openPdfBtn) openPdfBtn.textContent = hoPerm("Ouvrir le PDF", "Open PDF");
   if (copyMsgBtn) copyMsgBtn.textContent = hoPerm("Copier le message", "Copy message");
   if (openVerifierBtn) openVerifierBtn.textContent = hoPerm("Ouvrir le vérificateur", "Open verifier");
@@ -4253,10 +4268,11 @@ async function exportFinalProjectCertificate() {
         "",
         "---",
         "",
-        "HumanOrigin vérifie un processus de création observé.",
-        "HumanOrigin ne certifie pas le contenu, la vérité ou la qualité du document.",
-        "HumanOrigin verifies an observed creation process.",
-        "HumanOrigin does not certify the content, truth, or quality of the document.",
+        "HumanOrigin prouve un processus de travail humain observé sur ce document.",
+        "Il ne détecte pas l’IA, ne certifie ni l’originalité ni la vérité du contenu, et ne prouve pas un auteur unique.",
+        "",
+        "HumanOrigin proves an observed human work process on this document.",
+        "It does not detect AI, does not certify originality or factual truth, and does not prove sole authorship.",
       ].join("\n");
 
       await writeTextFile(`${sendDir}${sep}README_SEND_FIRST.txt`, sendReadme);
@@ -4365,8 +4381,29 @@ async function exportFinalProjectCertificate() {
         "3_TECHNICAL_PROOF_ARCHIVE/",
         "",
         "Important :",
-        "HumanOrigin ne certifie pas que le contenu du document est vrai.",
-        "HumanOrigin certifie qu’un processus humain mesuré a été lié à ce document.",
+        "HumanOrigin prouve un processus de travail humain observé sur ce document.",
+        "Il ne détecte pas l’IA, ne certifie ni l’originalité ni la vérité du contenu, et ne prouve pas un auteur unique.",
+        "",
+        "---",
+        "",
+        "HUMANORIGIN — PROJECT PACKAGE",
+        "",
+        "Project:",
+        rawShareProjectName,
+        "",
+        "Open first:",
+        "1_OPEN_FIRST.html",
+        "",
+        ...(sendZipCreated ? ["To send by email:", sendZipFilename, ""] : []),
+        "To send to a recipient:",
+        "2_SEND_TO_RECIPIENT/",
+        "",
+        "Advanced details:",
+        "3_TECHNICAL_PROOF_ARCHIVE/",
+        "",
+        "Important:",
+        "HumanOrigin proves an observed human work process on this document.",
+        "It does not detect AI, does not certify originality or factual truth, and does not prove sole authorship.",
       ].join("\n");
 
       await writeTextFile(shareStartHerePath, startHereTxt);
@@ -5481,7 +5518,7 @@ SOURCE OF TRUTH
 
 The signed file CERTIFICAT_FINAL.ho.json is the source of truth.
 The visible cartouche, badge, stamp, or PDF marking are public-facing markers,
-but the signed fichier de vérification file is the authoritative proof object.
+but the signed verification file is the authoritative proof object.
 
 HOW TO VERIFY
 
@@ -5505,7 +5542,15 @@ HUMANORIGIN SUMMARY
 
 HumanOrigin certifies a human creation process through a signed portable proof object.
 The visible mark helps circulation.
-The signed fichier de vérification file remains the authoritative verification artifact.
+The signed verification file remains the authoritative verification artifact.
+
+IMPORTANT — WHAT THIS PROVES / WHAT IT DOES NOT
+
+HumanOrigin proves an observed human work process on this document.
+It does not detect AI, does not certify originality or factual truth, and does not prove sole authorship.
+
+HumanOrigin prouve un processus de travail humain observé sur ce document.
+Il ne détecte pas l’IA, ne certifie ni l’originalité ni la vérité du contenu, et ne prouve pas un auteur unique.
 `;
 }
 function buildReadMeFirstTxt({
@@ -5580,7 +5625,7 @@ The authoritative proof file is:
 CERTIFICAT_FINAL.ho.json
 
 The cartouche, badge, stamp, HTML certificate, and published PDF are visibility and presentation assets.
-Formal verification is based on the signed fichier de vérification file and the bound document hash.
+Formal verification is based on the signed verification file and the bound document hash.
 
 ${publicationStatus}
 
@@ -6276,7 +6321,8 @@ function buildOpenFirstHtml({
       </div>
 
       <div class="fineprint">
-        HumanOrigin ne certifie pas que le contenu du document est vrai. Il certifie qu’un processus humain mesuré a été lié à ce document et qu’une preuve portable peut être vérifiée publiquement.
+        HumanOrigin prouve un processus de travail humain observé sur ce document. Il ne détecte pas l’IA, ne certifie ni l’originalité ni la vérité du contenu, et ne prouve pas un auteur unique.<br/><br/>
+        HumanOrigin proves an observed human work process on this document. It does not detect AI, does not certify originality or factual truth, and does not prove sole authorship.
       </div>
     </section>
   </main>
@@ -6472,7 +6518,7 @@ function buildOpenFirstHtml({
                 openVerifier: "Ouvrir le vérificateur",
                 fallbackNote: "Ce document source lié est inclus dans ce package.",
                 bottomNote: "Cette page est l'entrée lisible principale du package. Envoyez le dossier complet ou le ZIP, pas CERTIFICAT_FINAL.html seul. Le fichier signé CERTIFICAT_FINAL.ho.json reste la preuve de référence.",
-                verifierNote: "La vérification formelle repose sur le fichier signé fichier de vérification et sur l'empreinte du document associé. Vérificateur :"
+                verifierNote: "La vérification formelle repose sur le fichier de vérification signé et sur l'empreinte du document associé. Vérificateur :"
               },
               en: {
                 title: "Bound Document Proof Package",
@@ -6504,7 +6550,7 @@ function buildOpenFirstHtml({
                 openVerifier: "Open verifier",
                 fallbackNote: "This linked source document is included in this package.",
                 bottomNote: "This page is the main readable entry for the package. Send the full package folder or ZIP, not CERTIFICAT_FINAL.html alone. The signed file CERTIFICAT_FINAL.ho.json remains the reference proof file.",
-                verifierNote: "Formal verification is based on the signed fichier de vérification file and the linked document hash. Verifier:"
+                verifierNote: "Formal verification is based on the signed verification file and the linked document hash. Verifier:"
               }
             };
 
