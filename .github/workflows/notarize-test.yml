@@ -1,0 +1,73 @@
+name: Notarize Test (macOS)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notarize-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies (NPM)
+        run: npm install
+
+      # Décodage de la clé App Store Connect (.p8) vers un fichier temporaire
+      # éphémère du runner. Le secret n'est jamais imprimé ; le .p8 n'est jamais committé.
+      - name: Prepare Apple API key
+        env:
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          data = os.environ["APPLE_API_KEY_P8_BASE64"]
+          out = Path(os.environ["RUNNER_TEMP"]) / "AuthKey.p8"
+          out.write_bytes(base64.b64decode(data))
+          out.chmod(0o600)
+          PY
+
+      # Build local signé Developer ID + notarisé + staplé (PAS de tauri-action,
+      # donc aucune release et aucun tag ne peuvent être créés).
+      - name: Build signed + notarized macOS bundles
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: npm run tauri -- build --bundles app,dmg
+
+      - name: Verify signature, notarization and stapling
+        run: |
+          APP=$(ls -d src-tauri/target/release/bundle/macos/*.app | head -n1)
+          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n1)
+          echo "App: $APP"
+          echo "DMG: $DMG"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          spctl -a -vvv --type exec "$APP"
+          xcrun stapler validate "$APP"
+          xcrun stapler validate "$DMG"
+
+      - name: Upload notarized DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: humanorigin-macos-notarized-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
