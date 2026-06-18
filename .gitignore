@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Apple signing secrets — ne jamais committer
+*.p8
+*.p12

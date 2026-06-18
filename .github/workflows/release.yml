@@ -38,24 +38,55 @@ jobs:
       - name: Install dependencies (NPM)
         run: npm install
 
-      # 🚀 CONSTRUCTION ET RELEASE (SANS NOTARISATION APPLE)
+      # Décodage de la clé App Store Connect (.p8) vers un fichier temporaire
+      # éphémère du runner. Le secret n'est jamais imprimé ; le .p8 n'est jamais committé.
+      - name: Prepare Apple API key (macOS only)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_API_KEY_P8_BASE64: ${{ secrets.APPLE_API_KEY_P8_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import os
+          from pathlib import Path
+
+          data = os.environ["APPLE_API_KEY_P8_BASE64"]
+          out = Path(os.environ["RUNNER_TEMP"]) / "AuthKey.p8"
+          out.write_bytes(base64.b64decode(data))
+          out.chmod(0o600)
+          PY
+
+      # 🚀 CONSTRUCTION, SIGNATURE DEVELOPER ID, NOTARISATION ET RELEASE
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0
         env:
-          # Clés pour signer (OBLIGATOIRE pour que l'app marche)
+          # Updater (signature des artefacts de mise à jour)
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          # Signature Developer ID (inchangée)
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          
-          # ⚠️ ON A SUPPRIMÉ APPLE_ID et APPLE_PASSWORD ICI
-          # Cela empêche Tauri de contacter Apple et d'attendre indéfiniment.
-          
+          # Notarisation via App Store Connect API key — macOS uniquement (vide ailleurs)
+          APPLE_API_ISSUER: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_API_ISSUER || '' }}
+          APPLE_API_KEY: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_PATH: ${{ matrix.platform == 'macos-latest' && format('{0}/AuthKey.p8', runner.temp) || '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v${{ github.run_number }}
           releaseName: "HumanOrigin v${{ github.run_number }}"
-          releaseBody: "Release (Signed but not Notarized due to Apple Server Timeout)."
+          releaseBody: "Release signed (Developer ID) and notarized."
           releaseDraft: true
           prerelease: true
+
+      # Vérification post-build : échoue si Gatekeeper n'accepte pas l'app
+      # (notarisation absente) ou si le DMG n'est pas staplé.
+      - name: Verify macOS notarization (macOS only)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          APP=$(ls -d src-tauri/target/release/bundle/macos/*.app | head -n1)
+          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n1)
+          echo "App: $APP"
+          echo "DMG: $DMG"
+          spctl -a -vvv --type exec "$APP"
+          xcrun stapler validate "$DMG"
