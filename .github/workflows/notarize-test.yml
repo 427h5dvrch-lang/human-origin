@@ -54,6 +54,19 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         run: npm run tauri -- build --bundles app,dmg
 
+      # Tauri notarise/staple le .app mais pas le .dmg : on notarise et staple
+      # explicitement le DMG, qui est l'artefact réel de distribution.
+      - name: Notarize and staple DMG
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+        run: |
+          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n1)
+          echo "DMG: $DMG"
+          xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$DMG"
+
       - name: Verify signature, notarization and stapling
         run: |
           APP=$(ls -d src-tauri/target/release/bundle/macos/*.app | head -n1)
