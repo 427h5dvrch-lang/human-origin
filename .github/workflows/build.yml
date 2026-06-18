@@ -1,10 +1,10 @@
 name: Release App
 
-# C'est ici que ça se joue : on déclenche SEULEMENT sur les tags v...
+# Neutralisé (Sprint 3A) : ne se déclenche plus sur tag v* pour éviter une double release.
+# Le pipeline de release sur tag v* est release.yml (unique publisher). Ce workflow reste
+# disponible en déclenchement manuel uniquement.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -56,4 +56,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}git add .
+          releaseId: ${{ needs.create-release.outputs.release_id }}
