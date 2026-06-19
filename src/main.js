@@ -1523,26 +1523,9 @@ function isPermissionsScreenVisible() {
 
 async function getInputPermissionEvidence() {
   try {
-    const raw = await invoke("get_input_status");
-    const ts =
-      Number(
-        raw?.last_input_ts ??
-        raw?.lastInputTs ??
-        raw?.timestamp ??
-        raw?.ts ??
-        0
-      ) || 0;
-
-    const granted = Boolean(
-      raw?.input_monitoring_granted ??
-      raw?.inputMonitoringGranted ??
-      raw?.permission_granted ??
-      raw?.granted ??
-      raw?.ok ??
-      raw?.permission_ok ??
-      (ts > 0)
-    );
-
+    const raw = await invoke("get_input_status"); // u64 = last_input_seen (ms), 0 si aucun input observé
+    const ts = Number(raw) || 0;
+    const granted = ts > 0;
     return { granted, ts, raw };
   } catch {
     return { granted: false, ts: 0, raw: null };
