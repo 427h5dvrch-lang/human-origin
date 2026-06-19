@@ -1601,9 +1601,10 @@ function updatePermissionBadge(accessOk, inputOk) {
 async function isMacPermissionsOk() {
   try {
     const accessOk = await invoke("is_accessibility_trusted");
-    return !!accessOk;
+    const input = await getInputPermissionEvidence();
+    return !!accessOk && !!input.granted;
   } catch {
-    return true;
+    return false;
   }
 }
 
