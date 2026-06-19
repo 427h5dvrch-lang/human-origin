@@ -73,8 +73,8 @@ jobs:
           APPLE_API_KEY_PATH: ${{ matrix.platform == 'macos-latest' && format('{0}/AuthKey.p8', runner.temp) || '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ github.run_number }}
-          releaseName: "HumanOrigin v${{ github.run_number }}"
+          tagName: v__VERSION__
+          releaseName: "HumanOrigin v__VERSION__"
           releaseBody: "Release signed (Developer ID) and notarized."
           releaseDraft: true
           prerelease: true
@@ -90,10 +90,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n1)
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').package.version")
           echo "DMG: $DMG"
+          echo "Version: $VERSION"
           xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
           xcrun stapler staple "$DMG"
-          gh release upload "v${{ github.run_number }}" "$DMG" --clobber
+          gh release upload "v$VERSION" "$DMG" --clobber
 
       # Vérification post-build : échoue si Gatekeeper n'accepte pas l'app
       # (notarisation absente) ou si le DMG n'est pas staplé.
