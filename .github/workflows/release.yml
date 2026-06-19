@@ -79,6 +79,22 @@ jobs:
           releaseDraft: true
           prerelease: true
 
+      # Tauri staple le .app mais pas le .dmg, et tauri-action a déjà uploadé le
+      # .dmg non staplé : on notarise + staple le .dmg puis on remplace l'asset.
+      - name: Notarize and staple DMG (macOS only)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n1)
+          echo "DMG: $DMG"
+          xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
+          xcrun stapler staple "$DMG"
+          gh release upload "v${{ github.run_number }}" "$DMG" --clobber
+
       # Vérification post-build : échoue si Gatekeeper n'accepte pas l'app
       # (notarisation absente) ou si le DMG n'est pas staplé.
       - name: Verify macOS notarization (macOS only)
