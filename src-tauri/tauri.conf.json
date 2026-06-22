@@ -87,7 +87,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": "all",
+      "targets": ["app", "dmg", "nsis", "updater"],
       "identifier": "com.humanorigin.app",
       "icon": [
         "icons/32x32.png",
@@ -101,6 +101,16 @@
         "binaries/humanorigin-converter"
       ],
       "category": "DeveloperTool",
+      "publisher": "HumanOrigin",
+      "windows": {
+        "webviewInstallMode": { "type": "downloadBootstrapper" },
+        "nsis": {
+          "installMode": "currentUser",
+          "languages": ["en-US", "fr-FR"],
+          "displayLanguageSelector": true,
+          "installerIcon": "icons/icon.ico"
+        }
+      },
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
