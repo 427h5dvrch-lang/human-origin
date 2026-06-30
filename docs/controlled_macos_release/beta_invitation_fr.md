@@ -4,7 +4,7 @@ Bonjour,
 
 Je te contacte parce que je développe un outil sur lequel j'aimerais avoir ton retour direct.
 
-**HumanOrigin** est une application macOS qui enregistre discrètement ton activité clavier et souris pendant que tu travailles, puis produit une preuve vérifiable que ce travail a bien été réalisé par un humain, lié à un document final.
+**HumanOrigin** est une application macOS qui enregistre en arrière-plan ton activité clavier et souris, localement sur ta machine, pendant que tu travailles, puis produit une preuve vérifiable que ce travail a bien été réalisé par un humain, lié à un document final.
 
 Ce n'est pas un détecteur d'IA. L'outil ne sait pas si tu as utilisé de l'IA ou non, et n'essaie pas de le déterminer. Il atteste uniquement qu'un processus de travail humain a eu lieu, pendant une durée réelle, sur ta machine.
 

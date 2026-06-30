@@ -4,7 +4,7 @@ Hi,
 
 I'm reaching out because I'm working on a tool and would genuinely value your feedback.
 
-**HumanOrigin** is a macOS app that quietly records your keyboard and mouse activity while you work, then produces a verifiable proof that the work was done by a human — tied to a specific document.
+**HumanOrigin** is a macOS app that runs in the background and records your keyboard and mouse activity locally on your machine while you work, then produces a verifiable proof that the work was done by a human — tied to a specific document.
 
 It is not an AI detector. The app has no way of knowing whether you used AI, and doesn't try to. What it attests is that a real human work process took place, over real time, on your machine.
 

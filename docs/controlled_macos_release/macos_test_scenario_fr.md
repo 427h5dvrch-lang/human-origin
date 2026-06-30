@@ -16,7 +16,8 @@ Il n'est pas nécessaire de travailler sur un vrai document professionnel — un
 
 ## Étape 1 — Créer ou préparer un document
 
-Crée un fichier texte, Word (.docx), ou PDF que tu vas utiliser comme document de référence.  
+Crée un fichier texte ou Word (.docx) dans lequel tu vas taper. Ne pars pas d'un PDF existant : un PDF est généralement lu ou consulté, mais pas travaillé directement pendant le test.
+
 Exemples :
 
 - Un nouveau document Word vierge.
@@ -32,7 +33,7 @@ Laisse ce fichier ouvert dans son application habituelle.
 Ouvre l'application HumanOrigin.  
 Crée un nouveau projet ou ouvre un projet existant.
 
-**Lier le document** : dans l'interface, utilise la fonction de liaison pour associer ton fichier à ce projet.  
+**Lier le document** : dans l'interface, clique sur le bouton de liaison de document pour associer ton fichier Word ou texte à ce projet.  
 C'est cette liaison qui permettra de prouver que ton activité était liée à ce document précis.
 
 ---
@@ -73,10 +74,12 @@ Clique sur le bouton de création du document ou d'export.
 Suis les étapes proposées par l'application :
 
 - Confirmer le document final à utiliser.
-- Valider le type de preuve.
+- Confirmer si demandé.
 - Attendre la génération (quelques secondes).
 
 À la fin, un **PDF labellisé** est produit, accompagné d'un dossier de vérification complet.
+
+> **Note :** si le verdict indique « Preuve limitée », cela peut être normal pour une session courte. Cela ne signifie pas nécessairement que l'application a dysfonctionné. Note simplement ce que tu as fait et ce que tu as compris.
 
 ---
 

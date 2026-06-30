@@ -37,7 +37,9 @@
 - [ ] Le guide d'installation est joint ou lié.
 - [ ] Le scénario de test est joint ou lié.
 - [ ] Le questionnaire de retour est joint ou lié.
-- [ ] Les documents sont lisibles (Markdown ou PDF, pas de format propriétaire requis).
+- [ ] Les fichiers .md ont été exportés en PDF ou convertis en texte formaté avant envoi.
+- [ ] Le testeur reçoit des documents lisibles directement : PDF, email formaté ou page web.
+- [ ] Aucun fichier Markdown brut n'est envoyé à un testeur non technique.
 
 ---
 
