@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         # ON REMET WINDOWS ET MAC !
-        platform: [macos-latest, windows-latest]
+        platform: [macos-latest]
 
     runs-on: ${{ matrix.platform }}
     steps:
