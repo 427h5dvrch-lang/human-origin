@@ -1,6 +1,5 @@
 use image::GenericImageView;
 use image::ImageReader;
-use pdfium_auto::bind_pdfium_silent;
 use pdfium_render::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -193,14 +192,25 @@ pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
         );
     }
 
-    let pdfium = match bind_pdfium_silent() {
-        Ok(v) => v,
-        Err(e) => {
-            return PublicationResult::err(
+    let pdfium = {
+        let exe_path = match std::env::current_exe() {
+            Ok(p) => p,
+            Err(e) => return PublicationResult::err(
+                "PDFIUM_PATH_FAILED",
+                &format!("Cannot resolve executable path: {e}"),
+            ),
+        };
+        let exe_dir = exe_path.parent().unwrap_or(std::path::Path::new("."));
+        // macOS app bundle: Contents/MacOS/ → Contents/Frameworks/
+        let lib_path = exe_dir.join("../Frameworks/libpdfium.dylib");
+        let bindings = match Pdfium::bind_to_library(&lib_path) {
+            Ok(b) => b,
+            Err(e) => return PublicationResult::err(
                 "PDFIUM_BIND_FAILED",
-                &format!("Unable to bind PDFium: {e}"),
-            );
-        }
+                &format!("Unable to bind PDFium from {:?}: {e}", lib_path),
+            ),
+        };
+        Pdfium::new(bindings)
     };
 
     let mut document = match pdfium.load_pdf_from_file(&job.source_pdf_path, None) {

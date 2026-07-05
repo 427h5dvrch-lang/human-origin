@@ -26,3 +26,6 @@ dist-ssr
 # Apple signing secrets — ne jamais committer
 *.p8
 *.p12
+
+# PDFium binary — téléchargé en CI, ne jamais committer
+src-tauri/libpdfium.dylib

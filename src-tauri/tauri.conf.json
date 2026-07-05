@@ -114,7 +114,7 @@
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
-        "frameworks": [],
+        "frameworks": ["libpdfium.dylib"],
         "providerShortName": null,
         "signingIdentity": null
       }

@@ -56,6 +56,14 @@ jobs:
           out.chmod(0o600)
           PY
 
+      - name: Download libpdfium (macOS only)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          curl -fsSL \
+            "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7690/pdfium-mac-arm64.tgz" \
+            | tar xz lib/libpdfium.dylib
+          cp lib/libpdfium.dylib src-tauri/libpdfium.dylib
+
       # 🚀 CONSTRUCTION, SIGNATURE DEVELOPER ID, NOTARISATION ET RELEASE
       - name: Build and Release
         uses: tauri-apps/tauri-action@v0

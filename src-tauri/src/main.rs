@@ -1120,9 +1120,12 @@ fn file_mtime_iso(path: String) -> Result<String, String> {
 }
 #[tauri::command]
 fn pdf_page_count(path: String) -> Result<u32, String> {
-    use pdfium_auto::bind_pdfium_silent;
     use pdfium_render::prelude::*;
-    let pdfium = bind_pdfium_silent().map_err(|e| format!("{:?}", e))?;
+    let exe_path = std::env::current_exe().map_err(|e| format!("{e}"))?;
+    let exe_dir = exe_path.parent().unwrap_or(std::path::Path::new("."));
+    let lib_path = exe_dir.join("../Frameworks/libpdfium.dylib");
+    let bindings = Pdfium::bind_to_library(&lib_path).map_err(|e| format!("{:?}", e))?;
+    let pdfium = Pdfium::new(bindings);
     let doc = pdfium.load_pdf_from_file(&path, None).map_err(|e| format!("{:?}", e))?;
     Ok(doc.pages().len() as u32)
 }

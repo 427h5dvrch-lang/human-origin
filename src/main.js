@@ -4614,17 +4614,9 @@ async function exportFinalProjectCertificate() {
 
         await writeTextFile(publicationJobPath, publicationJobJson);
 
-        console.log("[PUBLISHER GUARD] calling publisher, source:", sourcePdfForPublishing);
-        const publishResult = await runPublisherSidecar({
-          jobPath: publicationJobPath,
-          fallbackInput: {
-            sourcePdfPath: sourcePdfForPublishing,
-            outputPdfPath: publishedPdfPath,
-            cartoucheCompactPngPath: cartoucheCompactPngPath,
-            verifyUrl: verifierUrl,
-            certificateId,
-            verdict,
-          },
+        console.log("[PUBLISHER GUARD] calling publish_pdf_core, source:", sourcePdfForPublishing);
+        const publishResult = await invoke("publish_pdf_core", {
+          input: JSON.parse(publicationJobJson),
         });
 
         console.log("[PUBLISHER RESULT]", publishResult);
