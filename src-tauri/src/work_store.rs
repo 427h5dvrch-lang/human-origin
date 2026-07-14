@@ -92,7 +92,12 @@ impl Default for WorkLifecycle {
 /// il ne fait que définir la forme. La capture réelle viendra avec `create_work`.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
 pub struct WorkDocumentMetadata {
+    /// Chemin normalisé « courant » du document (dernier chemin vu).
     pub document_path: String,
+    /// Tous les chemins normalisés sous lesquels ce document a été vu
+    /// (renommages / déplacements). `document_path` en fait toujours partie.
+    #[serde(default)]
+    pub known_paths: Vec<String>,
     /// SHA256 hex du document au moment de la création (capture ultérieure).
     pub hash_initial: Option<String>,
     pub size_initial: Option<u64>,
@@ -318,11 +323,11 @@ pub fn write_index_cache_atomic(works_root: &Path, cache: &WorkIndexCache) -> Re
     write_atomic(&path, &json)
 }
 
-/// Reconstruit le cache d'index en scannant `Works/` sur disque, puis le persiste.
-/// Source de vérité = les dossiers Work présents ; l'ancien `index.json` est ignoré.
-/// Les dossiers sans `work.json` valide sont simplement ignorés.
-pub fn rebuild_index_from_disk(works_root: &Path) -> Result<WorkIndexCache, String> {
-    let mut entries: Vec<WorkIndexEntry> = Vec::new();
+/// Scanne `Works/` et retourne tous les `WorkRecord` valides (autorité disque).
+/// Ne lit QUE `Works/` : les dossiers au nom non-UUID ou sans `work.json`
+/// valide sont ignorés. Résultat trié par date de création.
+pub fn read_all_work_records(works_root: &Path) -> Result<Vec<WorkRecord>, String> {
+    let mut records: Vec<WorkRecord> = Vec::new();
 
     if works_root.exists() {
         let dir_iter = fs::read_dir(works_root).map_err(|e| e.to_string())?;
@@ -341,13 +346,23 @@ pub fn rebuild_index_from_disk(works_root: &Path) -> Result<WorkIndexCache, Stri
                 continue; // dossier au nom non-UUID -> ignoré
             }
             match read_work_metadata(works_root, &work_id) {
-                Ok(record) => entries.push(WorkIndexEntry::from(&record)),
+                Ok(record) => records.push(record),
                 Err(_) => continue, // dossier sans work.json valide -> ignoré
             }
         }
     }
 
-    entries.sort_by(|a, b| a.created_at_utc.cmp(&b.created_at_utc));
+    records.sort_by(|a, b| a.created_at_utc.cmp(&b.created_at_utc));
+    Ok(records)
+}
+
+/// Reconstruit le cache d'index en scannant `Works/` sur disque, puis le persiste.
+/// Source de vérité = les dossiers Work présents ; l'ancien `index.json` est ignoré.
+pub fn rebuild_index_from_disk(works_root: &Path) -> Result<WorkIndexCache, String> {
+    let entries: Vec<WorkIndexEntry> = read_all_work_records(works_root)?
+        .iter()
+        .map(WorkIndexEntry::from)
+        .collect();
 
     let cache = WorkIndexCache {
         schema_version: WORK_SCHEMA_VERSION,

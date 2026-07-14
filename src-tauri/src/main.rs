@@ -34,6 +34,7 @@ use resvg::usvg::{Options, Tree};
 use macos_accessibility_client::accessibility;
 
 mod drafts;
+mod work_commands;
 mod work_store;
 
 const EXTRA_CARRE_DRAIN: bool = true;
@@ -1833,6 +1834,11 @@ thread::spawn(move || {
             copy_file,
             copy_file_to_clipboard,
             publish_pdf_native,
+            work_commands::resolve_work_for_document,
+            work_commands::create_work,
+            work_commands::list_works,
+            work_commands::load_work,
+            work_commands::archive_work,
         ])
         .run(tauri::generate_context!())
         .expect("error");
