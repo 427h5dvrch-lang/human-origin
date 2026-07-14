@@ -35,6 +35,7 @@ use macos_accessibility_client::accessibility;
 
 mod drafts;
 mod work_commands;
+mod work_period;
 mod work_store;
 
 const EXTRA_CARRE_DRAIN: bool = true;
