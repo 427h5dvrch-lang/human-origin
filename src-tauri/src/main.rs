@@ -34,6 +34,7 @@ use resvg::usvg::{Options, Tree};
 use macos_accessibility_client::accessibility;
 
 mod drafts;
+mod work_store;
 
 const EXTRA_CARRE_DRAIN: bool = true;
 const EXTRA_CARRE_DRAIN_MS: u64 = 40;
