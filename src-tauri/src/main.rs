@@ -40,6 +40,7 @@ mod work_engine;
 mod work_package;
 mod work_pending;
 mod work_period;
+mod work_publish;
 mod work_store;
 
 const EXTRA_CARRE_DRAIN: bool = true;
