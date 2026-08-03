@@ -34,6 +34,7 @@ use resvg::usvg::{Options, Tree};
 use macos_accessibility_client::accessibility;
 
 mod drafts;
+mod work_certificate;
 mod work_commands;
 mod work_engine;
 mod work_pending;
