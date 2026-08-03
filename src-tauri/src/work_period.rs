@@ -163,13 +163,28 @@ pub fn compute_period_record_sha256(period: &ObservationPeriod) -> Result<String
     Ok(format!("{:x}", Sha256::digest(&payload)))
 }
 
+/// Octets canoniques (HO-CANON-V1) d'une valeur sérialisable, en excluant
+/// éventuellement des champs de premier niveau (ex. `signature`). Source UNIQUE
+/// de canonicalisation pour la couche Work.
+pub(crate) fn canonical_bytes_excluding<T: Serialize>(
+    value: &T,
+    exclude_top_level: &[&str],
+) -> Result<Vec<u8>, String> {
+    let mut v = serde_json::to_value(value).map_err(|e| e.to_string())?;
+    if let Some(map) = v.as_object_mut() {
+        for field in exclude_top_level {
+            map.remove(*field);
+        }
+    }
+    let canonical = canonicalize_value(&v);
+    serde_json::to_vec(&canonical).map_err(|e| e.to_string())
+}
+
 /// Canonicalise (HO-CANON-V1 : clés d'objets triées récursivement) N'IMPORTE
 /// quelle valeur sérialisable puis renvoie son SHA256 hex. Source UNIQUE de
 /// canonicalisation pour la couche Work (réutilisée par la CoreEvidence).
 pub(crate) fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, String> {
-    let v = serde_json::to_value(value).map_err(|e| e.to_string())?;
-    let canonical = canonicalize_value(&v);
-    let bytes = serde_json::to_vec(&canonical).map_err(|e| e.to_string())?;
+    let bytes = canonical_bytes_excluding(value, &[])?;
     Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 

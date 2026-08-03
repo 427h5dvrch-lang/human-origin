@@ -18,12 +18,25 @@
 // Fondation (Commit 6A) : logique pure consommée par l'écriture certificat (6B).
 #![allow(dead_code)]
 
+use base64::{engine::general_purpose, Engine as _};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use serde::{Deserialize, Serialize};
-
-use std::path::Path;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
+use std::fs;
+use std::fs::{File, OpenOptions};
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
 
 use crate::work_period::{self, ObservationPeriod};
 use crate::work_store::{self, WorkId};
+
+/// Version de schéma du HO-JSON Work Certificate.
+pub(crate) const CERTIFICATE_SCHEMA_VERSION: u32 = 1;
+
+const SIGN_ALG: &str = "ed25519";
+const LOCAL_DEVICE_IDENTITY: &str = "LOCAL_DEVICE";
+const CERTIFICATES_DIR: &str = "certificates";
 
 /// Version de schéma de la CoreEvidence.
 pub(crate) const CORE_EVIDENCE_SCHEMA_VERSION: u32 = 1;
@@ -63,6 +76,11 @@ pub(crate) enum CertificateError {
     DocumentUnavailable(String),
     ChainInvalid(String),
     PreviousCertificateMismatch,
+    /// Un certificat existant est corrompu, mal signé, ou incohérent en
+    /// chaîne/séquence. Erreur DURE : jamais de skip silencieux (garde-fou B).
+    CertificateChainTampered(String),
+    /// Échec d'écriture / d'accès disque.
+    Io(String),
 }
 
 /// Vue d'une période incluse dans l'évidence.
@@ -317,10 +335,400 @@ pub(crate) fn build_certificate_draft(
     })
 }
 
-/// SHA256 canonique (HO-CANON-V1) de la CoreEvidence. Source unique via
-/// `work_period::canonical_sha256`. Nécessaire au chaînage V2.
+/// SHA256 canonique (HO-CANON-V1) de la CoreEvidence PRIVÉE (avec document_path).
+/// À usage interne uniquement — JAMAIS dans le HO-JSON public (garde-fou A).
 pub(crate) fn compute_core_evidence_sha256(ev: &CoreEvidence) -> Result<String, String> {
     work_period::canonical_sha256(ev)
+}
+
+// --- HO-JSON PUBLIC (6B) ------------------------------------------------------
+
+/// Référence documentaire PUBLIQUE — AUCUN champ chemin (impossible d'exposer
+/// un `document_path` : le champ n'existe pas).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PublicDocumentRef {
+    pub hash_current: String,
+    pub size_current: u64,
+}
+
+/// Projection PARTAGEABLE de `CoreEvidence` : path-free (garde-fou #1).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PublicCoreEvidence {
+    pub schema_version: u32,
+    pub work_id: WorkId,
+    pub certificate_version: CertificateVersion,
+    pub document: PublicDocumentRef,
+    pub included_period_summaries: Vec<IncludedPeriod>,
+    pub new_period_ids: Vec<String>,
+    pub qualifying_new_period_count: u32,
+    pub continuity: Continuity,
+    pub verdict: VerdictEngineSummary,
+    pub previous_certificate_id: Option<String>,
+    pub previous_core_evidence_sha256: Option<String>,
+}
+
+/// Projette la CoreEvidence privée en évidence publique (retire `document_path`
+/// et n'embarque JAMAIS d'`ObservationPeriod` complète).
+fn project_public(ev: &CoreEvidence) -> PublicCoreEvidence {
+    PublicCoreEvidence {
+        schema_version: ev.schema_version,
+        work_id: ev.work_id.clone(),
+        certificate_version: ev.certificate_version,
+        document: PublicDocumentRef {
+            hash_current: ev.document.hash_current.clone(),
+            size_current: ev.document.size_current,
+        },
+        included_period_summaries: ev.included_periods.clone(),
+        new_period_ids: ev.new_period_ids.clone(),
+        qualifying_new_period_count: ev.qualifying_new_period_count,
+        continuity: ev.continuity.clone(),
+        verdict: ev.verdict.clone(),
+        previous_certificate_id: ev.previous_certificate_id.clone(),
+        previous_core_evidence_sha256: ev.previous_core_evidence_sha256.clone(),
+    }
+}
+
+/// SHA256 canonique de l'évidence PUBLIQUE (garde-fou A : c'est CE hash qui va
+/// dans le certificat, jamais celui de la CoreEvidence privée).
+pub(crate) fn compute_public_core_evidence_sha256(
+    p: &PublicCoreEvidence,
+) -> Result<String, String> {
+    work_period::canonical_sha256(p)
+}
+
+/// Métadonnées de signature du certificat (incluses dans le corps signé).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CertificateSignatureMetadata {
+    pub signature_algorithm: String,
+    pub public_key: String,
+    pub signing_key_id: String,
+    pub identity_status: String,
+    pub schema_version: u32,
+}
+
+/// HO-JSON Work Certificate : résumé path-free signé par la clé device.
+/// Ne prétend PAS permettre la re-vérification indépendante des signatures de
+/// période (garde-fou #1) : c'est un engagement device sur des summaries.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct WorkCertificate {
+    pub schema_version: u32,
+    pub certificate_id: String,
+    pub certificate_sequence: u64,
+    pub created_at: String,
+    pub work_id: WorkId,
+    pub certificate_version: CertificateVersion,
+    pub public_core_evidence: PublicCoreEvidence,
+    pub core_evidence_sha256: String,
+    pub previous_certificate_id: Option<String>,
+    pub previous_core_evidence_sha256: Option<String>,
+    pub signature_metadata: CertificateSignatureMetadata,
+    pub signature: String,
+}
+
+fn sha256_hex_str(s: &str) -> String {
+    format!("{:x}", Sha256::digest(s.as_bytes()))
+}
+
+fn decode_b64_fixed<const N: usize>(s: &str) -> Result<[u8; N], String> {
+    let bytes = general_purpose::STANDARD
+        .decode(s)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() != N {
+        return Err(format!("longueur base64 inattendue : {}", bytes.len()));
+    }
+    let mut arr = [0u8; N];
+    arr.copy_from_slice(&bytes);
+    Ok(arr)
+}
+
+/// Vérifie un certificat : algo, identité, `signing_key_id`, cohérence du
+/// `core_evidence_sha256` public, et signature Ed25519 sur le corps canonique
+/// excluant UNIQUEMENT `signature`. `Err(raison)` si invalide.
+pub(crate) fn verify_certificate(cert: &WorkCertificate) -> Result<(), String> {
+    let meta = &cert.signature_metadata;
+    if meta.signature_algorithm != SIGN_ALG {
+        return Err(format!(
+            "algorithme inattendu : {}",
+            meta.signature_algorithm
+        ));
+    }
+    if meta.identity_status != LOCAL_DEVICE_IDENTITY {
+        return Err(format!("identité inattendue : {}", meta.identity_status));
+    }
+    if meta.signing_key_id != sha256_hex_str(&meta.public_key) {
+        return Err("signing_key_id incohérent avec la clé publique".to_string());
+    }
+
+    let expected = compute_public_core_evidence_sha256(&cert.public_core_evidence)?;
+    if cert.core_evidence_sha256 != expected {
+        return Err("core_evidence_sha256 ne correspond pas à public_core_evidence".to_string());
+    }
+
+    let body = work_period::canonical_bytes_excluding(cert, &["signature"])?;
+    let digest = Sha256::digest(&body);
+    let pk = decode_b64_fixed::<32>(&meta.public_key)?;
+    let verifying_key = VerifyingKey::from_bytes(&pk).map_err(|e| e.to_string())?;
+    let sig = Signature::from_bytes(&decode_b64_fixed::<64>(&cert.signature)?);
+    verifying_key
+        .verify_strict(digest.as_slice(), &sig)
+        .map_err(|_| "signature de certificat invalide".to_string())
+}
+
+// --- I/O ATOMIQUE -------------------------------------------------------------
+
+fn certificates_dir(works_root: &Path, work_id: &WorkId) -> PathBuf {
+    works_root.join(work_id.as_str()).join(CERTIFICATES_DIR)
+}
+
+fn certificate_path(works_root: &Path, work_id: &WorkId, sequence: u64) -> PathBuf {
+    certificates_dir(works_root, work_id).join(format!("certificate_{sequence}.json"))
+}
+
+fn sync_dir(dir: &Path) {
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(f) = File::open(dir) {
+            let _ = f.sync_all();
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let _ = dir;
+    }
+}
+
+/// Écriture atomique SANS écrasement (temp + fsync + hard_link + fsync parent).
+fn write_atomic_new(path: &Path, bytes: &[u8]) -> Result<(), CertificateError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| CertificateError::Io("chemin sans parent".into()))?;
+    fs::create_dir_all(parent).map_err(|e| CertificateError::Io(e.to_string()))?;
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| CertificateError::Io("nom de fichier invalide".into()))?;
+    let tmp = parent.join(format!(".{}.tmp-{}", file_name, uuid::Uuid::new_v4()));
+
+    let write = (|| -> Result<(), String> {
+        let mut f = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+            .map_err(|e| e.to_string())?;
+        f.write_all(bytes).map_err(|e| e.to_string())?;
+        f.flush().map_err(|e| e.to_string())?;
+        f.sync_all().map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    if let Err(e) = write {
+        let _ = fs::remove_file(&tmp);
+        return Err(CertificateError::Io(e));
+    }
+
+    let link = fs::hard_link(&tmp, path);
+    let _ = fs::remove_file(&tmp);
+    match link {
+        Ok(()) => {
+            sync_dir(parent);
+            Ok(())
+        }
+        Err(e) if e.kind() == ErrorKind::AlreadyExists => Err(CertificateError::Io(format!(
+            "certificat déjà existant, écrasement refusé : {}",
+            path.display()
+        ))),
+        Err(e) => Err(CertificateError::Io(e.to_string())),
+    }
+}
+
+// --- CHARGEMENT / CHAÎNE V1/V2 ------------------------------------------------
+
+fn parse_certificate_filename_seq(name: &str) -> Option<u64> {
+    name.strip_prefix("certificate_")?
+        .strip_suffix(".json")?
+        .parse::<u64>()
+        .ok()
+}
+
+/// Charge et vérifie DUREMENT la chaîne de certificats d'un Work (garde-fou B).
+/// Aucun skip silencieux : tout certificat corrompu / mal signé /
+/// `core_evidence_sha256` faux / séquence ou linkage incohérent ->
+/// `CertificateChainTampered`. Retourne la chaîne ordonnée (vide si aucun).
+pub(crate) fn load_certificates(
+    works_root: &Path,
+    work_id: &WorkId,
+) -> Result<Vec<WorkCertificate>, CertificateError> {
+    let dir = certificates_dir(works_root, work_id);
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut by_seq: BTreeMap<u64, WorkCertificate> = BTreeMap::new();
+    for entry in fs::read_dir(&dir).map_err(|e| CertificateError::Io(e.to_string()))? {
+        let entry = entry.map_err(|e| CertificateError::Io(e.to_string()))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !(name.starts_with("certificate_") && name.ends_with(".json")) {
+            continue;
+        }
+
+        let raw = fs::read_to_string(&path).map_err(|e| CertificateError::Io(e.to_string()))?;
+        let cert: WorkCertificate = serde_json::from_str(&raw).map_err(|e| {
+            CertificateError::CertificateChainTampered(format!("JSON invalide : {e}"))
+        })?;
+        verify_certificate(&cert).map_err(CertificateError::CertificateChainTampered)?;
+
+        if let Some(fname_seq) = parse_certificate_filename_seq(&name) {
+            if fname_seq != cert.certificate_sequence {
+                return Err(CertificateError::CertificateChainTampered(format!(
+                    "nom/contenu incohérents : {name}"
+                )));
+            }
+        }
+        if by_seq.contains_key(&cert.certificate_sequence) {
+            return Err(CertificateError::CertificateChainTampered(format!(
+                "doublon de séquence {}",
+                cert.certificate_sequence
+            )));
+        }
+        by_seq.insert(cert.certificate_sequence, cert);
+    }
+
+    if by_seq.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Séquence contiguë 1..=max + linkage previous_* correct.
+    let max_seq = *by_seq.keys().next_back().unwrap();
+    let mut chain: Vec<WorkCertificate> = Vec::with_capacity(max_seq as usize);
+    for seq in 1..=max_seq {
+        let cur = by_seq.get(&seq).ok_or_else(|| {
+            CertificateError::CertificateChainTampered(format!("séquence manquante : {seq}"))
+        })?;
+        if seq == 1 {
+            if cur.previous_certificate_id.is_some() || cur.previous_core_evidence_sha256.is_some()
+            {
+                return Err(CertificateError::CertificateChainTampered(
+                    "le premier certificat ne doit avoir aucun lien précédent".into(),
+                ));
+            }
+        } else {
+            let prev = &chain[(seq - 2) as usize];
+            if cur.previous_certificate_id.as_deref() != Some(prev.certificate_id.as_str()) {
+                return Err(CertificateError::CertificateChainTampered(
+                    "previous_certificate_id incohérent".into(),
+                ));
+            }
+            if cur.previous_core_evidence_sha256.as_deref()
+                != Some(prev.core_evidence_sha256.as_str())
+            {
+                return Err(CertificateError::CertificateChainTampered(
+                    "previous_core_evidence_sha256 incohérent".into(),
+                ));
+            }
+        }
+        chain.push(cur.clone());
+    }
+    Ok(chain)
+}
+
+/// Dernier certificat valide (tête de chaîne vérifiée) ou `None`.
+pub(crate) fn find_last_valid_certificate(
+    works_root: &Path,
+    work_id: &WorkId,
+) -> Result<Option<WorkCertificate>, CertificateError> {
+    Ok(load_certificates(works_root, work_id)?.into_iter().last())
+}
+
+// --- CRÉATION DU CERTIFICAT (interne, non exposé Tauri en 6B) -----------------
+
+/// Construit + signe + écrit le certificat HO-JSON path-free d'un Work.
+/// `created_at` fourni par l'appelant (déterminisme). Clé injectée (`sign_fn`
+/// interne) pour l'isolation des tests. Écrit `certificate_{seq}.json`.
+fn create_work_certificate_with(
+    works_root: &Path,
+    work_id: &WorkId,
+    created_at: &str,
+    signing_key: &SigningKey,
+) -> Result<WorkCertificate, CertificateError> {
+    // Chaîne de certificats existante (erreur dure si un certificat est invalide).
+    let existing = load_certificates(works_root, work_id)?;
+    let last = existing.last();
+
+    let previous_ref = last.map(|c| PreviousCertificateRef {
+        certificate_id: c.certificate_id.clone(),
+        core_evidence_sha256: c.core_evidence_sha256.clone(),
+        included_period_ids: c
+            .public_core_evidence
+            .included_period_summaries
+            .iter()
+            .map(|p| p.period_id.clone())
+            .collect(),
+    });
+
+    // Évidence (6A) : impose ≥1 nouvelle qualifiante, doc inchangé, préfixe exact.
+    let draft = build_certificate_draft(works_root, work_id, previous_ref.as_ref())?;
+    let public = project_public(&draft.core_evidence);
+    let core_evidence_sha256 =
+        compute_public_core_evidence_sha256(&public).map_err(CertificateError::Io)?;
+
+    let certificate_sequence = last.map(|c| c.certificate_sequence + 1).unwrap_or(1);
+    let previous_certificate_id = last.map(|c| c.certificate_id.clone());
+    let previous_core_evidence_sha256 = last.map(|c| c.core_evidence_sha256.clone());
+
+    let public_key = general_purpose::STANDARD.encode(signing_key.verifying_key().to_bytes());
+    let signing_key_id = sha256_hex_str(&public_key);
+
+    let mut cert = WorkCertificate {
+        schema_version: CERTIFICATE_SCHEMA_VERSION,
+        certificate_id: uuid::Uuid::new_v4().to_string(),
+        certificate_sequence,
+        created_at: created_at.to_string(),
+        work_id: work_id.clone(),
+        certificate_version: draft.core_evidence.certificate_version,
+        public_core_evidence: public,
+        core_evidence_sha256,
+        previous_certificate_id,
+        previous_core_evidence_sha256,
+        signature_metadata: CertificateSignatureMetadata {
+            signature_algorithm: SIGN_ALG.to_string(),
+            public_key,
+            signing_key_id,
+            identity_status: LOCAL_DEVICE_IDENTITY.to_string(),
+            schema_version: CERTIFICATE_SCHEMA_VERSION,
+        },
+        signature: String::new(),
+    };
+
+    // Signature sur corps canonique excluant UNIQUEMENT `signature`.
+    let body = work_period::canonical_bytes_excluding(&cert, &["signature"])
+        .map_err(CertificateError::Io)?;
+    let digest = Sha256::digest(&body);
+    cert.signature =
+        general_purpose::STANDARD.encode(signing_key.sign(digest.as_slice()).to_bytes());
+
+    // Écriture atomique, refus d'écrasement.
+    let path = certificate_path(works_root, work_id, certificate_sequence);
+    let json = serde_json::to_vec_pretty(&cert).map_err(|e| CertificateError::Io(e.to_string()))?;
+    write_atomic_new(&path, &json)?;
+
+    Ok(cert)
+}
+
+/// Point d'entrée production : signe avec la clé device (`ensure_signing_key`).
+/// Non exposé en commande Tauri en 6B.
+pub(crate) fn create_work_certificate_core(
+    works_root: &Path,
+    work_id: &WorkId,
+    created_at: &str,
+) -> Result<WorkCertificate, CertificateError> {
+    let key = crate::ensure_signing_key().map_err(CertificateError::Io)?;
+    create_work_certificate_with(works_root, work_id, created_at, &key)
 }
 
 // --- TESTS UNITAIRES ----------------------------------------------------------
@@ -646,5 +1054,237 @@ mod tests {
         let res = build_certificate_draft(&works, &wid, None);
         assert!(matches!(res, Err(CertificateError::ChainInvalid(_))));
         cleanup(&base);
+    }
+
+    // --- 6B : HO-JSON Work Certificate signé -------------------------------
+
+    fn key() -> SigningKey {
+        SigningKey::generate(&mut OsRng)
+    }
+
+    /// Work certifiable minimal : 1 période qualifiante, doc courant == hash_end.
+    fn make_certifiable(base: &Path, content: &[u8]) -> (PathBuf, WorkId, PathBuf, String) {
+        let (works, wid, doc, h) = make_work(base, content);
+        seed(&works, &wid, 0, None, &"a".repeat(64), &h, true);
+        (works, wid, doc, h)
+    }
+
+    fn cert_dir(works: &Path, wid: &WorkId) -> PathBuf {
+        works.join(wid.as_str()).join("certificates")
+    }
+
+    #[test]
+    fn test_6b_1_certificat_v1_signe_verifiable() {
+        let base = temp_base();
+        let (works, wid, _doc, h) = make_certifiable(&base, b"contenu");
+        let k = key();
+        let cert = create_work_certificate_with(&works, &wid, "2026-08-01T10:00:00Z", &k).unwrap();
+
+        assert_eq!(cert.certificate_version, CertificateVersion::V1);
+        assert_eq!(cert.certificate_sequence, 1);
+        assert!(cert.previous_certificate_id.is_none());
+        assert_eq!(cert.public_core_evidence.document.hash_current, h);
+        assert_eq!(cert.signature_metadata.identity_status, "LOCAL_DEVICE");
+        assert!(verify_certificate(&cert).is_ok());
+        // Fichier écrit.
+        assert!(cert_dir(&works, &wid).join("certificate_1.json").exists());
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_2_signature_echoue_si_body_change() {
+        let base = temp_base();
+        let (works, wid, _doc, _h) = make_certifiable(&base, b"contenu");
+        let cert =
+            create_work_certificate_with(&works, &wid, "2026-08-01T10:00:00Z", &key()).unwrap();
+
+        // Altère un champ du corps -> signature invalide.
+        let mut c1 = cert.clone();
+        c1.certificate_id = "falsifie".to_string();
+        assert!(verify_certificate(&c1).is_err());
+
+        // Altère signature_metadata -> invalide.
+        let mut c2 = cert.clone();
+        c2.signature_metadata.identity_status = "REMOTE".to_string();
+        assert!(verify_certificate(&c2).is_err());
+
+        // Altère public_core_evidence -> core_evidence_sha256 ne correspond plus.
+        let mut c3 = cert.clone();
+        c3.public_core_evidence.qualifying_new_period_count += 1;
+        assert!(verify_certificate(&c3).is_err());
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_3_json_sans_document_path_ni_users_ni_periode_complete() {
+        let base = temp_base();
+        let (works, wid, _doc, _h) = make_certifiable(&base, b"contenu");
+        create_work_certificate_with(&works, &wid, "2026-08-01T10:00:00Z", &key()).unwrap();
+
+        let json = fs::read_to_string(cert_dir(&works, &wid).join("certificate_1.json")).unwrap();
+        // Pas de clé document_path, pas de chemin absolu du document, pas de /Users/.
+        assert!(!json.contains("document_path"), "document_path exposé !");
+        assert!(!json.contains("/Users/"), "chemin /Users/ exposé !");
+        let doc_path = work_store::read_work_metadata(&works, &wid)
+            .unwrap()
+            .document
+            .document_path;
+        assert!(!json.contains(&doc_path), "chemin document exposé !");
+        // Pas d'ObservationPeriod complète : marqueur `engine` absent.
+        assert!(
+            !json.contains("\"engine\""),
+            "ObservationPeriod complète exposée !"
+        );
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_4_certificat_v2_avec_previous_valide() {
+        let base = temp_base();
+        // v1 sur le contenu C1.
+        let (works, wid, doc, _h1) = make_certifiable(&base, b"C1-contenu");
+        let k = key();
+        let v1 = create_work_certificate_with(&works, &wid, "2026-08-01T10:00:00Z", &k).unwrap();
+
+        // Le document évolue -> C2 ; nouvelle période qualifiante p1 (continuité FULL).
+        let h1 = sha_hex(b"C1-contenu");
+        let h2 = sha_hex(b"C2-modifie");
+        fs::write(&doc, b"C2-modifie").unwrap();
+        // p0 (seq 0) a hash_end == h1 ; on lit p0 pour chaîner p1.
+        let p0 = work_period::read_period(&works, &wid, 0).unwrap();
+        let p1 = seed(&works, &wid, 1, Some(&p0), &h1, &h2, true);
+
+        let v2 = create_work_certificate_with(&works, &wid, "2026-08-02T10:00:00Z", &k).unwrap();
+        assert_eq!(v2.certificate_version, CertificateVersion::V2);
+        assert_eq!(v2.certificate_sequence, 2);
+        assert_eq!(
+            v2.previous_certificate_id.as_deref(),
+            Some(v1.certificate_id.as_str())
+        );
+        assert_eq!(
+            v2.previous_core_evidence_sha256.as_deref(),
+            Some(v1.core_evidence_sha256.as_str())
+        );
+        assert_eq!(
+            v2.public_core_evidence.new_period_ids,
+            vec![p1.period_id.clone()]
+        );
+        assert_eq!(v2.public_core_evidence.document.hash_current, h2);
+        assert!(verify_certificate(&v2).is_ok());
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_5_v2_sans_nouvelle_qualifiante_refuse() {
+        let base = temp_base();
+        let (works, wid, _doc, _h) = make_certifiable(&base, b"contenu");
+        let k = key();
+        create_work_certificate_with(&works, &wid, "2026-08-01T10:00:00Z", &k).unwrap();
+        // Aucune nouvelle période -> v2 refusé.
+        let res = create_work_certificate_with(&works, &wid, "2026-08-02T10:00:00Z", &k);
+        assert_eq!(res.err(), Some(CertificateError::NoQualifyingNewPeriod));
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_6_certificat_existant_invalide_refuse_sans_skip() {
+        let base = temp_base();
+        let (works, wid, _doc, _h) = make_certifiable(&base, b"contenu");
+        let k = key();
+        create_work_certificate_with(&works, &wid, "2026-08-01T10:00:00Z", &k).unwrap();
+        // Corrompt le certificat existant sur disque.
+        fs::write(
+            cert_dir(&works, &wid).join("certificate_1.json"),
+            b"{ pas un certificat }",
+        )
+        .unwrap();
+        // Toute nouvelle création DOIT échouer durement (pas de skip silencieux).
+        let res = create_work_certificate_with(&works, &wid, "2026-08-02T10:00:00Z", &k);
+        assert!(matches!(
+            res,
+            Err(CertificateError::CertificateChainTampered(_))
+        ));
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_7_document_modifie_apres_stop_refuse() {
+        let base = temp_base();
+        let (works, wid, doc, _h) = make_certifiable(&base, b"contenu");
+        fs::write(&doc, b"modifie apres").unwrap();
+        let res = create_work_certificate_with(&works, &wid, "2026-08-01T10:00:00Z", &key());
+        assert_eq!(res.err(), Some(CertificateError::DocumentModifiedAfterStop));
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_8_ecriture_atomique_sans_overwrite() {
+        let base = temp_base();
+        let (works, wid, _doc, _h) = make_certifiable(&base, b"contenu");
+        let path = certificate_path(&works, &wid, 1);
+        write_atomic_new(&path, b"{}").unwrap();
+        // Deuxième écriture sur la même séquence -> refus.
+        let second = write_atomic_new(&path, b"{}");
+        assert!(matches!(second, Err(CertificateError::Io(_))));
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_9_aucun_pdf_ni_manifest_genere() {
+        let base = temp_base();
+        let (works, wid, _doc, _h) = make_certifiable(&base, b"contenu");
+        create_work_certificate_with(&works, &wid, "2026-08-01T10:00:00Z", &key()).unwrap();
+
+        // certificates/ ne contient QUE certificate_*.json.
+        let only_certs = fs::read_dir(cert_dir(&works, &wid))
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .all(|e| {
+                let n = e.file_name().to_string_lossy().to_string();
+                n.starts_with("certificate_") && n.ends_with(".json")
+            });
+        assert!(
+            only_certs,
+            "certificates/ ne doit contenir que des certificate_*.json"
+        );
+        // Aucun .pdf ni manifest nulle part dans le Work.
+        let work_dir = works.join(wid.as_str());
+        for entry in walk(&work_dir) {
+            let n = entry.to_string_lossy().to_lowercase();
+            assert!(!n.ends_with(".pdf"), "PDF généré : {n}");
+            assert!(!n.contains("manifest"), "manifest généré : {n}");
+        }
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_6b_10_public_sha_change_si_public_evidence_change() {
+        let base = temp_base();
+        let (works, wid, _doc, _h) = make_certifiable(&base, b"contenu");
+        let draft = build_certificate_draft(&works, &wid, None).unwrap();
+        let public = project_public(&draft.core_evidence);
+        let s1 = compute_public_core_evidence_sha256(&public).unwrap();
+
+        let mut public2 = public.clone();
+        public2.qualifying_new_period_count += 1;
+        let s2 = compute_public_core_evidence_sha256(&public2).unwrap();
+        assert_ne!(s1, s2, "le sha public doit changer si l'évidence change");
+        cleanup(&base);
+    }
+
+    /// Parcours récursif simple (tests uniquement).
+    fn walk(dir: &Path) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        if let Ok(rd) = fs::read_dir(dir) {
+            for e in rd.filter_map(|e| e.ok()) {
+                let p = e.path();
+                if p.is_dir() {
+                    out.extend(walk(&p));
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+        out
     }
 }
