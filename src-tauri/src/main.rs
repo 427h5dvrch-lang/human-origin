@@ -66,7 +66,7 @@ struct LiveStats {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
-struct PasteStats {
+pub(crate) struct PasteStats {
     paste_events: u32,
     pasted_chars: u32,
     max_paste_chars: u32,
@@ -1040,16 +1040,188 @@ pub(crate) fn is_capture_active(state: &AppState) -> bool {
     *state.is_scanning.lock().unwrap()
 }
 
-/// Snapshot du propriétaire courant de la capture (tests internes uniquement).
-#[cfg(test)]
-pub(crate) fn capture_owner_snapshot(state: &AppState) -> ActiveCaptureOwner {
+/// Propriétaire courant de la capture.
+pub(crate) fn capture_owner(state: &AppState) -> ActiveCaptureOwner {
     state.runtime.lock().unwrap().owner.clone()
+}
+
+/// Instantané des buffers au moment de l'arrêt d'une capture Work.
+struct CaptureSnapshot {
+    start_ms: i64,
+    keys: Vec<i64>,
+    backs: Vec<i64>,
+    clicks: Vec<i64>,
+}
+
+/// Résultat du scoring d'une capture (partagé legacy/Work). `stop_scan` n'utilise
+/// que `analysis` ; le flux Work utilise `engine` (bloc scoring sérialisé) et
+/// `score`. Les autres champs sont fournis pour complétude du format de retour
+/// (déjà embarqués dans `engine`).
+#[allow(dead_code)]
+struct CaptureOutcome {
+    analysis: SessionAnalysis,
+    keyboard: KeyboardStats,
+    mouse: MouseStats,
+    paste: PasteStats,
+    active_sec: u64,
+    score: i32,
+    engine: serde_json::Value,
+}
+
+/// Arrêt d'une capture Work : bump génération, `is_scanning=false`, drain,
+/// snapshot des buffers, `owner=Idle`, purge `current_session_id`.
+/// Réservé au flux Work (jamais appelé par `stop_scan`).
+fn end_capture(state: &AppState) -> CaptureSnapshot {
+    state.scan_gen.fetch_add(1, Ordering::SeqCst);
+    {
+        let mut scanning = state.is_scanning.lock().unwrap();
+        *scanning = false;
+    }
+    if EXTRA_CARRE_DRAIN {
+        thread::sleep(Duration::from_millis(EXTRA_CARRE_DRAIN_MS));
+    }
+    let mut rt = state.runtime.lock().unwrap();
+    let snap = CaptureSnapshot {
+        start_ms: rt.start_timestamp,
+        keys: rt.keystroke_timestamps.clone(),
+        backs: rt.backspace_timestamps.clone(),
+        clicks: rt.click_timestamps.clone(),
+    };
+    rt.current_session_id = None;
+    rt.owner = ActiveCaptureOwner::Idle;
+    snap
+}
+
+/// Scoring PUR d'une capture. Déplacement fidèle du bloc scoring/paste de
+/// `stop_scan` (mêmes calculs, mêmes seuils, même application de verdict).
+fn finalize_capture(
+    start_ms: i64,
+    end_ms: i64,
+    keys: &Vec<i64>,
+    backs: &Vec<i64>,
+    clicks: &Vec<i64>,
+    paste: &PasteStats,
+) -> CaptureOutcome {
+    let backspace_count = backs.len() as u32;
+    let mut analysis = calculate_scp(start_ms, end_ms, keys, clicks, backspace_count);
+
+    let pasted = paste.pasted_chars as f64;
+    let typed = keys.len() as f64;
+    let total_text_flow = pasted + typed;
+
+    let paste_share = if total_text_flow > 0.0 {
+        Some(pasted / total_text_flow)
+    } else {
+        None
+    };
+    let paste_to_typed_ratio = if typed > 0.0 { Some(pasted / typed) } else { None };
+
+    let mut paste_penalty = 0i32;
+    let mut paste_risk_level = "none".to_string();
+
+    if paste.paste_events > 0 && pasted >= 120.0 {
+        if typed < pasted * 0.35 {
+            paste_risk_level = "dominant".to_string();
+            paste_penalty = 45;
+            analysis.gate_passed = false;
+            analysis.gate_reason = Some(format!(
+                "Collage dominant — contribution humaine insuffisante ({} collés / {} tapés).",
+                paste.pasted_chars,
+                keys.len()
+            ));
+            analysis.score = 0;
+            analysis.verdict_label = "INSUFFISANT".to_string();
+            analysis.verdict_color = "#9ca3af".to_string();
+            analysis.evidence_score = 0;
+            analysis.evidence_label = "N/A".to_string();
+            analysis.flags = vec!["PASTE_DOMINANT".to_string()];
+        } else if typed < pasted * 0.75 {
+            paste_risk_level = "heavy".to_string();
+            paste_penalty = 30;
+            analysis.score -= paste_penalty;
+            analysis.score = analysis.score.min(59);
+            analysis.flags.push("PASTE_HEAVY".to_string());
+            let (lab, col) = apply_verdict(analysis.score);
+            analysis.verdict_label = lab;
+            analysis.verdict_color = col;
+        } else if typed < pasted * 1.5 {
+            paste_risk_level = "material".to_string();
+            paste_penalty = 15;
+            analysis.score -= paste_penalty;
+            analysis.score = analysis.score.min(74);
+            analysis.flags.push("PASTE_MATERIAL".to_string());
+            let (lab, col) = apply_verdict(analysis.score);
+            analysis.verdict_label = lab;
+            analysis.verdict_color = col;
+        } else {
+            analysis.flags.push(format!("PASTE:{}ch", paste.pasted_chars));
+            let (lab, col) = apply_verdict(analysis.score);
+            analysis.verdict_label = lab;
+            analysis.verdict_color = col;
+        }
+    } else {
+        let (lab, col) = apply_verdict(analysis.score);
+        analysis.verdict_label = lab;
+        analysis.verdict_color = col;
+    }
+
+    analysis.paste_share = paste_share;
+    analysis.paste_to_typed_ratio = paste_to_typed_ratio;
+    analysis.paste_penalty = paste_penalty;
+    analysis.paste_risk_level = paste_risk_level;
+
+    let keyboard = KeyboardStats {
+        total_keystrokes: keys.len() as u64,
+        backspace_count: backs.len() as u64,
+    };
+    let mouse = MouseStats {
+        total_clicks: clicks.len() as u64,
+    };
+    let active_sec = analysis.active_est_sec;
+    let score = analysis.score;
+    let engine = serde_json::json!({
+        "analysis": analysis,
+        "keyboard_dynamics": keyboard,
+        "mouse_dynamics": mouse,
+        "paste_stats": paste,
+    });
+
+    CaptureOutcome {
+        analysis,
+        keyboard,
+        mouse,
+        paste: paste.clone(),
+        active_sec,
+        score,
+        engine,
+    }
 }
 
 #[tauri::command]
 fn start_scan(state: State<AppState>, session_id: String) -> Result<String, String> {
     begin_capture(&state, ActiveCaptureOwner::LegacyProject, session_id)?;
     Ok("Started".into())
+}
+
+/// Démarre une période Work (pending crash-safe -> moteur owner WORK).
+#[tauri::command]
+fn start_work_period(
+    state: State<AppState>,
+    work_id: String,
+) -> Result<work_engine::StartOutcome, String> {
+    let root = work_store::works_root()?;
+    work_engine::start_work_period_core(&root, &state, work_store::WorkId(work_id))
+}
+
+/// Arrête une période Work (moteur -> scoring -> période signée immuable).
+#[tauri::command]
+fn stop_work_period(
+    state: State<AppState>,
+    work_id: String,
+    paste: PasteStats,
+) -> Result<work_engine::StopOutcome, String> {
+    let root = work_store::works_root()?;
+    work_engine::stop_work_period_core(&root, &state, work_store::WorkId(work_id), paste)
 }
 
 
@@ -1292,73 +1464,10 @@ fn stop_scan(
     };
 
     let end_ms = Utc::now().timestamp_millis();
-    let backspace_count = backs.len() as u32;
-    let mut analysis = calculate_scp(start_ms, end_ms, &keys, &clicks, backspace_count);
-
-    let pasted = paste.pasted_chars as f64;
-    let typed = keys.len() as f64;
-    let total_text_flow = pasted + typed;
-
-    let paste_share = if total_text_flow > 0.0 {
-        Some(pasted / total_text_flow)
-    } else {
-        None
-    };
-    let paste_to_typed_ratio = if typed > 0.0 { Some(pasted / typed) } else { None };
-
-    let mut paste_penalty = 0i32;
-    let mut paste_risk_level = "none".to_string();
-
-    if paste.paste_events > 0 && pasted >= 120.0 {
-        if typed < pasted * 0.35 {
-            paste_risk_level = "dominant".to_string();
-            paste_penalty = 45;
-            analysis.gate_passed = false;
-            analysis.gate_reason = Some(format!(
-                "Collage dominant — contribution humaine insuffisante ({} collés / {} tapés).",
-                paste.pasted_chars,
-                keys.len()
-            ));
-            analysis.score = 0;
-            analysis.verdict_label = "INSUFFISANT".to_string();
-            analysis.verdict_color = "#9ca3af".to_string();
-            analysis.evidence_score = 0;
-            analysis.evidence_label = "N/A".to_string();
-            analysis.flags = vec!["PASTE_DOMINANT".to_string()];
-        } else if typed < pasted * 0.75 {
-            paste_risk_level = "heavy".to_string();
-            paste_penalty = 30;
-            analysis.score -= paste_penalty;
-            analysis.score = analysis.score.min(59);
-            analysis.flags.push("PASTE_HEAVY".to_string());
-            let (lab, col) = apply_verdict(analysis.score);
-            analysis.verdict_label = lab;
-            analysis.verdict_color = col;
-        } else if typed < pasted * 1.5 {
-            paste_risk_level = "material".to_string();
-            paste_penalty = 15;
-            analysis.score -= paste_penalty;
-            analysis.score = analysis.score.min(74);
-            analysis.flags.push("PASTE_MATERIAL".to_string());
-            let (lab, col) = apply_verdict(analysis.score);
-            analysis.verdict_label = lab;
-            analysis.verdict_color = col;
-        } else {
-            analysis.flags.push(format!("PASTE:{}ch", paste.pasted_chars));
-            let (lab, col) = apply_verdict(analysis.score);
-            analysis.verdict_label = lab;
-            analysis.verdict_color = col;
-        }
-    } else {
-        let (lab, col) = apply_verdict(analysis.score);
-        analysis.verdict_label = lab;
-        analysis.verdict_color = col;
-    }
-
-    analysis.paste_share = paste_share;
-    analysis.paste_to_typed_ratio = paste_to_typed_ratio;
-    analysis.paste_penalty = paste_penalty;
-    analysis.paste_risk_level = paste_risk_level;
+    // Scoring extrait dans `finalize_capture` (fonction pure, comportement
+    // identique). `stop_scan` (legacy) reste inchangé en aval : mêmes `analysis`,
+    // même persistance Projects.
+    let analysis = finalize_capture(start_ms, end_ms, &keys, &backs, &clicks, &paste).analysis;
 
     let json_path = path_buf.join("project.json");
     let content = fs::read_to_string(&json_path).map_err(|e| e.to_string())?;
@@ -1908,6 +2017,8 @@ thread::spawn(move || {
             work_commands::list_works,
             work_commands::load_work,
             work_commands::archive_work,
+            start_work_period,
+            stop_work_period,
         ])
         .run(tauri::generate_context!())
         .expect("error");

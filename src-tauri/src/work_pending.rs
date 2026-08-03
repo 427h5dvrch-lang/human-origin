@@ -222,10 +222,40 @@ pub fn detect_pending_for_work(
     read_pending(works_root, work_id)
 }
 
+/// Cohérence EXACTE d'un pending avec une période immuable (frontière de départ).
+fn pending_matches_period(
+    pending: &PendingPeriod,
+    period: &work_period::ObservationPeriod,
+) -> bool {
+    pending.period_id == period.period_id
+        && pending.work_id == period.work_id
+        && pending.sequence_number == period.sequence_number
+        && pending.hash_start == period.hash_start
+        && pending.previous_period_id == period.previous_period_id
+        && pending.previous_period_record_sha256 == period.previous_period_record_sha256
+}
+
+/// Supprime physiquement le fichier `pending.json` (le contenu de la preuve vit
+/// dans le `period.json` immuable ou dans une archive d'interruption/abandon).
+fn remove_pending_file(works_root: &Path, work_id: &WorkId) -> Result<(), String> {
+    let path = pending_path(works_root, work_id);
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+        if let Some(parent) = path.parent() {
+            sync_dir(parent);
+        }
+    }
+    Ok(())
+}
+
 /// Récupération EXPLICITE au démarrage de l'app : un pending retrouvé signifie
-/// que l'observation n'a pas été clôturée proprement. SEULE cette opération peut
-/// faire passer PENDING -> INTERRUPTED. Idempotente (un INTERRUPTED reste tel).
-/// `Ok(None)` si aucun pending.
+/// que l'observation n'a pas été clôturée proprement.
+///
+/// Décision 5B #1 : si une période immuable VALIDE et COHÉRENTE existe déjà pour
+/// ce pending (cas d'un `remove` différé après un `write_period_once` réussi), la
+/// preuve existe — on NETTOIE le pending au lieu de le marquer INTERRUPTED.
+/// Sinon, SEULE cette opération fait passer PENDING -> INTERRUPTED. Idempotente
+/// (un INTERRUPTED reste tel). `Ok(None)` si aucun pending (ou nettoyé).
 pub fn recover_orphaned_pending(
     works_root: &Path,
     work_id: &WorkId,
@@ -234,6 +264,13 @@ pub fn recover_orphaned_pending(
     match read_pending(works_root, work_id)? {
         None => Ok(None),
         Some(p) if p.state == PendingState::Pending => {
+            // La preuve existe-t-elle déjà (cleanup différé) ?
+            if let Ok(period) = work_period::read_period(works_root, work_id, p.sequence_number) {
+                if pending_matches_period(&p, &period) {
+                    remove_pending_file(works_root, work_id)?;
+                    return Ok(None);
+                }
+            }
             Ok(Some(mark_pending_interrupted(works_root, work_id)?))
         }
         Some(p) => Ok(Some(p)),
@@ -259,27 +296,13 @@ pub fn remove_pending_after_period_success(
         None => return Ok(()), // déjà supprimé (idempotent)
     };
 
-    // Cohérence EXACTE pending <-> période immuable (frontière de départ).
-    let coherent = pending.period_id == period.period_id
-        && pending.work_id == period.work_id
-        && pending.sequence_number == period.sequence_number
-        && pending.hash_start == period.hash_start
-        && pending.previous_period_id == period.previous_period_id
-        && pending.previous_period_record_sha256 == period.previous_period_record_sha256;
-    if !coherent {
+    if !pending_matches_period(&pending, &period) {
         return Err(
             "pending et période immuable incohérents — suppression du pending refusée".to_string(),
         );
     }
 
-    let path = pending_path(works_root, work_id);
-    if path.exists() {
-        fs::remove_file(&path).map_err(|e| e.to_string())?;
-        if let Some(parent) = path.parent() {
-            sync_dir(parent);
-        }
-    }
-    Ok(())
+    remove_pending_file(works_root, work_id)
 }
 
 /// Abandon d'un pending AVANT tout démarrage réel de la capture : le moteur n'a
@@ -420,6 +443,23 @@ mod tests {
         let read = read_pending(&works, &wid).unwrap().unwrap();
         assert_eq!(read, pending);
         assert_eq!(read.state, PendingState::Pending);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_recover_nettoie_si_periode_valide_existe() {
+        // Décision 5B #1 : cleanup différé. Un pending PENDING + une période
+        // immuable cohérente déjà écrite -> recover NETTOIE (pas INTERRUPTED).
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = WorkId::new();
+        let pending = sample_pending(&wid);
+        write_pending_atomic(&works, &pending).unwrap();
+        write_matching_period(&works, &pending, None);
+
+        let recovered = recover_orphaned_pending(&works, &wid).unwrap();
+        assert!(recovered.is_none(), "pending nettoyé, pas INTERRUPTED");
+        assert!(read_pending(&works, &wid).unwrap().is_none());
         cleanup(&root);
     }
 
