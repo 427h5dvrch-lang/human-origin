@@ -245,6 +245,51 @@ pub(crate) fn create_labeled_package_core(
     )
 }
 
+// --- COMMANDE TAURI (fine enveloppe 6D) --------------------------------------
+
+/// Commande dev/e2e : génère certificat + PDF labellisé + package pour un Work
+/// dont le document final est un PDF. `created_at` = maintenant (runtime).
+/// Retour : `package_dir` (chemin LOCAL, pour ouvrir le PDF côté app) + résumé
+/// du manifest. Aucune logique PDF nouvelle : délègue à `create_labeled_package_core`.
+#[tauri::command]
+pub fn create_labeled_work_package(
+    work_id: String,
+    source_pdf_path: String,
+    cartouche_png_path: String,
+    verify_url: String,
+) -> Result<serde_json::Value, String> {
+    let root = crate::work_store::works_root()?;
+    let wid = crate::work_store::WorkId(work_id);
+    let created_at = chrono::Utc::now().to_rfc3339();
+
+    let manifest = create_labeled_package_core(
+        &root,
+        &wid,
+        Path::new(&source_pdf_path),
+        Path::new(&cartouche_png_path),
+        &verify_url,
+        &created_at,
+    )
+    .map_err(|e| format!("{e:?}"))?;
+
+    let dir = package_dir(&root, &manifest.work_id, manifest.certificate_sequence);
+    Ok(serde_json::json!({
+        "package_dir": dir.to_string_lossy(),
+        "manifest": {
+            "schema_version": manifest.schema_version,
+            "package_id": manifest.package_id,
+            "work_id": manifest.work_id,
+            "certificate_id": manifest.certificate_id,
+            "certificate_sequence": manifest.certificate_sequence,
+            "certificate_version": manifest.certificate_version,
+            "verdict": manifest.verdict,
+            "files": manifest.files,
+            "identity_status": manifest.signature_metadata.identity_status,
+            "signing_key_id": manifest.signature_metadata.signing_key_id,
+        }
+    }))
+}
+
 // --- TESTS UNITAIRES (seams uniquement, aucun PDFium) -------------------------
 
 #[cfg(test)]

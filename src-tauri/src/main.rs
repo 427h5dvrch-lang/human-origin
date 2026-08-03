@@ -2022,6 +2022,7 @@ thread::spawn(move || {
             work_commands::archive_work,
             start_work_period,
             stop_work_period,
+            work_publish::create_labeled_work_package,
         ])
         .run(tauri::generate_context!())
         .expect("error");

@@ -1678,6 +1678,68 @@
 
     <div id="toast">Message</div>
 
+    <!-- ==== DEV WORK E2E (6D) — masqué par défaut ==== -->
+    <!-- Visible uniquement si ?dev=1 dans l'URL ou localStorage.humanOriginDevMode==="1".
+         Un bouton lanceur flottant ouvre le panneau (jamais affiché derrière la modale). -->
+    <button id="ho-dev-launch" type="button">Work dev</button>
+    <div id="ho-dev-work-panel" role="dialog" aria-label="Work dev e2e">
+      <div class="ho-dev-head">
+        <span>Work e2e — test technique</span>
+        <button id="ho-dev-close" type="button" aria-label="Fermer">✕</button>
+      </div>
+      <div class="ho-dev-note">
+        PDF only · certificat LOCAL_DEVICE · test technique.
+        Ne prouve pas l'absence d'IA, ni l'auteur, ni l'originalité, ni l'authenticité.
+      </div>
+      <div class="ho-dev-warn">
+        Cartouche PNG fournie manuellement — test technique uniquement.
+        La génération de cartouche Work propre n'est pas encore implémentée.
+      </div>
+
+      <button id="ho-dev-pick-pdf" class="ho-dev-btn">1. Choisir un PDF</button>
+      <div id="ho-dev-pdf-path" class="ho-dev-val">—</div>
+
+      <button id="ho-dev-create-work" class="ho-dev-btn">2. Créer Work PDF</button>
+      <div id="ho-dev-work-id" class="ho-dev-val">work_id : —</div>
+
+      <button id="ho-dev-start" class="ho-dev-btn">3. Démarrer observation</button>
+      <button id="ho-dev-stop" class="ho-dev-btn">4. Arrêter observation</button>
+      <div class="ho-dev-val">Pendant l'obs. : tapez ≥60 s / ≥60 frappes ET modifiez+sauvez le PDF.</div>
+
+      <button id="ho-dev-pick-cartouche" class="ho-dev-btn">5. Choisir cartouche PNG</button>
+      <div id="ho-dev-cartouche-path" class="ho-dev-val">—</div>
+
+      <button id="ho-dev-generate" class="ho-dev-btn">6. Générer package</button>
+      <button id="ho-dev-open-pdf" class="ho-dev-btn" style="display:none;">Ouvrir labeled_document.pdf</button>
+
+      <pre id="ho-dev-output"></pre>
+    </div>
+    <style>
+      /* Masqués par défaut : révélés en JS uniquement en mode dev. */
+      #ho-dev-launch { display:none; position:fixed; right:16px; bottom:16px; z-index:2147483000;
+        background:#2563eb; color:#fff; border:0; border-radius:999px; padding:10px 16px;
+        font:700 13px system-ui; cursor:pointer; box-shadow:0 6px 20px rgba(0,0,0,.45); }
+      #ho-dev-launch:hover { background:#1d4ed8; }
+      #ho-dev-work-panel { display:none; position:fixed; right:16px; bottom:64px; width:380px;
+        max-height:78vh; overflow:auto; z-index:2147483000;
+        background:#0b0f14; color:#f3f6fb; border:1px solid #3b82f6; border-radius:12px;
+        padding:14px; font:13px/1.5 -apple-system,system-ui,sans-serif;
+        box-shadow:0 10px 40px rgba(0,0,0,.6); }
+      #ho-dev-work-panel .ho-dev-head { display:flex; justify-content:space-between; align-items:center;
+        font-weight:800; font-size:14px; margin-bottom:8px; color:#ffffff; }
+      #ho-dev-work-panel #ho-dev-close { background:transparent; color:#f3f6fb; border:0; font-size:16px; cursor:pointer; }
+      #ho-dev-work-panel .ho-dev-note { color:#c7d2e0; margin-bottom:8px; }
+      #ho-dev-work-panel .ho-dev-warn { color:#fde68a; background:#1f2937; border:1px solid #f59e0b;
+        border-radius:8px; padding:6px 8px; margin-bottom:10px; }
+      #ho-dev-work-panel .ho-dev-val { color:#9fb3c8; word-break:break-all; margin:4px 0; }
+      #ho-dev-work-panel .ho-dev-btn { display:block; width:100%; margin:5px 0; padding:9px 10px;
+        background:#2563eb; color:#fff; border:0; border-radius:8px; cursor:pointer; font:700 13px system-ui; }
+      #ho-dev-work-panel .ho-dev-btn:hover { background:#1d4ed8; }
+      #ho-dev-work-panel #ho-dev-output { white-space:pre-wrap; word-break:break-all; margin-top:8px;
+        padding:8px; background:#05080c; color:#d7e3f0; border:1px solid #1f2937; border-radius:8px;
+        max-height:220px; overflow:auto; }
+    </style>
+
     <script type="module" src="/src/main.js"></script>
   
 <!-- HO_APP_UX_FINAL_CLEAN_RUNTIME_V1 -->

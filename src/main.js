@@ -7427,3 +7427,148 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   await forcePostLogin().catch(() => showScreen("LOGIN"));
 });
+
+/* ==== PANNEAU DEV WORK E2E (6D) — test technique, masqué par défaut ====
+   Visible uniquement si ?dev=1 dans l'URL ou localStorage.humanOriginDevMode==="1".
+   N'affecte pas l'UI normale. */
+(function initWorkDevPanel() {
+  try {
+    const params = new URLSearchParams(location.search);
+    const devMode =
+      params.get("dev") === "1" ||
+      (typeof localStorage !== "undefined" &&
+        localStorage.getItem("humanOriginDevMode") === "1");
+    if (!devMode) return;
+
+    const panel = document.getElementById("ho-dev-work-panel");
+    const launch = document.getElementById("ho-dev-launch");
+    if (!panel || !launch) return;
+
+    // Lanceur flottant visible en mode dev ; le panneau s'ouvre à la demande
+    // (jamais affiché derrière la modale d'accès).
+    launch.style.display = "block";
+    const setOpen = (open) => {
+      panel.style.display = open ? "block" : "none";
+      launch.style.display = open ? "none" : "block";
+    };
+    launch.onclick = () => setOpen(true);
+    const closeBtn = document.getElementById("ho-dev-close");
+    if (closeBtn) closeBtn.onclick = () => setOpen(false);
+
+    const VERIFY_URL = "https://427h5dvrch-lang.github.io/humanorigin-verifier/";
+    const out = document.getElementById("ho-dev-output");
+    const log = (m) =>
+      (out.textContent =
+        (typeof m === "string" ? m : JSON.stringify(m, null, 2)) +
+        "\n" +
+        out.textContent);
+    const fail = (e) => log("ERREUR: " + (e && e.message ? e.message : String(e)));
+    const $ = (id) => document.getElementById(id);
+
+    let sourcePdfPath = null;
+    let cartouchePngPath = null;
+    let workId = null;
+    let lastPackageDir = null;
+
+    $("ho-dev-pick-pdf").onclick = async () => {
+      try {
+        const p = await open({
+          multiple: false,
+          filters: [{ name: "PDF", extensions: ["pdf"] }],
+        });
+        if (!p) return;
+        sourcePdfPath = p;
+        $("ho-dev-pdf-path").textContent = p;
+      } catch (e) {
+        fail(e);
+      }
+    };
+
+    $("ho-dev-create-work").onclick = async () => {
+      try {
+        if (!sourcePdfPath) return log("Choisir un PDF d'abord.");
+        const r = await invoke("create_work", {
+          documentPath: sourcePdfPath,
+          displayName: null,
+          forceNew: null,
+        });
+        if (r && r.work_id) {
+          workId = r.work_id;
+          $("ho-dev-work-id").textContent = "work_id : " + workId;
+        }
+        log(r);
+      } catch (e) {
+        fail(e);
+      }
+    };
+
+    $("ho-dev-start").onclick = async () => {
+      try {
+        if (!workId) return log("Créer un Work d'abord.");
+        log(await invoke("start_work_period", { workId }));
+      } catch (e) {
+        fail(e);
+      }
+    };
+
+    $("ho-dev-stop").onclick = async () => {
+      try {
+        if (!workId) return log("Créer un Work d'abord.");
+        log(
+          await invoke("stop_work_period", {
+            workId,
+            paste: { paste_events: 0, pasted_chars: 0, max_paste_chars: 0 },
+          })
+        );
+      } catch (e) {
+        fail(e);
+      }
+    };
+
+    $("ho-dev-pick-cartouche").onclick = async () => {
+      try {
+        const p = await open({
+          multiple: false,
+          filters: [{ name: "PNG", extensions: ["png"] }],
+        });
+        if (!p) return;
+        cartouchePngPath = p;
+        $("ho-dev-cartouche-path").textContent = p;
+      } catch (e) {
+        fail(e);
+      }
+    };
+
+    $("ho-dev-generate").onclick = async () => {
+      try {
+        if (!workId) return log("Créer un Work d'abord.");
+        if (!sourcePdfPath) return log("Choisir un PDF d'abord.");
+        if (!cartouchePngPath) return log("Choisir une cartouche PNG d'abord.");
+        const r = await invoke("create_labeled_work_package", {
+          workId,
+          sourcePdfPath,
+          cartouchePngPath,
+          verifyUrl: VERIFY_URL,
+        });
+        lastPackageDir = r && r.package_dir ? r.package_dir : null;
+        if (lastPackageDir) $("ho-dev-open-pdf").style.display = "block";
+        log(r);
+      } catch (e) {
+        fail(e);
+      }
+    };
+
+    $("ho-dev-open-pdf").onclick = async () => {
+      try {
+        if (!lastPackageDir) return;
+        await invoke("open_file", {
+          path: lastPackageDir + "/labeled_document.pdf",
+        });
+      } catch (e) {
+        fail(e);
+      }
+    };
+  } catch (_e) {
+    /* dev panel best-effort — n'affecte jamais l'UI normale */
+  }
+})();
