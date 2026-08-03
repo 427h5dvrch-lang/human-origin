@@ -35,6 +35,7 @@ use macos_accessibility_client::accessibility;
 
 mod drafts;
 mod work_commands;
+mod work_engine;
 mod work_pending;
 mod work_period;
 mod work_store;
@@ -165,6 +166,14 @@ struct MouseStats {
     total_clicks: u64,
 }
 
+/// Propriétaire de la capture active. `Idle` au repos (jamais LegacyProject).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ActiveCaptureOwner {
+    Idle,
+    LegacyProject,
+    Work { work_id: String, period_id: String },
+}
+
 struct RuntimeBuffers {
     keystroke_timestamps: Vec<i64>,
     backspace_timestamps: Vec<i64>,
@@ -173,9 +182,10 @@ struct RuntimeBuffers {
     start_rfc3339: String,
     active_gen: u64,
     current_session_id: Option<String>,
+    owner: ActiveCaptureOwner,
 }
 
-struct AppState {
+pub(crate) struct AppState {
     is_scanning: Arc<Mutex<bool>>,
     active_project_path: Arc<Mutex<Option<PathBuf>>>,
     runtime: Arc<Mutex<RuntimeBuffers>>,
@@ -186,6 +196,31 @@ struct AppState {
 
     // ✅ Windows deep link buffer: l'URL peut arriver avant que le front JS écoute les events.
     pending_deep_link: Arc<Mutex<Option<serde_json::Value>>>,
+}
+
+impl AppState {
+    /// Construit un `AppState` autonome (Arcs frais, aucun thread rattaché).
+    /// Réservé aux tests internes de la couche Work (jamais utilisé en prod).
+    #[cfg(test)]
+    pub(crate) fn new_detached() -> AppState {
+        AppState {
+            is_scanning: Arc::new(Mutex::new(false)),
+            active_project_path: Arc::new(Mutex::new(None)),
+            runtime: Arc::new(Mutex::new(RuntimeBuffers {
+                keystroke_timestamps: vec![],
+                backspace_timestamps: vec![],
+                click_timestamps: vec![],
+                start_timestamp: 0,
+                start_rfc3339: String::new(),
+                active_gen: 0,
+                current_session_id: None,
+                owner: ActiveCaptureOwner::Idle,
+            })),
+            scan_gen: AtomicU64::new(0),
+            last_input_seen: Arc::new(AtomicU64::new(0)),
+            pending_deep_link: Arc::new(Mutex::new(None)),
+        }
+    }
 }
 
 // --- UTILS ---
@@ -964,25 +999,56 @@ fn activate_project(project_name: String, state: State<AppState>) -> Result<Stri
     Ok(project_path.to_string_lossy().to_string())
 }
 
-#[tauri::command]
-fn start_scan(state: State<AppState>, session_id: String) -> Result<String, String> {
+/// Démarre ATOMIQUEMENT une capture pour un `owner` donné.
+///
+/// Ordre garanti (correction 5A #3) : la garde `is_scanning` est tenue pendant
+/// toute l'initialisation ; buffers, owner, session_id et `active_gen` sont
+/// posés d'abord ; `is_scanning = true` est fait EN DERNIER. Il n'existe jamais
+/// de fenêtre où `is_scanning == true` avec un owner ou des buffers incomplets.
+/// Refuse (`Err`) si une capture est déjà active. Retourne la génération.
+pub(crate) fn begin_capture(
+    state: &AppState,
+    owner: ActiveCaptureOwner,
+    session_id: String,
+) -> Result<u64, String> {
     let mut scanning = state.is_scanning.lock().unwrap();
     if *scanning {
         return Err("Déjà en cours".into());
     }
-    *scanning = true;
 
     let gen = state.scan_gen.fetch_add(1, Ordering::SeqCst) + 1;
 
-    let mut rt = state.runtime.lock().unwrap();
-    rt.keystroke_timestamps.clear();
-    rt.backspace_timestamps.clear();
-    rt.click_timestamps.clear();
-    rt.start_timestamp = Utc::now().timestamp_millis();
-    rt.start_rfc3339 = Utc::now().to_rfc3339();
-    rt.active_gen = gen;
-    rt.current_session_id = Some(session_id);
+    {
+        let mut rt = state.runtime.lock().unwrap();
+        rt.keystroke_timestamps.clear();
+        rt.backspace_timestamps.clear();
+        rt.click_timestamps.clear();
+        rt.start_timestamp = Utc::now().timestamp_millis();
+        rt.start_rfc3339 = Utc::now().to_rfc3339();
+        rt.active_gen = gen;
+        rt.current_session_id = Some(session_id);
+        rt.owner = owner;
+    }
 
+    // Publication du drapeau EN DERNIER : buffers/owner déjà complets.
+    *scanning = true;
+    Ok(gen)
+}
+
+/// Vrai si une capture est actuellement active (lecture du drapeau `is_scanning`).
+pub(crate) fn is_capture_active(state: &AppState) -> bool {
+    *state.is_scanning.lock().unwrap()
+}
+
+/// Snapshot du propriétaire courant de la capture (tests internes uniquement).
+#[cfg(test)]
+pub(crate) fn capture_owner_snapshot(state: &AppState) -> ActiveCaptureOwner {
+    state.runtime.lock().unwrap().owner.clone()
+}
+
+#[tauri::command]
+fn start_scan(state: State<AppState>, session_id: String) -> Result<String, String> {
+    begin_capture(&state, ActiveCaptureOwner::LegacyProject, session_id)?;
     Ok("Started".into())
 }
 
@@ -1723,6 +1789,7 @@ fn main() {
         start_rfc3339: String::new(),
         active_gen: 0,
         current_session_id: None,
+        owner: ActiveCaptureOwner::Idle,
     }));
 
     let last_input_seen = Arc::new(AtomicU64::new(0));

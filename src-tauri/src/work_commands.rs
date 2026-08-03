@@ -142,6 +142,20 @@ fn capture_document(path: &Path) -> Result<WorkDocumentMetadata, String> {
     })
 }
 
+/// Frontière de départ d'une période : (chemin normalisé, SHA256, taille) du
+/// document réel. Réutilise `capture_document` (même normalisation/hash que
+/// `create_work`). Refuse dossier / inexistant. Utilisé par `start_work_period`.
+pub(crate) fn capture_start_boundary(document_path: &str) -> Result<(String, String, u64), String> {
+    let doc = capture_document(Path::new(document_path))?;
+    let hash = doc
+        .hash_initial
+        .ok_or_else(|| "hash de départ indisponible".to_string())?;
+    let size = doc
+        .size_initial
+        .ok_or_else(|| "taille de départ indisponible".to_string())?;
+    Ok((doc.document_path, hash, size))
+}
+
 /// Normalise un chemin : canonique si le fichier existe (résout `.`, `..`,
 /// liens symboliques), sinon rendu absolu au mieux. Évite les doublons dus à
 /// deux représentations du même chemin.

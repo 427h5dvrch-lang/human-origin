@@ -282,6 +282,44 @@ pub fn remove_pending_after_period_success(
     Ok(())
 }
 
+/// Abandon d'un pending AVANT tout démarrage réel de la capture : le moteur n'a
+/// jamais observé. Ce N'EST PAS une observation interrompue — on archive (non
+/// destructif) vers `pending_aborted_{period_id}.json` et on libère le slot,
+/// sans forcer l'utilisateur à résoudre une fausse période INTERRUPTED.
+///
+/// Refuse si le pending n'est pas PENDING (un INTERRUPTED représente une vraie
+/// observation et relève de `close_interrupted_pending`) ou si le `period_id`
+/// ne correspond pas (on n'abandonne que le pending que l'on vient d'écrire).
+pub fn abort_pending_before_start(
+    works_root: &Path,
+    work_id: &WorkId,
+    expected_period_id: &str,
+) -> Result<PathBuf, String> {
+    ensure_valid_work_id(work_id)?;
+    let pending = read_pending(works_root, work_id)?
+        .ok_or_else(|| "aucun pending à abandonner".to_string())?;
+    if pending.state != PendingState::Pending {
+        return Err("seul un pending PENDING non démarré peut être abandonné".to_string());
+    }
+    if pending.period_id != expected_period_id {
+        return Err("period_id du pending différent — abandon refusé".to_string());
+    }
+
+    let dir = periods_dir(works_root, work_id);
+    let mut archive = dir.join(format!("pending_aborted_{}.json", pending.period_id));
+    if archive.exists() {
+        archive = dir.join(format!(
+            "pending_aborted_{}_{}.json",
+            pending.period_id,
+            uuid::Uuid::new_v4()
+        ));
+    }
+    let src = pending_path(works_root, work_id);
+    fs::rename(&src, &archive).map_err(|e| e.to_string())?;
+    sync_dir(&dir);
+    Ok(archive)
+}
+
 /// Clôture EXPLICITE d'un pending INTERRUPTED : le déplace (non destructif) vers
 /// `pending_interrupted_{period_id}.json`, libérant le slot `pending.json` pour
 /// qu'une NOUVELLE période puisse commencer. Refuse un pending PENDING (il faut
