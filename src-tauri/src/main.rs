@@ -37,6 +37,7 @@ mod drafts;
 mod work_certificate;
 mod work_commands;
 mod work_engine;
+mod work_package;
 mod work_pending;
 mod work_period;
 mod work_store;
