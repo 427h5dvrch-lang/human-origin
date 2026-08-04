@@ -1448,6 +1448,14 @@ function showScreen(screenName) {
       safeText("current-project-title", currentProjectName || "Workspace HumanOrigin");
       if (successView) successView.style.display = "block";
       break;
+
+    case "ALPHA": {
+      // UI Alpha isolée (7A-1) : n'affiche que l'écran Alpha. La visibilité est
+      // aussi verrouillée par le guard CSS body[data-alpha="1"].
+      const alphaScreen = $("alpha-screen");
+      if (alphaScreen) alphaScreen.style.display = "flex";
+      break;
+    }
   }
 }
 
@@ -7589,5 +7597,216 @@ window.addEventListener("DOMContentLoaded", async () => {
     };
   } catch (_e) {
     /* dev panel best-effort — n'affecte jamais l'UI normale */
+  }
+})();
+
+// ============================================================================
+// ALPHA UI (7A-1) — parcours utilisateur isolé au-dessus du pipeline Work natif.
+// Gated par ?alpha=1 ou localStorage.humanOriginAlphaMode==="1". N'utilise QUE des
+// commandes déjà existantes (create_work, start/stop_work_period,
+// create_native_labeled_work_package, open_file). Aucun impact sur le legacy.
+// ============================================================================
+(function initAlphaFlow() {
+  const boot = () => {
+    try {
+      const alphaActive =
+        new URLSearchParams(location.search).get("alpha") === "1" ||
+        (() => {
+          try {
+            return localStorage.getItem("humanOriginAlphaMode") === "1";
+          } catch {
+            return false;
+          }
+        })();
+      if (!alphaActive) return;
+
+      const ALPHA_VERIFY_URL =
+        "https://427h5dvrch-lang.github.io/humanorigin-verifier/";
+      const el = (id) => document.getElementById(id);
+      const status = (m) => {
+        const s = el("alpha-status");
+        if (s) s.textContent = m || "";
+      };
+      const enable = (id, on) => {
+        const b = el(id);
+        if (b) b.disabled = !on;
+      };
+
+      // Isolation visuelle : seul l'écran Alpha s'affiche (guard CSS + showScreen).
+      document.body.setAttribute("data-alpha", "1");
+      if (typeof showScreen === "function") {
+        try {
+          showScreen("ALPHA");
+        } catch {}
+      }
+
+      // State local minimal.
+      let selectedPdfPath = null;
+      let workId = null;
+      let observationRunning = false;
+      let lastPeriodResult = null;
+      let packageDir = null;
+
+      // 1. Choisir un document
+      el("alpha-pick").onclick = async () => {
+        try {
+          const p = await open({
+            multiple: false,
+            filters: [{ name: "PDF", extensions: ["pdf"] }],
+          });
+          if (!p) return;
+          selectedPdfPath = p;
+          el("alpha-doc").textContent = p;
+          enable("alpha-prepare", true);
+          status("Document sélectionné.");
+        } catch (e) {
+          console.error("[alpha] pick", e);
+          status("Impossible de choisir le document.");
+        }
+      };
+
+      // 2. Préparer le document
+      el("alpha-prepare").onclick = async () => {
+        try {
+          if (!selectedPdfPath) return status("Choisissez d'abord un document.");
+          const r = await invoke("create_work", {
+            documentPath: selectedPdfPath,
+            displayName: null,
+            forceNew: null,
+          });
+          if (r && r.work_id) {
+            workId = r.work_id;
+            enable("alpha-start", true);
+            status(
+              r.outcome === "DECISION_REQUIRED"
+                ? "Document déjà connu — vous pouvez démarrer l'observation."
+                : "Document prêt. Vous pouvez démarrer l'observation."
+            );
+          } else {
+            status("Impossible de préparer le document.");
+          }
+        } catch (e) {
+          console.error("[alpha] prepare", e);
+          status("Impossible de préparer le document.");
+        }
+      };
+
+      // 3. Démarrer l'observation
+      el("alpha-start").onclick = async () => {
+        try {
+          if (!workId) return status("Préparez d'abord le document.");
+          await invoke("start_work_period", { workId });
+          observationRunning = true;
+          enable("alpha-start", false);
+          enable("alpha-stop", true);
+          status(
+            "Observation en cours — travaillez sur votre document, puis terminez l'observation."
+          );
+        } catch (e) {
+          console.error("[alpha] start", e);
+          const raw = String(e || "");
+          status(
+            raw.includes("pending")
+              ? "Une observation est déjà en cours ou a été interrompue."
+              : "Impossible de démarrer l'observation."
+          );
+        }
+      };
+
+      // 4. Terminer l'observation
+      el("alpha-stop").onclick = async () => {
+        try {
+          if (!workId) return status("Préparez d'abord le document.");
+          const r = await invoke("stop_work_period", {
+            workId,
+            paste: { paste_events: 0, pasted_chars: 0, max_paste_chars: 0 },
+          });
+          lastPeriodResult = r;
+          observationRunning = false;
+          enable("alpha-stop", false);
+          if (r && r.net_document_change === false) {
+            status("Le document n'a pas changé pendant l'observation.");
+            enable("alpha-create", false);
+          } else {
+            status(
+              "Observation terminée. Vous pouvez créer votre document HumanOrigin."
+            );
+            enable("alpha-create", true);
+          }
+        } catch (e) {
+          console.error("[alpha] stop", e);
+          status("Impossible de terminer l'observation.");
+        }
+      };
+
+      // 5. Créer mon document HumanOrigin
+      el("alpha-create").onclick = async () => {
+        try {
+          if (!workId || !selectedPdfPath)
+            return status("Terminez d'abord une observation.");
+          status("Création du document HumanOrigin…");
+          const r = await invoke("create_native_labeled_work_package", {
+            workId,
+            sourcePdfPath: selectedPdfPath,
+            verifyUrl: ALPHA_VERIFY_URL,
+          });
+          packageDir = r && r.package_dir ? r.package_dir : null;
+          if (!packageDir) {
+            status("Impossible de créer le document HumanOrigin.");
+            return;
+          }
+          el("alpha-package-dir").value = packageDir;
+          el("alpha-success").style.display = "block";
+          enable("alpha-create", false);
+          status("");
+        } catch (e) {
+          console.error("[alpha] create", e);
+          const raw = String(e || "");
+          let msg = "Impossible de créer le document HumanOrigin.";
+          if (raw.includes("NoQualifyingNewPeriod"))
+            msg =
+              "Observation insuffisante : continuez à travailler plus longtemps sur le document.";
+          else if (raw.includes("DocumentModifiedAfterStop"))
+            msg = "Le document a été modifié après la fin de l'observation.";
+          else if (raw.includes("AlreadyExists"))
+            msg = "Ce document HumanOrigin existe déjà.";
+          status(msg);
+        }
+      };
+
+      // Ouvrir le dossier (commande existante open_file — aucun nouveau backend)
+      el("alpha-open-dir").onclick = async () => {
+        try {
+          if (packageDir) await invoke("open_file", { path: packageDir });
+        } catch (e) {
+          console.error("[alpha] open-dir", e);
+        }
+      };
+
+      // Recommencer avec un autre document
+      el("alpha-restart").onclick = () => {
+        selectedPdfPath = null;
+        workId = null;
+        observationRunning = false;
+        lastPeriodResult = null;
+        packageDir = null;
+        el("alpha-doc").textContent = "Aucun document sélectionné";
+        el("alpha-package-dir").value = "";
+        el("alpha-success").style.display = "none";
+        enable("alpha-prepare", false);
+        enable("alpha-start", false);
+        enable("alpha-stop", false);
+        enable("alpha-create", false);
+        status("");
+      };
+    } catch (_e) {
+      /* Alpha best-effort — n'affecte jamais le legacy */
+    }
+  };
+
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
   }
 })();

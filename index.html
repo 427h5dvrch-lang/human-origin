@@ -1678,6 +1678,66 @@
 
     <div id="toast">Message</div>
 
+    <!-- ==== ALPHA UI (7A-1) — parcours utilisateur isolé, masqué par défaut ==== -->
+    <!-- Visible UNIQUEMENT si ?alpha=1 dans l'URL ou localStorage.humanOriginAlphaMode==="1".
+         Tant que le flag est inactif, le flux legacy (Creator Flow V2) est intact. -->
+    <div id="alpha-screen" class="screen" style="display:none;">
+      <div class="alpha-card">
+        <div class="alpha-brand">HumanOrigin</div>
+        <div class="alpha-kicker">Preuve locale signée — Alpha</div>
+
+        <button id="alpha-pick" class="alpha-btn" type="button">1. Choisir un document</button>
+        <div id="alpha-doc" class="alpha-val">Aucun document sélectionné</div>
+
+        <button id="alpha-prepare" class="alpha-btn" type="button" disabled>2. Préparer le document</button>
+        <button id="alpha-start" class="alpha-btn" type="button" disabled>3. Démarrer l'observation</button>
+        <button id="alpha-stop" class="alpha-btn" type="button" disabled>4. Terminer l'observation</button>
+        <button id="alpha-create" class="alpha-btn alpha-primary" type="button" disabled>5. Créer mon document HumanOrigin</button>
+
+        <div id="alpha-status" class="alpha-status" role="status" aria-live="polite"></div>
+
+        <div id="alpha-success" style="display:none;">
+          <div class="alpha-success-title">Document HumanOrigin créé — preuve locale signée</div>
+          <div class="alpha-success-sub">Prêt à envoyer.</div>
+          <div class="alpha-val" style="margin-top:10px;">Emplacement du dossier :</div>
+          <input id="alpha-package-dir" class="alpha-dir" type="text" readonly />
+          <button id="alpha-open-dir" class="alpha-btn" type="button">Ouvrir le dossier</button>
+          <button id="alpha-restart" class="alpha-btn alpha-ghost" type="button">Recommencer avec un autre document</button>
+        </div>
+
+        <div class="alpha-foot">HumanOrigin mesure un travail observé. Il ne détecte pas l'IA.</div>
+      </div>
+
+      <style>
+        /* Guard d'isolation : quand data-alpha est actif, SEUL l'écran Alpha s'affiche. */
+        body[data-alpha="1"] .screen { display: none !important; }
+        body[data-alpha="1"] #alpha-screen { display: flex !important; }
+        #alpha-screen { align-items: center; justify-content: center; padding: 24px;
+          box-sizing: border-box; min-height: 100vh; background: #0b0f14; }
+        #alpha-screen .alpha-card { width: 100%; max-width: 460px; background: #111823; color: #e8eefc;
+          border: 1px solid rgba(255,255,255,.08); border-radius: 20px; padding: 26px 24px;
+          font: 14px/1.4 -apple-system, system-ui, sans-serif; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
+        #alpha-screen .alpha-brand { font-size: 22px; font-weight: 900; }
+        #alpha-screen .alpha-kicker { font-size: 11px; font-weight: 800; letter-spacing: .12em;
+          text-transform: uppercase; color: rgba(232,238,252,.45); margin: 4px 0 20px; }
+        #alpha-screen .alpha-btn { display: block; width: 100%; margin: 8px 0; padding: 13px 14px; border: 0;
+          border-radius: 12px; background: #1f2937; color: #e8eefc; font: 700 14px system-ui; cursor: pointer; }
+        #alpha-screen .alpha-btn:hover:not(:disabled) { background: #273549; }
+        #alpha-screen .alpha-btn:disabled { opacity: .4; cursor: not-allowed; }
+        #alpha-screen .alpha-primary { background: #2563eb; }
+        #alpha-screen .alpha-primary:hover:not(:disabled) { background: #1d4ed8; }
+        #alpha-screen .alpha-ghost { background: transparent; border: 1px solid rgba(255,255,255,.18); }
+        #alpha-screen .alpha-val { font-size: 12px; color: rgba(232,238,252,.6); word-break: break-all; margin: 2px 0 12px; }
+        #alpha-screen .alpha-status { min-height: 20px; margin: 12px 0; font-size: 13px; color: #cbd5e1; }
+        #alpha-screen .alpha-success-title { font-size: 16px; font-weight: 800; color: #34d399; margin-top: 6px; }
+        #alpha-screen .alpha-success-sub { font-size: 13px; color: rgba(232,238,252,.7); margin: 4px 0 6px; }
+        #alpha-screen .alpha-dir { width: 100%; box-sizing: border-box; padding: 9px 10px; margin: 6px 0 10px;
+          border-radius: 10px; border: 1px solid rgba(255,255,255,.14); background: #05080c; color: #d7e3f0;
+          font: 12px monospace; }
+        #alpha-screen .alpha-foot { margin-top: 18px; font-size: 11px; color: rgba(232,238,252,.35); text-align: center; }
+      </style>
+    </div>
+
     <!-- ==== DEV WORK E2E (6D) — masqué par défaut ==== -->
     <!-- Visible uniquement si ?dev=1 dans l'URL ou localStorage.humanOriginDevMode==="1".
          Un bouton lanceur flottant ouvre le panneau (jamais affiché derrière la modale). -->
