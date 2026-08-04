@@ -48,6 +48,9 @@ keyring = "2"
 # --- HASH (document binding / verifier) ---
 sha2 = "0.10"
 
+# --- QR (cartouche Work native) ---
+qrcode = "0.14"
+
 # --- SVG -> PNG RENDERING (Publication Kit) ---
 resvg = "0.44"
 
