@@ -1692,8 +1692,7 @@
         Ne prouve pas l'absence d'IA, ni l'auteur, ni l'originalité, ni l'authenticité.
       </div>
       <div class="ho-dev-warn">
-        Cartouche PNG fournie manuellement — test technique uniquement.
-        La génération de cartouche Work propre n'est pas encore implémentée.
+        Cartouche Work native générée depuis le certificat.
       </div>
 
       <button id="ho-dev-pick-pdf" class="ho-dev-btn">1. Choisir un PDF</button>
@@ -1706,11 +1705,15 @@
       <button id="ho-dev-stop" class="ho-dev-btn">4. Arrêter observation</button>
       <div class="ho-dev-val">Pendant l'obs. : tapez ≥60 s / ≥60 frappes ET modifiez+sauvez le PDF.</div>
 
-      <button id="ho-dev-pick-cartouche" class="ho-dev-btn">5. Choisir cartouche PNG</button>
-      <div id="ho-dev-cartouche-path" class="ho-dev-val">—</div>
-
-      <button id="ho-dev-generate" class="ho-dev-btn">6. Générer package</button>
+      <button id="ho-dev-generate-native" class="ho-dev-btn">5. Générer package natif</button>
       <button id="ho-dev-open-pdf" class="ho-dev-btn" style="display:none;">Ouvrir labeled_document.pdf</button>
+
+      <details class="ho-dev-fallback">
+        <summary>Fallback manuel (cartouche PNG fournie)</summary>
+        <button id="ho-dev-pick-cartouche" class="ho-dev-btn">Choisir cartouche PNG</button>
+        <div id="ho-dev-cartouche-path" class="ho-dev-val">—</div>
+        <button id="ho-dev-generate" class="ho-dev-btn">Générer package (manuel)</button>
+      </details>
 
       <pre id="ho-dev-output"></pre>
     </div>
@@ -1738,6 +1741,9 @@
       #ho-dev-work-panel #ho-dev-output { white-space:pre-wrap; word-break:break-all; margin-top:8px;
         padding:8px; background:#05080c; color:#d7e3f0; border:1px solid #1f2937; border-radius:8px;
         max-height:220px; overflow:auto; }
+      #ho-dev-work-panel .ho-dev-fallback { margin-top:8px; }
+      #ho-dev-work-panel .ho-dev-fallback > summary { color:#6b7f95; font:600 12px system-ui;
+        cursor:pointer; padding:4px 0; list-style:revert; }
     </style>
 
     <script type="module" src="/src/main.js"></script>

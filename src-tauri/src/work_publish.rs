@@ -38,6 +38,8 @@ pub(crate) enum PublishError {
     SourcePdfUnavailable(String),
     SourcePdfDoesNotMatchCertifiedDocument,
     AlreadyExists(String),
+    CartoucheGenerationFailed(String),
+    CartoucheNotProduced,
     PdfGenerationFailed(String),
     PdfNotProduced,
     Certificate(String),
@@ -96,18 +98,19 @@ fn verdict_label(verdict: ProofVerdict) -> &'static str {
 ///
 /// `create_cert_fn` n'est appelé QUE dans la branche « créer un nouveau
 /// certificat » (jamais lors d'une réutilisation).
-fn create_labeled_package_inner<CF, GF, PF>(
+fn create_labeled_package_inner<CF, CT, GF, PF>(
     works_root: &Path,
     work_id: &WorkId,
     source_pdf_path: &Path,
-    cartouche_png_path: &Path,
     verify_url: &str,
     create_cert_fn: CF,
+    cartouche_fn: CT,
     generate_pdf_fn: GF,
     make_package_fn: PF,
 ) -> Result<PackageManifest, PublishError>
 where
     CF: FnOnce() -> Result<WorkCertificate, PublishError>,
+    CT: FnOnce(&WorkCertificate, &Path) -> Result<(), PublishError>,
     GF: FnOnce(&Path, &Path, &Path, &str, &str, &str) -> Result<(), PublishError>,
     PF: FnOnce(&Path, &Path) -> Result<PackageManifest, PublishError>,
 {
@@ -148,13 +151,24 @@ where
     fs::create_dir_all(&pkgs).map_err(|e| PublishError::Io(e.to_string()))?;
     let temp_dir = pkgs.join(format!(".tmp_labeled_{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&temp_dir).map_err(|e| PublishError::Io(e.to_string()))?;
+    let cartouche_png = temp_dir.join("cartouche.png");
     let output_pdf = temp_dir.join(LABELED_PDF_FILENAME);
 
     let result = (|| -> Result<PackageManifest, PublishError> {
+        // Cartouche (native ou fournie) générée dans le temp, APRÈS certificat +
+        // no-overwrite + hash check, AVANT toute génération PDF.
+        cartouche_fn(&cert, &cartouche_png)?;
+        // Garde-fou : la cartouche doit exister et être non vide.
+        let cartouche_ok = fs::metadata(&cartouche_png)
+            .map(|m| m.len() > 0)
+            .unwrap_or(false);
+        if !cartouche_ok {
+            return Err(PublishError::CartoucheNotProduced);
+        }
         generate_pdf_fn(
             source_pdf_path,
             &output_pdf,
-            cartouche_png_path,
+            &cartouche_png,
             &cert.certificate_id,
             verify_url,
             verdict,
@@ -222,15 +236,67 @@ pub(crate) fn create_labeled_package_core(
     verify_url: &str,
     created_at: &str,
 ) -> Result<PackageManifest, PublishError> {
+    let cartouche_src = cartouche_png_path.to_path_buf();
     create_labeled_package_inner(
         works_root,
         work_id,
         source_pdf_path,
-        cartouche_png_path,
         verify_url,
         || {
             crate::work_certificate::create_work_certificate_core(works_root, work_id, created_at)
                 .map_err(|e| PublishError::Certificate(format!("{e:?}")))
+        },
+        // Fallback manuel : la cartouche fournie est simplement copiée dans le temp.
+        move |_cert, out| {
+            fs::copy(&cartouche_src, out)
+                .map(|_| ())
+                .map_err(|e| PublishError::Io(e.to_string()))
+        },
+        generate_pdf_real,
+        |certificate_path, labeled_pdf_path| {
+            crate::work_package::create_work_package_core(
+                works_root,
+                certificate_path,
+                labeled_pdf_path,
+                created_at,
+            )
+            .map_err(|e| PublishError::Package(format!("{e:?}")))
+        },
+    )
+}
+
+/// Point d'entrée production NATIF (INTÉGRATION-only : PDFium + clé device).
+/// Identique à `create_labeled_package_core` mais la cartouche Work est GÉNÉRÉE
+/// nativement depuis le certificat réel (aucun `cartouche_png_path` fourni).
+pub(crate) fn create_native_labeled_package_core(
+    works_root: &Path,
+    work_id: &WorkId,
+    source_pdf_path: &Path,
+    verify_url: &str,
+    created_at: &str,
+) -> Result<PackageManifest, PublishError> {
+    let verify_url_owned = verify_url.to_string();
+    create_labeled_package_inner(
+        works_root,
+        work_id,
+        source_pdf_path,
+        verify_url,
+        || {
+            crate::work_certificate::create_work_certificate_core(works_root, work_id, created_at)
+                .map_err(|e| PublishError::Certificate(format!("{e:?}")))
+        },
+        // Cartouche Work native : construite depuis le certificat réel.
+        move |cert, out| {
+            let inputs = crate::work_cartouche::WorkCartoucheInputs {
+                certificate_id: cert.certificate_id.clone(),
+                verdict: verdict_label(cert.public_core_evidence.verdict.verdict).to_string(),
+                identity_status: "LOCAL_DEVICE".to_string(),
+                verify_url: verify_url_owned.clone(),
+                signing_key_id: Some(cert.signature_metadata.signing_key_id.clone()),
+                created_at: Some(cert.created_at.clone()),
+            };
+            crate::work_cartouche::render_work_cartouche_png(&inputs, out)
+                .map_err(PublishError::CartoucheGenerationFailed)
         },
         generate_pdf_real,
         |certificate_path, labeled_pdf_path| {
@@ -267,6 +333,46 @@ pub fn create_labeled_work_package(
         &wid,
         Path::new(&source_pdf_path),
         Path::new(&cartouche_png_path),
+        &verify_url,
+        &created_at,
+    )
+    .map_err(|e| format!("{e:?}"))?;
+
+    let dir = package_dir(&root, &manifest.work_id, manifest.certificate_sequence);
+    Ok(serde_json::json!({
+        "package_dir": dir.to_string_lossy(),
+        "manifest": {
+            "schema_version": manifest.schema_version,
+            "package_id": manifest.package_id,
+            "work_id": manifest.work_id,
+            "certificate_id": manifest.certificate_id,
+            "certificate_sequence": manifest.certificate_sequence,
+            "certificate_version": manifest.certificate_version,
+            "verdict": manifest.verdict,
+            "files": manifest.files,
+            "identity_status": manifest.signature_metadata.identity_status,
+            "signing_key_id": manifest.signature_metadata.signing_key_id,
+        }
+    }))
+}
+
+/// Commande dev/e2e NATIVE : identique à `create_labeled_work_package` mais la
+/// cartouche Work est générée nativement depuis le certificat (pas de PNG fourni).
+/// C'est le chemin principal du panneau dev.
+#[tauri::command]
+pub fn create_native_labeled_work_package(
+    work_id: String,
+    source_pdf_path: String,
+    verify_url: String,
+) -> Result<serde_json::Value, String> {
+    let root = crate::work_store::works_root()?;
+    let wid = crate::work_store::WorkId(work_id);
+    let created_at = chrono::Utc::now().to_rfc3339();
+
+    let manifest = create_native_labeled_package_core(
+        &root,
+        &wid,
+        Path::new(&source_pdf_path),
         &verify_url,
         &created_at,
     )
@@ -415,11 +521,22 @@ mod tests {
         (p, sha_hex(content))
     }
 
-    fn cartouche(base: &Path) -> PathBuf {
+    /// Fichier cartouche source sur disque (pour le fallback manuel).
+    fn cartouche_file(base: &Path) -> PathBuf {
         fs::create_dir_all(base).unwrap();
         let p = base.join("cartouche.png");
         fs::write(&p, b"PNG fake").unwrap();
         p
+    }
+
+    /// cartouche_fn de test : écrit une cartouche factice non vide dans le temp.
+    fn write_cartouche(_cert: &WorkCertificate, out: &Path) -> Result<(), PublishError> {
+        fs::write(out, b"PNG fake").map_err(|e| PublishError::Io(e.to_string()))
+    }
+
+    /// cartouche_fn de test : panique si appelée (chemin court-circuité avant).
+    fn panic_cartouche(_cert: &WorkCertificate, _out: &Path) -> Result<(), PublishError> {
+        panic!("la cartouche ne doit PAS être générée ici")
     }
 
     /// seam make_package : 6C-1 réel avec la clé fournie.
@@ -451,7 +568,6 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, h) = write_source_pdf(&base, b"CERTIFIED PDF CONTENT");
-        let cart = cartouche(&base);
         // Certificat existant (hash_current == hash du PDF source), sans package.
         write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
 
@@ -459,9 +575,9 @@ mod tests {
             &works,
             &wid,
             &src,
-            &cart,
             URL,
             || panic!("ne doit PAS créer un certificat (réutilisation)"),
+            write_cartouche,
             |_s, output, _c, _id, _u, _v| {
                 fs::write(output, b"LABELED PDF").unwrap();
                 Ok(())
@@ -483,7 +599,6 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, _h) = write_source_pdf(&base, b"ARBITRARY PDF");
-        let cart = cartouche(&base);
         // Certificat avec un hash_current DIFFÉRENT du PDF source.
         write_cert(&works, &wid, &build_cert(&k, &wid, 1, &"a".repeat(64)));
 
@@ -491,9 +606,9 @@ mod tests {
             &works,
             &wid,
             &src,
-            &cart,
             URL,
             || panic!("réutilisation"),
+            panic_cartouche,
             |_s, _o, _c, _id, _u, _v| panic!("le PDF ne doit PAS être généré sur mismatch"),
             pkg_fn(&works, &k),
         );
@@ -513,7 +628,6 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, h) = write_source_pdf(&base, b"RETRY PDF");
-        let cart = cartouche(&base);
         write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
 
         // create_cert_fn panique si appelé -> prouve la réutilisation.
@@ -521,9 +635,9 @@ mod tests {
             &works,
             &wid,
             &src,
-            &cart,
             URL,
             || panic!("doit réutiliser certificate_1.json"),
+            write_cartouche,
             |_s, o, _c, _id, _u, _v| {
                 fs::write(o, b"LABELED").unwrap();
                 Ok(())
@@ -542,7 +656,6 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, h) = write_source_pdf(&base, b"PDF");
-        let cart = cartouche(&base);
         // Pas de certificat sur disque -> branche create ; le seam renvoie un
         // certificat seq 1 dont le package existe DÉJÀ.
         let cert = build_cert(&k, &wid, 1, &h);
@@ -552,9 +665,9 @@ mod tests {
             &works,
             &wid,
             &src,
-            &cart,
             URL,
             || Ok(cert.clone()),
+            panic_cartouche,
             |_s, _o, _c, _id, _u, _v| panic!("le PDF ne doit PAS être généré (package existe)"),
             pkg_fn(&works, &k),
         );
@@ -569,15 +682,14 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, h) = write_source_pdf(&base, b"PDF");
-        let cart = cartouche(&base);
         write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
         let res = create_labeled_package_inner(
             &works,
             &wid,
             &src,
-            &cart,
             "file:///Users/x/doc.pdf",
             || panic!(),
+            panic_cartouche,
             |_s, _o, _c, _id, _u, _v| panic!(),
             pkg_fn(&works, &k),
         );
@@ -592,15 +704,14 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, h) = write_source_pdf(&base, b"PDF");
-        let cart = cartouche(&base);
         write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
         let res = create_labeled_package_inner(
             &works,
             &wid,
             &src,
-            &cart,
             "https://x.app/Users/secret",
             || panic!(),
+            panic_cartouche,
             |_s, _o, _c, _id, _u, _v| panic!(),
             pkg_fn(&works, &k),
         );
@@ -615,15 +726,14 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, h) = write_source_pdf(&base, b"PDF");
-        let cart = cartouche(&base);
         write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
         let res = create_labeled_package_inner(
             &works,
             &wid,
             &src,
-            &cart,
             URL,
             || panic!(),
+            write_cartouche,
             |_s, _o, _c, _id, _u, _v| Err(PublishError::PdfGenerationFailed("KO".into())),
             pkg_fn(&works, &k),
         );
@@ -643,16 +753,15 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, h) = write_source_pdf(&base, b"PDF");
-        let cart = cartouche(&base);
         write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
         // generate_pdf_fn renvoie Ok mais N'écrit PAS le PDF.
         let res = create_labeled_package_inner(
             &works,
             &wid,
             &src,
-            &cart,
             URL,
             || panic!(),
+            write_cartouche,
             |_s, _o, _c, _id, _u, _v| Ok(()),
             pkg_fn(&works, &k),
         );
@@ -669,15 +778,14 @@ mod tests {
         let wid = WorkId::new();
         let k = key();
         let (src, _h) = write_source_pdf(&base, b"PDF");
-        let cart = cartouche(&base);
         // Aucun certificat -> branche create ; seam renvoie Err.
         let res = create_labeled_package_inner(
             &works,
             &wid,
             &src,
-            &cart,
             URL,
             || Err(PublishError::Certificate("NoQualifyingNewPeriod".into())),
+            panic_cartouche,
             |_s, _o, _c, _id, _u, _v| panic!("pas de PDF si le certificat échoue"),
             pkg_fn(&works, &k),
         );
@@ -696,5 +804,188 @@ mod tests {
         assert!(!is_public_url("/Users/x/doc.pdf"));
         assert!(!is_public_url("ftp://x/y"));
         assert!(!is_public_url("https://x.app/Users/secret"));
+    }
+
+    #[test]
+    fn test_11_cartouche_appelee_apres_cert_et_hash_check() {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let base = temp_base();
+        let works = base.join("Works");
+        let wid = WorkId::new();
+        let k = key();
+        let (src, h) = write_source_pdf(&base, b"ORDER PDF");
+        write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
+
+        let order: Rc<RefCell<Vec<&'static str>>> = Rc::new(RefCell::new(Vec::new()));
+        let o_cart = order.clone();
+        let o_pdf = order.clone();
+        let expected_hash = h.clone();
+
+        let res = create_labeled_package_inner(
+            &works,
+            &wid,
+            &src,
+            URL,
+            || panic!("réutilisation"),
+            move |cert, out| {
+                // La cartouche reçoit le certificat réel, APRÈS le hash check.
+                assert_eq!(cert.public_core_evidence.document.hash_current, expected_hash);
+                assert!(!cert.certificate_id.is_empty());
+                o_cart.borrow_mut().push("cartouche");
+                fs::write(out, b"PNG fake").unwrap();
+                Ok(())
+            },
+            move |_s, output, _c, _id, _u, _v| {
+                o_pdf.borrow_mut().push("pdf");
+                fs::write(output, b"LABELED").unwrap();
+                Ok(())
+            },
+            pkg_fn(&works, &k),
+        );
+        assert!(res.is_ok());
+        // Ordre garanti : cartouche AVANT génération PDF.
+        assert_eq!(*order.borrow(), vec!["cartouche", "pdf"]);
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_12_cartouche_non_appelee_si_mismatch() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+        let base = temp_base();
+        let works = base.join("Works");
+        let wid = WorkId::new();
+        let k = key();
+        let (src, _h) = write_source_pdf(&base, b"OTHER PDF");
+        write_cert(&works, &wid, &build_cert(&k, &wid, 1, &"a".repeat(64)));
+
+        let called = Rc::new(Cell::new(false));
+        let c = called.clone();
+        let res = create_labeled_package_inner(
+            &works,
+            &wid,
+            &src,
+            URL,
+            || panic!("réutilisation"),
+            move |_cert, out| {
+                c.set(true);
+                fs::write(out, b"PNG").unwrap();
+                Ok(())
+            },
+            |_s, _o, _c, _id, _u, _v| panic!("le PDF ne doit PAS être généré"),
+            pkg_fn(&works, &k),
+        );
+        assert_eq!(
+            res.err(),
+            Some(PublishError::SourcePdfDoesNotMatchCertifiedDocument)
+        );
+        assert!(!called.get(), "cartouche ne doit PAS être générée sur mismatch");
+        assert!(no_leftover_temp(&works, &wid));
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_13_echec_cartouche_aucun_pdf_ni_package() {
+        let base = temp_base();
+        let works = base.join("Works");
+        let wid = WorkId::new();
+        let k = key();
+        let (src, h) = write_source_pdf(&base, b"PDF");
+        write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
+        let res = create_labeled_package_inner(
+            &works,
+            &wid,
+            &src,
+            URL,
+            || panic!(),
+            |_cert, _out| Err(PublishError::CartoucheGenerationFailed("KO".into())),
+            |_s, _o, _c, _id, _u, _v| panic!("pas de PDF si la cartouche échoue"),
+            pkg_fn(&works, &k),
+        );
+        assert!(matches!(res, Err(PublishError::CartoucheGenerationFailed(_))));
+        assert!(!package_dir(&works, &wid, 1).exists());
+        assert!(no_leftover_temp(&works, &wid), "temp non nettoyé après échec cartouche");
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_14_succes_natif_vraie_cartouche_verify_manifest_ok() {
+        let base = temp_base();
+        let works = base.join("Works");
+        let wid = WorkId::new();
+        let k = key();
+        let (src, h) = write_source_pdf(&base, b"NATIVE PDF CONTENT");
+        write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
+
+        // cartouche_fn NATIVE : identique au flux production (render réel, sans PDFium).
+        let verify_url_owned = URL.to_string();
+        let res = create_labeled_package_inner(
+            &works,
+            &wid,
+            &src,
+            URL,
+            || panic!("réutilisation"),
+            move |cert, out| {
+                let inputs = crate::work_cartouche::WorkCartoucheInputs {
+                    certificate_id: cert.certificate_id.clone(),
+                    verdict: verdict_label(cert.public_core_evidence.verdict.verdict).to_string(),
+                    identity_status: "LOCAL_DEVICE".to_string(),
+                    verify_url: verify_url_owned.clone(),
+                    signing_key_id: Some(cert.signature_metadata.signing_key_id.clone()),
+                    created_at: Some(cert.created_at.clone()),
+                };
+                crate::work_cartouche::render_work_cartouche_png(&inputs, out)
+                    .map_err(PublishError::CartoucheGenerationFailed)
+            },
+            // generate_pdf factice : vérifie que la cartouche native est un vrai PNG.
+            |_s, output, cartouche, _id, _u, _v| {
+                let bytes = fs::read(cartouche).unwrap();
+                assert!(bytes.len() > 100, "cartouche PNG vide");
+                assert_eq!(&bytes[..4], b"\x89PNG", "cartouche native n'est pas un PNG");
+                fs::write(output, b"LABELED PDF").unwrap();
+                Ok(())
+            },
+            pkg_fn(&works, &k),
+        );
+        assert!(res.is_ok(), "flux natif doit produire un package");
+        let dir = package_dir(&works, &wid, 1);
+        assert!(dir.join("manifest.json").exists());
+        assert!(crate::work_package::verify_manifest(&dir).is_ok());
+        assert!(no_leftover_temp(&works, &wid));
+        cleanup(&base);
+    }
+
+    #[test]
+    fn test_15_fallback_manuel_toujours_ok() {
+        let base = temp_base();
+        let works = base.join("Works");
+        let wid = WorkId::new();
+        let k = key();
+        let (src, h) = write_source_pdf(&base, b"MANUAL PDF");
+        write_cert(&works, &wid, &build_cert(&k, &wid, 1, &h));
+        // cartouche_fn MANUELLE : copie du PNG fourni (comme create_labeled_package_core).
+        let cart_src = cartouche_file(&base);
+        let res = create_labeled_package_inner(
+            &works,
+            &wid,
+            &src,
+            URL,
+            || panic!("réutilisation"),
+            move |_cert, out| {
+                fs::copy(&cart_src, out)
+                    .map(|_| ())
+                    .map_err(|e| PublishError::Io(e.to_string()))
+            },
+            |_s, output, _c, _id, _u, _v| {
+                fs::write(output, b"LABELED PDF").unwrap();
+                Ok(())
+            },
+            pkg_fn(&works, &k),
+        );
+        assert!(res.is_ok());
+        let dir = package_dir(&works, &wid, 1);
+        assert!(crate::work_package::verify_manifest(&dir).is_ok());
+        cleanup(&base);
     }
 }

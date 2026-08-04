@@ -2024,6 +2024,7 @@ thread::spawn(move || {
             start_work_period,
             stop_work_period,
             work_publish::create_labeled_work_package,
+            work_publish::create_native_labeled_work_package,
         ])
         .run(tauri::generate_context!())
         .expect("error");

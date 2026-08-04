@@ -7539,6 +7539,25 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
     };
 
+    // Chemin principal : cartouche Work native générée depuis le certificat.
+    $("ho-dev-generate-native").onclick = async () => {
+      try {
+        if (!workId) return log("Créer un Work d'abord.");
+        if (!sourcePdfPath) return log("Choisir un PDF d'abord.");
+        const r = await invoke("create_native_labeled_work_package", {
+          workId,
+          sourcePdfPath,
+          verifyUrl: VERIFY_URL,
+        });
+        lastPackageDir = r && r.package_dir ? r.package_dir : null;
+        if (lastPackageDir) $("ho-dev-open-pdf").style.display = "block";
+        log(r);
+      } catch (e) {
+        fail(e);
+      }
+    };
+
+    // Fallback manuel (secondaire) : cartouche PNG fournie à la main.
     $("ho-dev-generate").onclick = async () => {
       try {
         if (!workId) return log("Créer un Work d'abord.");
