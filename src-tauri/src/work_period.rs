@@ -188,6 +188,18 @@ pub(crate) fn canonical_sha256<T: Serialize>(value: &T) -> Result<String, String
     Ok(format!("{:x}", Sha256::digest(&bytes)))
 }
 
+/// Normalise une valeur `engine` vers le point-fixe de `serde_json` (round-trip
+/// idempotent). Une représentation flottante capturée en amont (ex. moteur) peut
+/// NE PAS être round-trippable : `serialize(x)` produit un texte qui, une fois
+/// reparsé puis re-sérialisé, diffère. On force ici la forme stable AVANT de
+/// hacher/signer/écrire, de sorte que hash signé == octets disque == payload
+/// recalculé au verify. Sans cela, `verify_period_record` diverge après
+/// relecture (bug `ChainInvalid` intermittent).
+fn normalize_engine(engine: &Value) -> Result<Value, String> {
+    serde_json::from_slice::<Value>(&serde_json::to_vec(engine).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())
+}
+
 /// Bâtit une période complète, calcule son record SHA256 et la signe.
 /// `net_document_change` est dérivé objectivement de hash_start != hash_end.
 pub fn sign_period_record(
@@ -197,6 +209,8 @@ pub fn sign_period_record(
     let net_document_change = inputs.hash_start != inputs.hash_end;
     let public_key = general_purpose::STANDARD.encode(signing_key.verifying_key().to_bytes());
     let signing_key_id = sha256_hex_str(&public_key);
+    // Point-fixe serde_json AVANT hash/signature/écriture (cf. normalize_engine).
+    let engine = normalize_engine(&inputs.engine)?;
 
     let mut period = ObservationPeriod {
         schema_version: PERIOD_SCHEMA_VERSION,
@@ -212,7 +226,7 @@ pub fn sign_period_record(
         size_end: inputs.size_end,
         net_document_change,
         change_observed_during_period: inputs.change_observed_during_period,
-        engine: inputs.engine,
+        engine,
         signature_metadata: SignatureMetadata {
             alg: SIGN_ALG.to_string(),
             public_key,
@@ -918,5 +932,65 @@ mod tests {
         // Et le fichier final est bien une période valide.
         assert!(read_period(&works, &wid, 0).is_ok());
         cleanup(&root);
+    }
+
+    /// Non-régression du bug `ChainInvalid` intermittent : un flottant engine
+    /// non round-trippable (parseur float serde_json imprécis) faisait diverger
+    /// `period_record_sha256` après relecture disque. `normalize_engine` (au
+    /// moment de la signature) doit rendre la période stable au round-trip.
+    #[test]
+    fn test_engine_float_non_roundtrip_reste_valide_apres_disque() {
+        // (1) Précondition : la valeur choisie EST bien un cas de drift, sinon
+        //     ce test ne garderait rien.
+        let raw_engine = json!({ "analysis": { "effort_score": 241.33333333333334_f64 } });
+        let once = serde_json::to_vec(&raw_engine).unwrap();
+        let reparsed: Value = serde_json::from_slice(&once).unwrap();
+        let twice = serde_json::to_vec(&reparsed).unwrap();
+        assert_ne!(
+            once, twice,
+            "la valeur de test doit reproduire le drift float serde_json"
+        );
+
+        // (2) Signature d'une période portant ce flottant.
+        let k = key();
+        let wid = WorkId::new();
+        let mut inputs = genesis_inputs(&wid);
+        inputs.engine = json!({
+            "analysis": { "effort_score": 241.33333333333334_f64, "score": 100 }
+        });
+        let period = sign_period_record(inputs, &k).unwrap();
+
+        // (3) Simule l'écriture disque (write_period_once) + relecture
+        //     (load_verified_chain) : sérialisation -> relecture serde_json.
+        let bytes = serde_json::to_vec_pretty(&period).unwrap();
+        let reread: ObservationPeriod = serde_json::from_slice(&bytes).unwrap();
+
+        // (4) verify_period_record après relecture doit PASSER (échouait avant le fix).
+        verify_period_record(&reread)
+            .expect("période doit rester valide après round-trip disque");
+        // (5) period_record_sha256 stable.
+        assert_eq!(reread.period_record_sha256, period.period_record_sha256);
+        assert_eq!(
+            reread.period_record_sha256,
+            compute_period_record_sha256(&reread).unwrap()
+        );
+    }
+
+    /// `normalize_engine` doit être idempotent : normalize(normalize(x)) == normalize(x).
+    #[test]
+    fn test_normalize_engine_idempotent() {
+        let engine = json!({
+            "analysis": { "effort_score": 241.33333333333334_f64, "rhythm_cv": 2.9419373553875756_f64, "score": 100 },
+            "nested": { "b": 1, "a": 2.5, "z": [0.1, 0.2, 0.3] }
+        });
+        let once = normalize_engine(&engine).unwrap();
+        let twice = normalize_engine(&once).unwrap();
+        assert_eq!(once, twice, "normalize_engine doit être idempotent (Value)");
+        // Point-fixe au niveau des octets sérialisés.
+        assert_eq!(
+            serde_json::to_vec(&once).unwrap(),
+            serde_json::to_vec(&twice).unwrap(),
+            "la forme normalisée doit être un point-fixe de sérialisation"
+        );
     }
 }
