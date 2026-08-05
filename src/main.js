@@ -7698,6 +7698,9 @@ window.addEventListener("DOMContentLoaded", async () => {
           hasVersion,
         };
 
+        // Le bouton de clôture n'apparaît qu'après un échec « aucune capture active ».
+        el("alpha-close-interrupted").style.display = "none";
+
         el("alpha-count").textContent =
           obs > 0
             ? `${obs} observation${obs > 1 ? "s" : ""} enregistrée${
@@ -7806,6 +7809,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           el("alpha-count").textContent = "";
           el("alpha-version-note").textContent = "";
           el("alpha-start").textContent = "3. Démarrer l'observation";
+          el("alpha-close-interrupted").style.display = "none";
           enable("alpha-prepare", true);
           status("Document sélectionné.");
           saveAlphaState();
@@ -7907,8 +7911,49 @@ window.addEventListener("DOMContentLoaded", async () => {
           saveAlphaState();
         } catch (e) {
           console.error("[alpha] stop", e);
-          status("Impossible de terminer l'observation.");
-          enable("alpha-stop", true);
+          const raw = String(e || "");
+          if (raw.includes("aucune capture active")) {
+            // Fermeture complète / kill / crash pendant l'observation : la capture
+            // en mémoire est perdue, un pending orphelin subsiste. On propose une
+            // clôture propre (pas de réactivation de « Terminer »).
+            status(
+              "L'observation précédente a été interrompue. Vous pouvez la clôturer puis recommencer une nouvelle observation."
+            );
+            enable("alpha-stop", false);
+            el("alpha-close-interrupted").style.display = "block";
+          } else {
+            status("Impossible de terminer l'observation.");
+            enable("alpha-stop", true);
+          }
+        } finally {
+          busy = false;
+        }
+      };
+
+      // Clôturer une observation interrompue (backend read-safe : ne crée aucune
+      // preuve). Libère le slot pour permettre une nouvelle observation.
+      el("alpha-close-interrupted").onclick = async () => {
+        if (busy) return;
+        if (!workId) return;
+        busy = true;
+        el("alpha-close-interrupted").disabled = true;
+        status("Clôture de l'observation interrompue…");
+        try {
+          await invoke("close_interrupted_observation", { workId });
+          observationRunning = false;
+          el("alpha-close-interrupted").style.display = "none";
+          el("alpha-close-interrupted").disabled = false;
+          const pending = await refreshSummary();
+          if (!pending) {
+            status(
+              "Observation interrompue clôturée. Vous pouvez démarrer une nouvelle observation."
+            );
+          }
+          saveAlphaState();
+        } catch (e) {
+          console.error("[alpha] close-interrupted", e);
+          status("Impossible de clôturer l'observation interrompue.");
+          el("alpha-close-interrupted").disabled = false;
         } finally {
           busy = false;
         }
@@ -7936,6 +7981,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           }
           el("alpha-package-dir").value = packageDir;
           el("alpha-success").style.display = "block";
+          el("alpha-close-interrupted").style.display = "none";
           await refreshSummary({ renderButtons: false }); // compteur + note version
           // Écran succès = terminal : verrouiller les étapes (choix = Continuer / Recommencer).
           enable("alpha-prepare", false);
@@ -8026,6 +8072,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         el("alpha-count").textContent = "";
         el("alpha-version-note").textContent = "";
         el("alpha-start").textContent = "3. Démarrer l'observation";
+        el("alpha-close-interrupted").style.display = "none";
         el("alpha-success").style.display = "none";
         enable("alpha-prepare", false);
         enable("alpha-start", false);
