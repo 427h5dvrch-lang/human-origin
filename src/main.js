@@ -8096,3 +8096,30 @@ window.addEventListener("DOMContentLoaded", async () => {
     boot();
   }
 })();
+
+// ============================================================================
+// ACCÈS ALPHA SANS DEVTOOLS (7D-1) — raccourci clavier caché, usage interne.
+// ON : ⌘ + ⌥ + ⇧ + A  → pose humanOriginAlphaMode + reload (Alpha via gating existant)
+// OFF: ⌘ + ⌥ + ⇧ + L  → retire humanOriginAlphaMode + reload (retour legacy)
+// N'agit QUE sur humanOriginAlphaMode ; ne touche jamais humanOriginDevMode ni le
+// panneau Work dev ; ne change pas le gating Alpha ; legacy reste le défaut.
+// e.code (touche physique) est utilisé car ⌥ sur macOS altère e.key (caractère composé).
+// ============================================================================
+(function initAlphaModeShortcut() {
+  window.addEventListener("keydown", (e) => {
+    if (!(e.metaKey && e.altKey && e.shiftKey)) return;
+    if (e.code === "KeyA") {
+      e.preventDefault();
+      try {
+        localStorage.setItem("humanOriginAlphaMode", "1");
+      } catch (_e) {}
+      location.reload();
+    } else if (e.code === "KeyL") {
+      e.preventDefault();
+      try {
+        localStorage.removeItem("humanOriginAlphaMode");
+      } catch (_e) {}
+      location.reload();
+    }
+  });
+})();
