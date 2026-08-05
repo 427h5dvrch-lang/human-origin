@@ -385,6 +385,87 @@ pub fn archive_work_core(works_root: &Path, work_id: &WorkId) -> Result<(), Stri
     Ok(())
 }
 
+// --- RÉSUMÉ READ-ONLY (get_work_summary) -------------------------------------
+
+/// Résumé strictement lecture seule de l'état d'un Work, pour la reprise
+/// multi-observations côté UI. N'expose NI chemin, NI hash, NI bloc moteur brut.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct WorkSummary {
+    pub work_id: String,
+    /// Nombre de périodes vérifiées dans la chaîne.
+    pub observation_count: u64,
+    /// Périodes où gate_passed && net_document_change.
+    pub qualifying_observation_count: u64,
+    /// Dernière `sequence_number` si une période existe, sinon null.
+    pub last_observation_sequence: Option<u64>,
+    /// `pending.json` présent (observation en cours ou interrompue).
+    pub has_pending_observation: bool,
+    /// Dernière séquence de certificat valide si elle existe, sinon null.
+    pub latest_certificate_sequence: Option<u64>,
+    /// Dernière séquence de package existante si elle existe, sinon null.
+    pub latest_package_sequence: Option<u64>,
+}
+
+/// Plus grande séquence de dossier `package_N` présente (lecture de noms
+/// uniquement, aucune validation ni ouverture de contenu).
+fn latest_package_sequence(works_root: &Path, work_id: &WorkId) -> Option<u64> {
+    let pkgs = works_root.join(work_id.as_str()).join("packages");
+    let mut max: Option<u64> = None;
+    if let Ok(rd) = fs::read_dir(&pkgs) {
+        for entry in rd.flatten() {
+            if let Some(name) = entry.file_name().to_str() {
+                if let Some(n) = name
+                    .strip_prefix("package_")
+                    .and_then(|s| s.parse::<u64>().ok())
+                {
+                    max = Some(max.map_or(n, |m| m.max(n)));
+                }
+            }
+        }
+    }
+    max
+}
+
+/// Cœur read-only : ne signe rien, ne crée aucune période/certificat/package.
+/// Réutilise les vérifications existantes ; une période invalide -> erreur dure.
+pub fn get_work_summary_core(
+    works_root: &Path,
+    work_id: &WorkId,
+) -> Result<WorkSummary, String> {
+    // Existence : work.json requis (erreur claire si work_id inconnu).
+    work_store::read_work_metadata(works_root, work_id)
+        .map_err(|_| format!("Work inconnu : {}", work_id.as_str()))?;
+
+    // Chaîne vérifiée (période corrompue/invalide -> erreur, jamais ignorée).
+    let chain = crate::work_period::load_verified_chain(works_root, work_id)?;
+    let observation_count = chain.len() as u64;
+    let last_observation_sequence = chain.last().map(|p| p.sequence_number);
+    let qualifying_observation_count = chain
+        .iter()
+        .filter(|p| crate::work_certificate::period_is_qualifying(p))
+        .count() as u64;
+
+    let has_pending_observation =
+        crate::work_pending::detect_pending_for_work(works_root, work_id)?.is_some();
+
+    let latest_certificate_sequence =
+        crate::work_certificate::find_last_valid_certificate(works_root, work_id)
+            .map_err(|e| format!("{e:?}"))?
+            .map(|c| c.certificate_sequence);
+
+    let latest_package_sequence = latest_package_sequence(works_root, work_id);
+
+    Ok(WorkSummary {
+        work_id: work_id.as_str().to_string(),
+        observation_count,
+        qualifying_observation_count,
+        last_observation_sequence,
+        has_pending_observation,
+        latest_certificate_sequence,
+        latest_package_sequence,
+    })
+}
+
 // --- COMMANDES TAURI (fines enveloppes) --------------------------------------
 
 #[tauri::command]
@@ -419,6 +500,14 @@ pub fn load_work(work_id: String) -> Result<LoadedWork, String> {
 pub fn archive_work(work_id: String) -> Result<(), String> {
     let root = work_store::works_root()?;
     archive_work_core(&root, &WorkId(work_id))
+}
+
+/// Read-only : résumé de l'état d'un Work (comptes d'observations, pending,
+/// dernières séquences cert/package). Ne signe rien, ne crée rien.
+#[tauri::command]
+pub fn get_work_summary(work_id: String) -> Result<WorkSummary, String> {
+    let root = work_store::works_root()?;
+    get_work_summary_core(&root, &WorkId(work_id))
 }
 
 // --- TESTS UNITAIRES ----------------------------------------------------------
@@ -805,6 +894,147 @@ mod tests {
         let retry = create_work_core(&works, doc.to_str().unwrap(), None, None).unwrap();
         assert!(matches!(retry, CreateWorkOutcome::ExactExists { .. }));
         assert_eq!(work_store::read_all_work_records(&works).unwrap().len(), 1);
+        cleanup(&root);
+    }
+
+    // --- get_work_summary (read-only) -----------------------------------------
+
+    use crate::work_pending::{PendingPeriod, PendingState};
+    use crate::work_period::{ObservationPeriod, PeriodInputs};
+    use ed25519_dalek::SigningKey;
+    use rand_core::OsRng;
+    use serde_json::json;
+
+    fn sk() -> SigningKey {
+        SigningKey::generate(&mut OsRng)
+    }
+
+    /// Seed d'un Work valide (work.json + dossier periods) depuis un vrai fichier.
+    fn seed_summary_work(root: &Path, works: &Path) -> WorkId {
+        let doc = write_file(&root.join("docs"), "resume.txt", b"contenu resume unique");
+        let meta = capture_document(&doc).unwrap();
+        seed_work(works, meta)
+    }
+
+    /// Écrit une chaîne de périodes valides signées. specs = (gate_passed, net_change).
+    fn write_valid_chain(works: &Path, wid: &WorkId, k: &SigningKey, specs: &[(bool, bool)]) {
+        let mut prev: Option<ObservationPeriod> = None;
+        for (i, (gate, net)) in specs.iter().enumerate() {
+            let start = prev
+                .as_ref()
+                .map(|p| p.hash_end.clone())
+                .unwrap_or_else(|| "a".repeat(64));
+            let end = if *net {
+                format!("{:064x}", 1000 + i)
+            } else {
+                start.clone()
+            };
+            let inputs = PeriodInputs {
+                period_id: Uuid::new_v4().to_string(),
+                work_id: wid.clone(),
+                sequence_number: i as u64,
+                previous_period_id: prev.as_ref().map(|p| p.period_id.clone()),
+                previous_period_record_sha256: prev
+                    .as_ref()
+                    .map(|p| p.period_record_sha256.clone()),
+                document_path: "/tmp/x".to_string(),
+                hash_start: start,
+                size_start: 10,
+                hash_end: end,
+                size_end: 20,
+                change_observed_during_period: true,
+                engine: json!({ "analysis": { "gate_passed": gate } }),
+            };
+            let p = crate::work_period::sign_period_record(inputs, k).unwrap();
+            crate::work_period::write_period_once(works, &p).unwrap();
+            prev = Some(p);
+        }
+    }
+
+    #[test]
+    fn test_summary_work_sans_periode() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = seed_summary_work(&root, &works);
+        let s = get_work_summary_core(&works, &wid).unwrap();
+        assert_eq!(s.observation_count, 0);
+        assert_eq!(s.qualifying_observation_count, 0);
+        assert_eq!(s.last_observation_sequence, None);
+        assert!(!s.has_pending_observation);
+        assert_eq!(s.latest_certificate_sequence, None);
+        assert_eq!(s.latest_package_sequence, None);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_summary_deux_periodes_valides() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = seed_summary_work(&root, &works);
+        write_valid_chain(&works, &wid, &sk(), &[(true, true), (true, true)]);
+        let s = get_work_summary_core(&works, &wid).unwrap();
+        assert_eq!(s.observation_count, 2);
+        assert_eq!(s.last_observation_sequence, Some(1));
+        assert_eq!(s.qualifying_observation_count, 2);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_summary_qualifiante_et_non() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = seed_summary_work(&root, &works);
+        // period_0 qualifiante (gate+net) ; period_1 non qualifiante (gate=false).
+        write_valid_chain(&works, &wid, &sk(), &[(true, true), (false, true)]);
+        let s = get_work_summary_core(&works, &wid).unwrap();
+        assert_eq!(s.observation_count, 2);
+        assert_eq!(s.qualifying_observation_count, 1);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_summary_pending_present() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = seed_summary_work(&root, &works);
+        let pending = PendingPeriod {
+            schema_version: 1,
+            period_id: Uuid::new_v4().to_string(),
+            work_id: wid.clone(),
+            sequence_number: 0,
+            previous_period_id: None,
+            previous_period_record_sha256: None,
+            document_path: "/tmp/x".to_string(),
+            hash_start: "a".repeat(64),
+            size_start: 10,
+            started_at: "2026-08-05T10:00:00Z".to_string(),
+            state: PendingState::Pending,
+        };
+        crate::work_pending::write_pending_atomic(&works, &pending).unwrap();
+        let s = get_work_summary_core(&works, &wid).unwrap();
+        assert!(s.has_pending_observation);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_summary_package_sequence() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = seed_summary_work(&root, &works);
+        let pkgs = works.join(wid.as_str()).join("packages");
+        fs::create_dir_all(pkgs.join("package_1")).unwrap();
+        fs::create_dir_all(pkgs.join("package_2")).unwrap();
+        let s = get_work_summary_core(&works, &wid).unwrap();
+        assert_eq!(s.latest_package_sequence, Some(2));
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_summary_work_inconnu_erreur() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let res = get_work_summary_core(&works, &WorkId::new());
+        assert!(res.is_err(), "un work_id inconnu doit renvoyer une erreur");
         cleanup(&root);
     }
 }

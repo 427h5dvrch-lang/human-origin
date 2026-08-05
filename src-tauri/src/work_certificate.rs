@@ -175,7 +175,9 @@ fn period_active_sec(p: &ObservationPeriod) -> u64 {
 }
 
 /// Période qualifiante = gate franchi ET changement documentaire net.
-fn period_is_qualifying(p: &ObservationPeriod) -> bool {
+/// `pub(crate)` : réutilisée en lecture seule par `get_work_summary` (aucune
+/// duplication de la définition de qualification).
+pub(crate) fn period_is_qualifying(p: &ObservationPeriod) -> bool {
     period_gate_passed(p) && p.net_document_change
 }
 
