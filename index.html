@@ -1697,12 +1697,19 @@
         <div id="alpha-status" class="alpha-status" role="status" aria-live="polite"></div>
 
         <div id="alpha-success" style="display:none;">
-          <div class="alpha-success-title">Document HumanOrigin créé — preuve locale signée</div>
-          <div class="alpha-success-sub">Prêt à envoyer.</div>
-          <div class="alpha-val" style="margin-top:10px;">Emplacement du dossier :</div>
-          <input id="alpha-package-dir" class="alpha-dir" type="text" readonly />
+          <div class="alpha-success-title">Document HumanOrigin créé</div>
+          <div class="alpha-success-sub">Preuve locale signée</div>
+          <div class="alpha-success-lines">
+            <div>✓ Dossier prêt à envoyer</div>
+            <div>✓ PDF labellisé disponible</div>
+          </div>
+          <button id="alpha-open-pdf" class="alpha-btn alpha-primary" type="button">Ouvrir le PDF</button>
           <button id="alpha-open-dir" class="alpha-btn" type="button">Ouvrir le dossier</button>
           <button id="alpha-restart" class="alpha-btn alpha-ghost" type="button">Recommencer avec un autre document</button>
+          <div class="alpha-pathwrap">
+            <span class="alpha-pathlabel">Emplacement du dossier (copiable)</span>
+            <input id="alpha-package-dir" class="alpha-dir" type="text" readonly />
+          </div>
         </div>
 
         <div class="alpha-foot">HumanOrigin mesure un travail observé. Il ne détecte pas l'IA.</div>
@@ -1729,8 +1736,14 @@
         #alpha-screen .alpha-ghost { background: transparent; border: 1px solid rgba(255,255,255,.18); }
         #alpha-screen .alpha-val { font-size: 12px; color: rgba(232,238,252,.6); word-break: break-all; margin: 2px 0 12px; }
         #alpha-screen .alpha-status { min-height: 20px; margin: 12px 0; font-size: 13px; color: #cbd5e1; }
-        #alpha-screen .alpha-success-title { font-size: 16px; font-weight: 800; color: #34d399; margin-top: 6px; }
-        #alpha-screen .alpha-success-sub { font-size: 13px; color: rgba(232,238,252,.7); margin: 4px 0 6px; }
+        #alpha-screen .alpha-success-title { font-size: 18px; font-weight: 800; color: #34d399; margin-top: 6px; }
+        #alpha-screen .alpha-success-sub { font-size: 12px; font-weight: 700; letter-spacing: .06em;
+          text-transform: uppercase; color: rgba(232,238,252,.5); margin: 3px 0 10px; }
+        #alpha-screen .alpha-success-lines { font-size: 13px; color: rgba(232,238,252,.8); margin: 0 0 12px; }
+        #alpha-screen .alpha-success-lines div { margin: 3px 0; }
+        #alpha-screen .alpha-pathwrap { margin-top: 14px; opacity: .55; }
+        #alpha-screen .alpha-pathlabel { font-size: 10px; font-weight: 700; letter-spacing: .1em;
+          text-transform: uppercase; color: rgba(232,238,252,.5); }
         #alpha-screen .alpha-dir { width: 100%; box-sizing: border-box; padding: 9px 10px; margin: 6px 0 10px;
           border-radius: 10px; border: 1px solid rgba(255,255,255,.14); background: #05080c; color: #d7e3f0;
           font: 12px monospace; }

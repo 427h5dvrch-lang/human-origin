@@ -7646,6 +7646,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       let observationRunning = false;
       let lastPeriodResult = null;
       let packageDir = null;
+      // Guard anti-réentrance : ignore tout clic pendant qu'une action async tourne.
+      let busy = false;
 
       // 1. Choisir un document
       el("alpha-pick").onclick = async () => {
@@ -7667,8 +7669,12 @@ window.addEventListener("DOMContentLoaded", async () => {
 
       // 2. Préparer le document
       el("alpha-prepare").onclick = async () => {
+        if (busy) return;
+        if (!selectedPdfPath) return status("Choisissez d'abord un document.");
+        busy = true;
+        enable("alpha-prepare", false);
+        status("Préparation du document…");
         try {
-          if (!selectedPdfPath) return status("Choisissez d'abord un document.");
           const r = await invoke("create_work", {
             documentPath: selectedPdfPath,
             displayName: null,
@@ -7684,20 +7690,27 @@ window.addEventListener("DOMContentLoaded", async () => {
             );
           } else {
             status("Impossible de préparer le document.");
+            enable("alpha-prepare", true);
           }
         } catch (e) {
           console.error("[alpha] prepare", e);
           status("Impossible de préparer le document.");
+          enable("alpha-prepare", true);
+        } finally {
+          busy = false;
         }
       };
 
       // 3. Démarrer l'observation
       el("alpha-start").onclick = async () => {
+        if (busy) return;
+        if (!workId) return status("Préparez d'abord le document.");
+        busy = true;
+        enable("alpha-start", false);
+        status("Démarrage de l'observation…");
         try {
-          if (!workId) return status("Préparez d'abord le document.");
           await invoke("start_work_period", { workId });
           observationRunning = true;
-          enable("alpha-start", false);
           enable("alpha-stop", true);
           status(
             "Observation en cours — travaillez sur votre document, puis terminez l'observation."
@@ -7710,20 +7723,26 @@ window.addEventListener("DOMContentLoaded", async () => {
               ? "Une observation est déjà en cours ou a été interrompue."
               : "Impossible de démarrer l'observation."
           );
+          enable("alpha-start", true);
+        } finally {
+          busy = false;
         }
       };
 
       // 4. Terminer l'observation
       el("alpha-stop").onclick = async () => {
+        if (busy) return;
+        if (!workId) return status("Préparez d'abord le document.");
+        busy = true;
+        enable("alpha-stop", false);
+        status("Fin de l'observation…");
         try {
-          if (!workId) return status("Préparez d'abord le document.");
           const r = await invoke("stop_work_period", {
             workId,
             paste: { paste_events: 0, pasted_chars: 0, max_paste_chars: 0 },
           });
           lastPeriodResult = r;
           observationRunning = false;
-          enable("alpha-stop", false);
           if (r && r.net_document_change === false) {
             status("Le document n'a pas changé pendant l'observation.");
             enable("alpha-create", false);
@@ -7736,15 +7755,21 @@ window.addEventListener("DOMContentLoaded", async () => {
         } catch (e) {
           console.error("[alpha] stop", e);
           status("Impossible de terminer l'observation.");
+          enable("alpha-stop", true);
+        } finally {
+          busy = false;
         }
       };
 
       // 5. Créer mon document HumanOrigin
       el("alpha-create").onclick = async () => {
+        if (busy) return;
+        if (!workId || !selectedPdfPath)
+          return status("Terminez d'abord une observation.");
+        busy = true;
+        enable("alpha-create", false);
+        status("Création du document HumanOrigin…");
         try {
-          if (!workId || !selectedPdfPath)
-            return status("Terminez d'abord une observation.");
-          status("Création du document HumanOrigin…");
           const r = await invoke("create_native_labeled_work_package", {
             workId,
             sourcePdfPath: selectedPdfPath,
@@ -7753,11 +7778,11 @@ window.addEventListener("DOMContentLoaded", async () => {
           packageDir = r && r.package_dir ? r.package_dir : null;
           if (!packageDir) {
             status("Impossible de créer le document HumanOrigin.");
+            enable("alpha-create", true);
             return;
           }
           el("alpha-package-dir").value = packageDir;
           el("alpha-success").style.display = "block";
-          enable("alpha-create", false);
           status("");
         } catch (e) {
           console.error("[alpha] create", e);
@@ -7771,6 +7796,21 @@ window.addEventListener("DOMContentLoaded", async () => {
           else if (raw.includes("AlreadyExists"))
             msg = "Ce document HumanOrigin existe déjà.";
           status(msg);
+          if (!raw.includes("AlreadyExists")) enable("alpha-create", true);
+        } finally {
+          busy = false;
+        }
+      };
+
+      // Ouvrir le PDF labellisé (commande existante open_file — aucun nouveau backend)
+      el("alpha-open-pdf").onclick = async () => {
+        try {
+          if (packageDir)
+            await invoke("open_file", {
+              path: packageDir + "/labeled_document.pdf",
+            });
+        } catch (e) {
+          console.error("[alpha] open-pdf", e);
         }
       };
 
@@ -7785,6 +7825,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
       // Recommencer avec un autre document
       el("alpha-restart").onclick = () => {
+        if (busy) return;
         selectedPdfPath = null;
         workId = null;
         observationRunning = false;
