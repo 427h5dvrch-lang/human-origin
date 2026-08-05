@@ -7649,6 +7649,70 @@ window.addEventListener("DOMContentLoaded", async () => {
       // Guard anti-réentrance : ignore tout clic pendant qu'une action async tourne.
       let busy = false;
 
+      // --- Persistance légère (localStorage) : survit aux reloads webview. ---
+      const ALPHA_STATE_KEY = "humanOriginAlphaState";
+      const saveAlphaState = () => {
+        try {
+          localStorage.setItem(
+            ALPHA_STATE_KEY,
+            JSON.stringify({
+              version: 1,
+              updatedAt: Date.now(),
+              selectedPdfPath,
+              workId,
+              observationRunning,
+              packageDir,
+              lastPeriodResult,
+            })
+          );
+        } catch (_e) {}
+      };
+      const clearAlphaState = () => {
+        try {
+          localStorage.removeItem(ALPHA_STATE_KEY);
+        } catch (_e) {}
+      };
+      // Restaure un état PRUDENT : ne relance jamais d'observation, ne crée jamais
+      // de preuve automatiquement ; se contente d'activer l'étape appropriée.
+      const restoreAlphaState = () => {
+        let s = null;
+        try {
+          s = JSON.parse(localStorage.getItem(ALPHA_STATE_KEY) || "null");
+        } catch (_e) {
+          s = null;
+        }
+        if (!s || s.version !== 1) return;
+        selectedPdfPath = s.selectedPdfPath || null;
+        workId = s.workId || null;
+        observationRunning = !!s.observationRunning;
+        packageDir = s.packageDir || null;
+        lastPeriodResult = s.lastPeriodResult || null;
+        if (selectedPdfPath) el("alpha-doc").textContent = selectedPdfPath;
+
+        if (packageDir) {
+          el("alpha-package-dir").value = packageDir;
+          el("alpha-success").style.display = "block";
+          status("");
+          return;
+        }
+        if (observationRunning) {
+          enable("alpha-stop", true);
+          status(
+            "Observation en cours ou interrompue — vous pouvez terminer l'observation."
+          );
+          return;
+        }
+        if (workId) {
+          enable("alpha-start", true);
+          status("Document prêt. Vous pouvez démarrer l'observation.");
+          return;
+        }
+        if (selectedPdfPath) {
+          enable("alpha-prepare", true);
+          status("Document sélectionné.");
+        }
+      };
+
       // 1. Choisir un document
       el("alpha-pick").onclick = async () => {
         try {
@@ -7658,9 +7722,12 @@ window.addEventListener("DOMContentLoaded", async () => {
           });
           if (!p) return;
           selectedPdfPath = p;
+          workId = null;
+          packageDir = null;
           el("alpha-doc").textContent = p;
           enable("alpha-prepare", true);
           status("Document sélectionné.");
+          saveAlphaState();
         } catch (e) {
           console.error("[alpha] pick", e);
           status("Impossible de choisir le document.");
@@ -7688,6 +7755,7 @@ window.addEventListener("DOMContentLoaded", async () => {
                 ? "Document déjà connu — vous pouvez démarrer l'observation."
                 : "Document prêt. Vous pouvez démarrer l'observation."
             );
+            saveAlphaState();
           } else {
             status("Impossible de préparer le document.");
             enable("alpha-prepare", true);
@@ -7715,6 +7783,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           status(
             "Observation en cours — travaillez sur votre document, puis terminez l'observation."
           );
+          saveAlphaState();
         } catch (e) {
           console.error("[alpha] start", e);
           const raw = String(e || "");
@@ -7752,6 +7821,7 @@ window.addEventListener("DOMContentLoaded", async () => {
             );
             enable("alpha-create", true);
           }
+          saveAlphaState();
         } catch (e) {
           console.error("[alpha] stop", e);
           status("Impossible de terminer l'observation.");
@@ -7784,6 +7854,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           el("alpha-package-dir").value = packageDir;
           el("alpha-success").style.display = "block";
           status("");
+          saveAlphaState();
         } catch (e) {
           console.error("[alpha] create", e);
           const raw = String(e || "");
@@ -7823,6 +7894,16 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
       };
 
+      // Vérification : ouvre la page publique du vérificateur (open_file existant).
+      // Aucune preuve n'est chargée automatiquement : l'utilisateur y dépose le PDF.
+      el("alpha-open-verifier").onclick = async () => {
+        try {
+          await invoke("open_file", { path: ALPHA_VERIFY_URL });
+        } catch (e) {
+          console.error("[alpha] verifier", e);
+        }
+      };
+
       // Recommencer avec un autre document
       el("alpha-restart").onclick = () => {
         if (busy) return;
@@ -7839,7 +7920,12 @@ window.addEventListener("DOMContentLoaded", async () => {
         enable("alpha-stop", false);
         enable("alpha-create", false);
         status("");
+        clearAlphaState();
       };
+
+      // Restaure l'état persisté (survit aux reloads webview) — prudent, jamais
+      // d'auto-observation ni d'auto-création.
+      restoreAlphaState();
     } catch (_e) {
       /* Alpha best-effort — n'affecte jamais le legacy */
     }
