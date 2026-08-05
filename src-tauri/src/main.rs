@@ -2022,6 +2022,7 @@ thread::spawn(move || {
             work_commands::load_work,
             work_commands::archive_work,
             work_commands::get_work_summary,
+            work_commands::close_interrupted_observation,
             start_work_period,
             stop_work_period,
             work_publish::create_labeled_work_package,

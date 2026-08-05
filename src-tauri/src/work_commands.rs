@@ -466,6 +466,42 @@ pub fn get_work_summary_core(
     })
 }
 
+/// Clôture propre d'une observation interrompue (fermeture complète / kill /
+/// crash pendant une observation) : résout le `pending.json` orphelin et libère
+/// le slot pour permettre une NOUVELLE observation. Ne crée NI période, NI
+/// certificat, NI package ; ne signe rien ; ne touche pas le PDF source.
+///
+/// Étapes (réutilise la machinery existante, non destructive) :
+/// 1. `recover_orphaned_pending` : un `Pending` orphelin sans période valide
+///    devient `Interrupted` ; un résidu après période valide est nettoyé ;
+///    idempotent (aucun pending -> `None`, no-op).
+/// 2. si un `Interrupted` subsiste : `close_interrupted_pending` l'archive
+///    (`pending_interrupted_*.json`) et libère `pending.json`.
+///
+/// Renvoie le `WorkSummary` à jour (même shape read-only : aucun chemin/hash/moteur).
+pub fn close_interrupted_observation_core(
+    works_root: &Path,
+    work_id: &WorkId,
+) -> Result<WorkSummary, String> {
+    // Existence (erreur claire si work_id inconnu).
+    work_store::read_work_metadata(works_root, work_id)
+        .map_err(|_| format!("Work inconnu : {}", work_id.as_str()))?;
+
+    // 1. Récupération : Pending orphelin -> Interrupted (ou nettoyage si période
+    //    valide correspondante). No-op si aucun pending.
+    let recovered = crate::work_pending::recover_orphaned_pending(works_root, work_id)?;
+
+    // 2. Clôture explicite d'un pending INTERRUPTED restant (libère le slot).
+    if let Some(p) = recovered {
+        if p.state == crate::work_pending::PendingState::Interrupted {
+            crate::work_pending::close_interrupted_pending(works_root, work_id)?;
+        }
+    }
+
+    // Résumé à jour (has_pending_observation doit être false après clôture).
+    get_work_summary_core(works_root, work_id)
+}
+
 // --- COMMANDES TAURI (fines enveloppes) --------------------------------------
 
 #[tauri::command]
@@ -508,6 +544,14 @@ pub fn archive_work(work_id: String) -> Result<(), String> {
 pub fn get_work_summary(work_id: String) -> Result<WorkSummary, String> {
     let root = work_store::works_root()?;
     get_work_summary_core(&root, &WorkId(work_id))
+}
+
+/// Clôture propre d'une observation interrompue (pending orphelin) et libère le
+/// slot pour une nouvelle observation. Ne crée/signe rien ; renvoie le résumé.
+#[tauri::command]
+pub fn close_interrupted_observation(work_id: String) -> Result<WorkSummary, String> {
+    let root = work_store::works_root()?;
+    close_interrupted_observation_core(&root, &WorkId(work_id))
 }
 
 // --- TESTS UNITAIRES ----------------------------------------------------------
@@ -1035,6 +1079,110 @@ mod tests {
         let works = root.join("Works");
         let res = get_work_summary_core(&works, &WorkId::new());
         assert!(res.is_err(), "un work_id inconnu doit renvoyer une erreur");
+        cleanup(&root);
+    }
+
+    // --- close_interrupted_observation ----------------------------------------
+
+    /// Écrit un pending PENDING orphelin (frontière donnée), sans période associée.
+    fn write_orphan_pending(works: &Path, wid: &WorkId, seq: u64) {
+        let pending = PendingPeriod {
+            schema_version: 1,
+            period_id: Uuid::new_v4().to_string(),
+            work_id: wid.clone(),
+            sequence_number: seq,
+            previous_period_id: None,
+            previous_period_record_sha256: None,
+            document_path: "/tmp/x".to_string(),
+            hash_start: "a".repeat(64),
+            size_start: 10,
+            started_at: "2026-08-05T10:00:00Z".to_string(),
+            state: PendingState::Pending,
+        };
+        crate::work_pending::write_pending_atomic(works, &pending).unwrap();
+    }
+
+    #[test]
+    fn test_close_pending_orphelin_libere_le_slot() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = seed_summary_work(&root, &works);
+        write_orphan_pending(&works, &wid, 0);
+
+        // Avant : un pending existe.
+        let before = get_work_summary_core(&works, &wid).unwrap();
+        assert!(before.has_pending_observation);
+
+        let s = close_interrupted_observation_core(&works, &wid).unwrap();
+        assert!(!s.has_pending_observation, "slot libéré");
+        // Un nouveau démarrage n'est plus bloqué par un pending.
+        assert!(
+            crate::work_pending::detect_pending_for_work(&works, &wid)
+                .unwrap()
+                .is_none()
+        );
+        // Aucune période/certificat/package créés par la clôture.
+        assert_eq!(s.observation_count, 0);
+        assert!(!works.join(wid.as_str()).join("certificates").exists());
+        assert!(!works.join(wid.as_str()).join("packages").exists());
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_close_pending_residuel_apres_periode_valide_ne_casse_pas() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = seed_summary_work(&root, &works);
+        write_valid_chain(&works, &wid, &sk(), &[(true, true)]); // period_0 valide
+
+        // Pending résiduel COHÉRENT avec period_0 (cleanup différé simulé).
+        let raw =
+            fs::read_to_string(works.join(wid.as_str()).join("periods/period_0.json")).unwrap();
+        let p0: ObservationPeriod = serde_json::from_str(&raw).unwrap();
+        let pending = PendingPeriod {
+            schema_version: 1,
+            period_id: p0.period_id.clone(),
+            work_id: wid.clone(),
+            sequence_number: p0.sequence_number,
+            previous_period_id: p0.previous_period_id.clone(),
+            previous_period_record_sha256: p0.previous_period_record_sha256.clone(),
+            document_path: "/tmp/x".to_string(),
+            hash_start: p0.hash_start.clone(),
+            size_start: p0.size_start,
+            started_at: "2026-08-05T10:00:00Z".to_string(),
+            state: PendingState::Pending,
+        };
+        crate::work_pending::write_pending_atomic(&works, &pending).unwrap();
+
+        let s = close_interrupted_observation_core(&works, &wid).unwrap();
+        assert!(!s.has_pending_observation);
+        // La période valide est intacte.
+        assert_eq!(s.observation_count, 1);
+        assert!(crate::work_period::read_period(&works, &wid, 0).is_ok());
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_close_sans_pending_noop_idempotent() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let wid = seed_summary_work(&root, &works);
+        // Aucun pending : no-op, pas d'erreur, résumé cohérent.
+        let s = close_interrupted_observation_core(&works, &wid).unwrap();
+        assert!(!s.has_pending_observation);
+        assert_eq!(s.observation_count, 0);
+        // Idempotent : rappel sans effet.
+        let s2 = close_interrupted_observation_core(&works, &wid).unwrap();
+        assert_eq!(s, s2);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn test_close_work_inconnu_erreur() {
+        let root = temp_root();
+        let works = root.join("Works");
+        let res = close_interrupted_observation_core(&works, &WorkId::new());
+        assert!(res.is_err(), "work inconnu -> erreur claire");
         cleanup(&root);
     }
 }
