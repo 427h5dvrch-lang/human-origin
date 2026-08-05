@@ -7646,6 +7646,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       let observationRunning = false;
       let lastPeriodResult = null;
       let packageDir = null;
+      // Mini-résumé (source d'affichage immédiat ; get_work_summary = vérité).
+      let lastSummary = null;
       // Guard anti-réentrance : ignore tout clic pendant qu'une action async tourne.
       let busy = false;
 
@@ -7663,6 +7665,7 @@ window.addEventListener("DOMContentLoaded", async () => {
               observationRunning,
               packageDir,
               lastPeriodResult,
+              summary: lastSummary,
             })
           );
         } catch (_e) {}
@@ -7672,6 +7675,70 @@ window.addEventListener("DOMContentLoaded", async () => {
           localStorage.removeItem(ALPHA_STATE_KEY);
         } catch (_e) {}
       };
+      // Applique un résumé (backend get_work_summary OU mini-summary persisté) à
+      // l'UI : compteur, note version, libellé du bouton démarrer, et (si
+      // renderButtons) l'activation des boutons. Ne crée/observe jamais rien.
+      const renderFromSummary = (s, opts) => {
+        const renderButtons = !opts || opts.renderButtons !== false;
+        const obs = (s && (s.observation_count || 0)) || 0;
+        const qual = (s && (s.qualifying_observation_count || 0)) || 0;
+        const pending = !!(s && s.has_pending_observation);
+        const hasVersion =
+          s && s.hasVersion !== undefined
+            ? !!s.hasVersion
+            : !!(
+                s &&
+                (s.latest_certificate_sequence != null ||
+                  s.latest_package_sequence != null)
+              );
+        lastSummary = {
+          observation_count: obs,
+          qualifying_observation_count: qual,
+          has_pending_observation: pending,
+          hasVersion,
+        };
+
+        el("alpha-count").textContent =
+          obs > 0
+            ? `${obs} observation${obs > 1 ? "s" : ""} enregistrée${
+                obs > 1 ? "s" : ""
+              }`
+            : "";
+        el("alpha-version-note").textContent = hasVersion
+          ? "Une version HumanOrigin existe déjà. Vous pouvez continuer à travailler et créer une version plus récente."
+          : "";
+        el("alpha-start").textContent =
+          obs >= 1 ? "Démarrer une nouvelle observation" : "3. Démarrer l'observation";
+
+        if (!renderButtons) return pending;
+        if (pending) {
+          enable("alpha-start", false);
+          enable("alpha-stop", true);
+          enable("alpha-create", false);
+          status("Une observation semble en cours ou interrompue.");
+        } else {
+          enable("alpha-start", true);
+          enable("alpha-stop", false);
+          enable("alpha-create", qual >= 1);
+          // status laissé au contexte appelant
+        }
+        return pending;
+      };
+
+      // Interroge le backend read-only (get_work_summary) et applique le résultat.
+      const refreshSummary = async (opts) => {
+        if (!workId) return null;
+        try {
+          const s = await invoke("get_work_summary", { workId });
+          renderFromSummary(s, opts);
+          saveAlphaState();
+          return s;
+        } catch (e) {
+          console.error("[alpha] summary", e);
+          return null;
+        }
+      };
+
       // Restaure un état PRUDENT : ne relance jamais d'observation, ne crée jamais
       // de preuve automatiquement ; se contente d'activer l'étape appropriée.
       const restoreAlphaState = () => {
@@ -7689,10 +7756,14 @@ window.addEventListener("DOMContentLoaded", async () => {
         lastPeriodResult = s.lastPeriodResult || null;
         if (selectedPdfPath) el("alpha-doc").textContent = selectedPdfPath;
 
+        // Affichage immédiat depuis le mini-summary persisté (avant réconciliation).
+        if (s.summary) renderFromSummary(s.summary, { renderButtons: false });
+
         if (packageDir) {
           el("alpha-package-dir").value = packageDir;
           el("alpha-success").style.display = "block";
           status("");
+          refreshSummary({ renderButtons: false }); // note version, sans réactiver les étapes
           return;
         }
         if (observationRunning) {
@@ -7703,8 +7774,14 @@ window.addEventListener("DOMContentLoaded", async () => {
           return;
         }
         if (workId) {
+          const obs = s.summary ? s.summary.observation_count || 0 : 0;
+          status(
+            obs >= 1
+              ? "Document déjà préparé."
+              : "Document prêt. Vous pouvez démarrer l'observation."
+          );
           enable("alpha-start", true);
-          status("Document prêt. Vous pouvez démarrer l'observation.");
+          refreshSummary(); // source de vérité (compteur + boutons + pending)
           return;
         }
         if (selectedPdfPath) {
@@ -7724,7 +7801,11 @@ window.addEventListener("DOMContentLoaded", async () => {
           selectedPdfPath = p;
           workId = null;
           packageDir = null;
+          lastSummary = null;
           el("alpha-doc").textContent = p;
+          el("alpha-count").textContent = "";
+          el("alpha-version-note").textContent = "";
+          el("alpha-start").textContent = "3. Démarrer l'observation";
           enable("alpha-prepare", true);
           status("Document sélectionné.");
           saveAlphaState();
@@ -7749,12 +7830,15 @@ window.addEventListener("DOMContentLoaded", async () => {
           });
           if (r && r.work_id) {
             workId = r.work_id;
-            enable("alpha-start", true);
-            status(
-              r.outcome === "DECISION_REQUIRED"
-                ? "Document déjà connu — vous pouvez démarrer l'observation."
-                : "Document prêt. Vous pouvez démarrer l'observation."
-            );
+            const pending = await refreshSummary();
+            if (!pending) {
+              const obs = lastSummary ? lastSummary.observation_count : 0;
+              status(
+                obs >= 1
+                  ? "Document déjà préparé."
+                  : "Document prêt. Vous pouvez démarrer l'observation."
+              );
+            }
             saveAlphaState();
           } else {
             status("Impossible de préparer le document.");
@@ -7812,14 +7896,13 @@ window.addEventListener("DOMContentLoaded", async () => {
           });
           lastPeriodResult = r;
           observationRunning = false;
-          if (r && r.net_document_change === false) {
-            status("Le document n'a pas changé pendant l'observation.");
-            enable("alpha-create", false);
-          } else {
+          const pending = await refreshSummary();
+          if (!pending) {
             status(
-              "Observation terminée. Vous pouvez créer votre document HumanOrigin."
+              r && r.net_document_change === false
+                ? "Le document n'a pas changé pendant l'observation."
+                : "Observation enregistrée."
             );
-            enable("alpha-create", true);
           }
           saveAlphaState();
         } catch (e) {
@@ -7853,6 +7936,12 @@ window.addEventListener("DOMContentLoaded", async () => {
           }
           el("alpha-package-dir").value = packageDir;
           el("alpha-success").style.display = "block";
+          await refreshSummary({ renderButtons: false }); // compteur + note version
+          // Écran succès = terminal : verrouiller les étapes (choix = Continuer / Recommencer).
+          enable("alpha-prepare", false);
+          enable("alpha-start", false);
+          enable("alpha-stop", false);
+          enable("alpha-create", false);
           status("");
           saveAlphaState();
         } catch (e) {
@@ -7904,6 +7993,25 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
       };
 
+      // Continuer sur ce document : garde workId + selectedPdfPath (NE clear PAS),
+      // masque le succès, revient à l'état reprise (nouvelle observation possible,
+      // puis version plus récente). Jamais d'auto-observation ni d'auto-création.
+      el("alpha-continue").onclick = async () => {
+        if (busy) return;
+        if (!workId) return;
+        busy = true;
+        try {
+          el("alpha-success").style.display = "none";
+          packageDir = null; // mode reprise ; le package existant reste sur disque
+          el("alpha-package-dir").value = "";
+          const pending = await refreshSummary();
+          if (!pending) status("Document déjà préparé.");
+          saveAlphaState();
+        } finally {
+          busy = false;
+        }
+      };
+
       // Recommencer avec un autre document
       el("alpha-restart").onclick = () => {
         if (busy) return;
@@ -7912,8 +8020,12 @@ window.addEventListener("DOMContentLoaded", async () => {
         observationRunning = false;
         lastPeriodResult = null;
         packageDir = null;
+        lastSummary = null;
         el("alpha-doc").textContent = "Aucun document sélectionné";
         el("alpha-package-dir").value = "";
+        el("alpha-count").textContent = "";
+        el("alpha-version-note").textContent = "";
+        el("alpha-start").textContent = "3. Démarrer l'observation";
         el("alpha-success").style.display = "none";
         enable("alpha-prepare", false);
         enable("alpha-start", false);
