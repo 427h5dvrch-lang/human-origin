@@ -8098,28 +8098,70 @@ window.addEventListener("DOMContentLoaded", async () => {
 })();
 
 // ============================================================================
-// ACCÈS ALPHA SANS DEVTOOLS (7D-1) — raccourci clavier caché, usage interne.
-// ON : ⌘ + ⌥ + ⇧ + A  → pose humanOriginAlphaMode + reload (Alpha via gating existant)
-// OFF: ⌘ + ⌥ + ⇧ + L  → retire humanOriginAlphaMode + reload (retour legacy)
+// ACCÈS ALPHA SANS DEVTOOLS (7D-2) — accès cliquable discret (remplace le
+// raccourci clavier 7D-1). 5 clics en 2,5 s sur le titre « HumanOrigin »
+// (.ritual-kicker) révèlent le bouton « Accès Alpha » → pose humanOriginAlphaMode
+// + reload. Dans l'Alpha, « Retour au mode classique » retire le flag + reload.
 // N'agit QUE sur humanOriginAlphaMode ; ne touche jamais humanOriginDevMode ni le
 // panneau Work dev ; ne change pas le gating Alpha ; legacy reste le défaut.
-// e.code (touche physique) est utilisé car ⌥ sur macOS altère e.key (caractère composé).
 // ============================================================================
-(function initAlphaModeShortcut() {
-  window.addEventListener("keydown", (e) => {
-    if (!(e.metaKey && e.altKey && e.shiftKey)) return;
-    if (e.code === "KeyA") {
-      e.preventDefault();
-      try {
-        localStorage.setItem("humanOriginAlphaMode", "1");
-      } catch (_e) {}
-      location.reload();
-    } else if (e.code === "KeyL") {
-      e.preventDefault();
-      try {
-        localStorage.removeItem("humanOriginAlphaMode");
-      } catch (_e) {}
-      location.reload();
+(function initAlphaAccess() {
+  const boot = () => {
+    try {
+      const accessBtn = document.getElementById("alpha-access-btn");
+      const exitBtn = document.getElementById("alpha-exit");
+
+      // « Accès Alpha » (legacy) : active le mode Alpha.
+      if (accessBtn) {
+        accessBtn.onclick = () => {
+          try {
+            localStorage.setItem("humanOriginAlphaMode", "1");
+          } catch (_e) {}
+          location.reload();
+        };
+      }
+
+      // « Retour au mode classique » (Alpha) : désactive le mode Alpha.
+      if (exitBtn) {
+        exitBtn.onclick = () => {
+          try {
+            localStorage.removeItem("humanOriginAlphaMode");
+          } catch (_e) {}
+          location.reload();
+        };
+      }
+
+      // Compteur de clics discret sur le(s) titre(s) « HumanOrigin » du legacy :
+      // 5 clics en ≤ 2,5 s révèlent le bouton « Accès Alpha ». Reset sinon.
+      let clicks = 0;
+      let first = 0;
+      const WINDOW_MS = 2500;
+      const NEEDED = 5;
+      const onKickerClick = () => {
+        // Date.now via performance.now pour éviter toute dépendance d'horloge.
+        const now = performance.now();
+        if (clicks === 0 || now - first > WINDOW_MS) {
+          clicks = 1;
+          first = now;
+        } else {
+          clicks += 1;
+        }
+        if (clicks >= NEEDED && accessBtn) {
+          accessBtn.style.display = "block";
+          clicks = 0;
+        }
+      };
+      document.querySelectorAll(".ritual-kicker").forEach((el) => {
+        el.style.cursor = "default";
+        el.addEventListener("click", onKickerClick);
+      });
+    } catch (_e) {
+      /* accès Alpha best-effort — n'affecte jamais le legacy */
     }
-  });
+  };
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", boot);
+  } else {
+    boot();
+  }
 })();
