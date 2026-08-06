@@ -1696,14 +1696,18 @@
     <div id="alpha-screen" class="screen" style="display:none;">
       <div class="alpha-card">
         <div class="alpha-brand">HumanOrigin</div>
-        <div class="alpha-kicker">Preuve locale signée — Alpha</div>
+        <div class="alpha-kicker">Preuve locale signée</div>
+        <div class="alpha-intro">HumanOrigin enregistre localement des périodes de travail et les relie à une version précise d'un document.</div>
+        <div class="alpha-intro-sub">Votre contenu reste sur votre ordinateur. Vous continuez à travailler dans votre application habituelle.</div>
 
         <button id="alpha-pick" class="alpha-btn" type="button">1. Choisir un document</button>
+        <div class="alpha-help">Choisissez le PDF sur lequel vous allez travailler.</div>
         <div id="alpha-doc" class="alpha-val">Aucun document sélectionné</div>
 
-        <button id="alpha-prepare" class="alpha-btn" type="button" disabled>2. Préparer le document</button>
+        <button id="alpha-prepare" class="alpha-btn" type="button" disabled>2. Préparer ce document</button>
         <button id="alpha-start" class="alpha-btn" type="button" disabled>3. Démarrer l'observation</button>
-        <button id="alpha-stop" class="alpha-btn" type="button" disabled>4. Terminer l'observation</button>
+        <div class="alpha-help">Lorsque vous démarrez, HumanOrigin enregistre localement une période de travail reliée à ce document. Il n'enregistre pas le contenu de votre écran.</div>
+        <button id="alpha-stop" class="alpha-btn" type="button" disabled>4. Terminer cette période de travail</button>
         <button id="alpha-close-interrupted" class="alpha-btn alpha-ghost" type="button" style="display:none;">Clôturer l'observation interrompue</button>
         <button id="alpha-create" class="alpha-btn alpha-primary" type="button" disabled>5. Créer mon document HumanOrigin</button>
 
@@ -1712,19 +1716,14 @@
         <div id="alpha-status" class="alpha-status" role="status" aria-live="polite"></div>
 
         <div id="alpha-success" style="display:none;">
-          <div class="alpha-success-title">Document HumanOrigin créé</div>
-          <div class="alpha-success-sub">Preuve locale signée</div>
-          <div class="alpha-success-lines">
-            <div>✓ Dossier prêt à envoyer</div>
-            <div>✓ PDF labellisé disponible</div>
-          </div>
-          <button id="alpha-open-pdf" class="alpha-btn alpha-primary" type="button">Ouvrir le PDF</button>
-          <button id="alpha-open-dir" class="alpha-btn" type="button">Ouvrir le dossier</button>
-          <button id="alpha-open-verifier" class="alpha-btn" type="button">Vérification</button>
-          <div class="alpha-hint">Déposez le PDF HumanOrigin dans la page de vérification.</div>
-          <button id="alpha-continue" class="alpha-btn" type="button">Continuer sur ce document</button>
-          <button id="alpha-restart" class="alpha-btn alpha-ghost" type="button">Recommencer avec un autre document</button>
-          <div class="alpha-pathwrap">
+          <div class="alpha-success-title">Votre document HumanOrigin est prêt</div>
+          <div class="alpha-success-text">Le dossier complet contient le PDF labellisé et les éléments nécessaires à sa vérification.</div>
+          <button id="alpha-open-dir" class="alpha-btn alpha-primary" type="button">Partager le dossier HumanOrigin</button>
+          <button id="alpha-open-pdf" class="alpha-btn" type="button">Ouvrir le PDF labellisé</button>
+          <button id="alpha-open-verifier" class="alpha-btn" type="button">Voir les détails du travail enregistré</button>
+          <button id="alpha-continue" class="alpha-btn" type="button" style="display:none;">Continuer sur ce document</button>
+          <button id="alpha-restart" class="alpha-btn alpha-ghost" type="button" style="display:none;">Recommencer avec un autre document</button>
+          <div class="alpha-pathwrap" style="display:none;">
             <span class="alpha-pathlabel">Emplacement du dossier (copiable)</span>
             <input id="alpha-package-dir" class="alpha-dir" type="text" readonly />
           </div>
@@ -1745,7 +1744,11 @@
           font: 14px/1.4 -apple-system, system-ui, sans-serif; box-shadow: 0 24px 60px rgba(0,0,0,.5); }
         #alpha-screen .alpha-brand { font-size: 22px; font-weight: 900; }
         #alpha-screen .alpha-kicker { font-size: 11px; font-weight: 800; letter-spacing: .12em;
-          text-transform: uppercase; color: rgba(232,238,252,.45); margin: 4px 0 20px; }
+          text-transform: uppercase; color: rgba(232,238,252,.45); margin: 4px 0 14px; }
+        #alpha-screen .alpha-intro { font-size: 14px; line-height: 1.5; font-weight: 600; color: #e8eefc; margin: 0 0 8px; }
+        #alpha-screen .alpha-intro-sub { font-size: 12px; line-height: 1.5; color: rgba(232,238,252,.6); margin: 0 0 18px; }
+        #alpha-screen .alpha-help { font-size: 12px; line-height: 1.45; color: rgba(232,238,252,.55); margin: 2px 0 12px; }
+        #alpha-screen .alpha-success-text { font-size: 13px; line-height: 1.5; color: rgba(232,238,252,.82); margin: 6px 0 14px; }
         #alpha-screen .alpha-btn { display: block; width: 100%; margin: 8px 0; padding: 13px 14px; border: 0;
           border-radius: 12px; background: #1f2937; color: #e8eefc; font: 700 14px system-ui; cursor: pointer; }
         #alpha-screen .alpha-btn:hover:not(:disabled) { background: #273549; }

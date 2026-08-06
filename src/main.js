@@ -7874,7 +7874,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           observationRunning = true;
           enable("alpha-stop", true);
           status(
-            "Observation en cours — travaillez sur votre document, puis terminez l'observation."
+            "Observation en cours — travaillez maintenant dans votre application habituelle, puis terminez cette période de travail."
           );
           saveAlphaState();
         } catch (e) {
