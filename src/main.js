@@ -7601,23 +7601,28 @@ window.addEventListener("DOMContentLoaded", async () => {
 })();
 
 // ============================================================================
-// ALPHA UI (7A-1) — parcours utilisateur isolé au-dessus du pipeline Work natif.
-// Gated par ?alpha=1 ou localStorage.humanOriginAlphaMode==="1". N'utilise QUE des
+// ALPHA UI (7A-1) — parcours utilisateur PRINCIPAL au-dessus du pipeline Work natif.
+// Actif PAR DÉFAUT (8C-1) ; le legacy s'obtient en échappement interne via
+// ?classic=1 ou localStorage.humanOriginClassicMode==="1". N'utilise QUE des
 // commandes déjà existantes (create_work, start/stop_work_period,
-// create_native_labeled_work_package, open_file). Aucun impact sur le legacy.
+// create_native_labeled_work_package, open_file).
 // ============================================================================
 (function initAlphaFlow() {
   const boot = () => {
     try {
-      const alphaActive =
-        new URLSearchParams(location.search).get("alpha") === "1" ||
+      // 8C-1 : l'Alpha est désormais le parcours principal PAR DÉFAUT. Le legacy
+      // n'est plus l'entrée normale ; il reste accessible en échappement interne
+      // UNIQUEMENT via ?classic=1 ou localStorage.humanOriginClassicMode==="1".
+      const classicRequested =
+        new URLSearchParams(location.search).get("classic") === "1" ||
         (() => {
           try {
-            return localStorage.getItem("humanOriginAlphaMode") === "1";
+            return localStorage.getItem("humanOriginClassicMode") === "1";
           } catch {
             return false;
           }
         })();
+      const alphaActive = !classicRequested;
       if (!alphaActive) return;
 
       const ALPHA_VERIFY_URL =
@@ -8098,63 +8103,23 @@ window.addEventListener("DOMContentLoaded", async () => {
 })();
 
 // ============================================================================
-// ACCÈS ALPHA SANS DEVTOOLS (7D-2) — accès cliquable discret (remplace le
-// raccourci clavier 7D-1). 5 clics en 2,5 s sur le titre « HumanOrigin »
-// (.ritual-kicker) révèlent le bouton « Accès Alpha » → pose humanOriginAlphaMode
-// + reload. Dans l'Alpha, « Retour au mode classique » retire le flag + reload.
-// N'agit QUE sur humanOriginAlphaMode ; ne touche jamais humanOriginDevMode ni le
-// panneau Work dev ; ne change pas le gating Alpha ; legacy reste le défaut.
+// ACCÈS ALPHA (8C-1) — l'Alpha étant désormais le parcours par défaut, le mécanisme
+// de révélation par 5 clics est neutralisé : « Accès Alpha » et « Retour au mode
+// classique » restent masqués côté JS. N'agit jamais sur humanOriginDevMode ni le
+// panneau Work dev.
 // ============================================================================
 (function initAlphaAccess() {
   const boot = () => {
     try {
+      // 8C-1 : l'Alpha est désormais le parcours par défaut. Le mécanisme de
+      // révélation par 5 clics (« Accès Alpha ») est NEUTRALISÉ et le bouton reste
+      // masqué. « Retour au mode classique » est masqué pour le testeur V1 : le
+      // legacy s'obtient uniquement en échappement interne
+      // (localStorage.humanOriginClassicMode="1"). N'agit jamais sur humanOriginDevMode.
       const accessBtn = document.getElementById("alpha-access-btn");
+      if (accessBtn) accessBtn.style.display = "none";
       const exitBtn = document.getElementById("alpha-exit");
-
-      // « Accès Alpha » (legacy) : active le mode Alpha.
-      if (accessBtn) {
-        accessBtn.onclick = () => {
-          try {
-            localStorage.setItem("humanOriginAlphaMode", "1");
-          } catch (_e) {}
-          location.reload();
-        };
-      }
-
-      // « Retour au mode classique » (Alpha) : désactive le mode Alpha.
-      if (exitBtn) {
-        exitBtn.onclick = () => {
-          try {
-            localStorage.removeItem("humanOriginAlphaMode");
-          } catch (_e) {}
-          location.reload();
-        };
-      }
-
-      // Compteur de clics discret sur le(s) titre(s) « HumanOrigin » du legacy :
-      // 5 clics en ≤ 2,5 s révèlent le bouton « Accès Alpha ». Reset sinon.
-      let clicks = 0;
-      let first = 0;
-      const WINDOW_MS = 2500;
-      const NEEDED = 5;
-      const onKickerClick = () => {
-        // Date.now via performance.now pour éviter toute dépendance d'horloge.
-        const now = performance.now();
-        if (clicks === 0 || now - first > WINDOW_MS) {
-          clicks = 1;
-          first = now;
-        } else {
-          clicks += 1;
-        }
-        if (clicks >= NEEDED && accessBtn) {
-          accessBtn.style.display = "block";
-          clicks = 0;
-        }
-      };
-      document.querySelectorAll(".ritual-kicker").forEach((el) => {
-        el.style.cursor = "default";
-        el.addEventListener("click", onKickerClick);
-      });
+      if (exitBtn) exitBtn.style.display = "none";
     } catch (_e) {
       /* accès Alpha best-effort — n'affecte jamais le legacy */
     }
