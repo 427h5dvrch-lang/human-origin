@@ -6,11 +6,14 @@
 //! Ne touche NI `publication_core.rs`, NI la cartouche legacy (`tools/`), NI
 //! `render_svg_to_png` (on ne fait que réemployer la même API resvg ici).
 //!
-//! Wording autorisé UNIQUEMENT : HumanOrigin · Travail observé ·
-//! OBSERVED_WORK_CONSISTENT / OBSERVED_WORK_WITH_GAPS · Certificat local signé ·
-//! Identité : LOCAL_DEVICE · ID · Vérifier. Aucun claim (INCOMPLETE,
-//! Biological Origin Record, HUMAN PROCESS PROOF, NO_AI, HUMAN_PROVEN,
-//! AUTHENTIC, GUARANTEED, AUTHORSHIP, ORIGINAL, « 100% human », « absence d'IA »).
+//! Wording HUMAIN affiché (8C-3) : « Travail observé avec HumanOrigin » ·
+//! « Des périodes de travail ont été enregistrées localement » · « et reliées à
+//! cette version du document. » · « Scannez pour vérifier les détails. » ·
+//! « ID preuve : … » (secondaire). Les tokens techniques (OBSERVED_WORK_*,
+//! LOCAL_DEVICE) restent des ENTRÉES validées mais NE SONT PLUS affichés. Aucun
+//! claim (INCOMPLETE, Biological Origin Record, HUMAN PROCESS PROOF, NO_AI,
+//! HUMAN_PROVEN, AUTHENTIC, GUARANTEED, AUTHORSHIP, ORIGINAL, « 100% human »,
+//! « absence d'IA », « certifié humain », « origine humaine », « cohérent »).
 
 // Fondation (6E-1) : générateur consommé par l'orchestration package au 6E-2.
 #![allow(dead_code)]
@@ -132,7 +135,6 @@ pub(crate) fn build_work_cartouche_svg(inputs: &WorkCartoucheInputs) -> Result<S
     let qr_x = 32.0;
     let qr_y = 28.0;
     let qr = build_qr_rects(&inputs.verify_url, qr_x, qr_y, qr_size)?;
-    let qr_center = qr_x + qr_size / 2.0;
 
     // Colonne texte à droite.
     let tx = 250.0;
@@ -140,21 +142,19 @@ pub(crate) fn build_work_cartouche_svg(inputs: &WorkCartoucheInputs) -> Result<S
     let svg = format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">
   <style>
-    .brand{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:800;fill:{NAVY};font-size:30px;}}
+    .brand{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:800;fill:{NAVY};font-size:26px;}}
     .line{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:600;fill:{NAVY};font-size:15px;}}
-    .status{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:800;font-size:14px;letter-spacing:0.03em;}}
-    .idmono{{font-family:Menlo,Consolas,monospace;font-weight:700;fill:{NAVY};font-size:14px;letter-spacing:0.06em;}}
-    .verify{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:700;fill:{NAVY};font-size:12px;letter-spacing:0.14em;}}
+    .cta{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:700;fill:{NAVY};font-size:14px;}}
+    .idmono{{font-family:Menlo,Consolas,monospace;font-weight:600;fill:#5b6b82;font-size:12px;letter-spacing:0.04em;}}
   </style>
   <rect x="3" y="3" width="{WB}" height="{HB}" rx="16" fill="{CREAM}" stroke="{NAVY}" stroke-width="2"/>
   {QR}
-  <text x="{QC:.1}" y="{QY:.1}" text-anchor="middle" class="verify">Vérifier</text>
-  <text x="{TX}" y="66" class="brand">HumanOrigin</text>
-  <text x="{TX}" y="98" class="line">Travail observé</text>
-  <text x="{TX}" y="128" class="status" fill="{VC}">{VERDICT}</text>
-  <text x="{TX}" y="158" class="line">Certificat local signé</text>
-  <text x="{TX}" y="186" class="line">Identité : {LOCAL}</text>
-  <text x="{TX}" y="214" class="idmono">ID {IDS}</text>
+  <text x="{TX}" y="60" class="brand">Travail observé avec HumanOrigin</text>
+  <rect x="{TX}" y="72" width="44" height="4" rx="2" fill="{VC}"/>
+  <text x="{TX}" y="108" class="line">Des périodes de travail ont été enregistrées localement</text>
+  <text x="{TX}" y="132" class="line">et reliées à cette version du document.</text>
+  <text x="{TX}" y="172" class="cta">Scannez pour vérifier les détails.</text>
+  <text x="{TX}" y="208" class="idmono">ID preuve : {IDS}</text>
 </svg>"##,
         W = VIEW_W,
         H = VIEW_H,
@@ -163,12 +163,8 @@ pub(crate) fn build_work_cartouche_svg(inputs: &WorkCartoucheInputs) -> Result<S
         NAVY = NAVY,
         CREAM = CREAM,
         QR = qr,
-        QC = qr_center,
-        QY = qr_y + qr_size + 22.0,
         TX = tx,
         VC = vcolor,
-        VERDICT = inputs.verdict,
-        LOCAL = LOCAL_DEVICE,
         IDS = ids,
     );
     Ok(svg)
@@ -232,25 +228,30 @@ mod tests {
     }
 
     #[test]
-    fn test_1_svg_contient_wording_autorise() {
+    fn test_1_svg_contient_wording_humain() {
         let s = ok_svg();
-        assert!(s.contains("HumanOrigin"));
-        assert!(s.contains("Travail observé"));
-        assert!(s.contains("Certificat local signé"));
-        assert!(s.contains("Identité : LOCAL_DEVICE"));
-        assert!(s.contains("Vérifier"));
-        assert!(s.contains("ID 1405DEEF"), "ID court attendu");
+        assert!(s.contains("Travail observé avec HumanOrigin"));
+        assert!(s.contains("périodes de travail"));
+        assert!(s.contains("enregistrées localement"));
+        assert!(s.contains("reliées à cette version du document"));
+        assert!(s.contains("vérifier les détails"));
+        assert!(s.contains("ID preuve : 1405DEEF"), "ID preuve court attendu");
     }
 
     #[test]
-    fn test_2_verdict_consistent() {
-        assert!(ok_svg().contains(VERDICT_CONSISTENT));
+    fn test_2_svg_sans_verdict_brut_consistent() {
+        // Le verdict CONSISTENT reste une ENTRÉE valide mais n'est plus affiché.
+        let s = ok_svg();
+        assert!(!s.contains(VERDICT_CONSISTENT));
+        assert!(!s.contains("LOCAL_DEVICE"));
+        assert!(!s.contains("Identité"));
     }
 
     #[test]
-    fn test_3_verdict_gaps() {
+    fn test_3_svg_sans_verdict_brut_gaps() {
+        // Le verdict WITH_GAPS est accepté en entrée mais non affiché dans le SVG.
         let s = build_work_cartouche_svg(&inputs(VERDICT_WITH_GAPS, "LOCAL_DEVICE", URL)).unwrap();
-        assert!(s.contains(VERDICT_WITH_GAPS));
+        assert!(!s.contains(VERDICT_WITH_GAPS));
     }
 
     #[test]
@@ -268,6 +269,12 @@ mod tests {
             "ORIGINAL",
             "100% human",
             "absence d'IA",
+            "OBSERVED_WORK_CONSISTENT",
+            "OBSERVED_WORK_WITH_GAPS",
+            "LOCAL_DEVICE",
+            "certifié humain",
+            "origine humaine",
+            "cohérent",
         ] {
             assert!(!s.contains(tok), "token interdit présent : {tok}");
         }
