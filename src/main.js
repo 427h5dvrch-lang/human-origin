@@ -7730,6 +7730,15 @@ window.addEventListener("DOMContentLoaded", async () => {
           enable("alpha-create", qual >= 1);
           // status laissé au contexte appelant
         }
+        // 8C-5 : message humain « Pas encore prêt à créer » quand des observations
+        // existent mais aucune n'est encore qualifiante (ni en cours, ni en succès).
+        const nr = el("alpha-not-ready");
+        if (nr) {
+          const successVisible =
+            el("alpha-success") && el("alpha-success").style.display === "block";
+          nr.style.display =
+            !pending && !successVisible && obs >= 1 && qual < 1 ? "block" : "none";
+        }
         return pending;
       };
 
@@ -7874,7 +7883,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           observationRunning = true;
           enable("alpha-stop", true);
           status(
-            "Observation en cours — travaillez maintenant dans votre application habituelle, puis terminez cette période de travail."
+            "Observation en cours — travaillez dans votre application habituelle et enregistrez votre version finale, puis terminez cette période de travail."
           );
           saveAlphaState();
         } catch (e) {

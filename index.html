@@ -1699,14 +1699,15 @@
         <div class="alpha-kicker">Preuve locale signée</div>
         <div class="alpha-intro">HumanOrigin enregistre localement des périodes de travail et les relie à une version précise d'un document.</div>
         <div class="alpha-intro-sub">Votre contenu reste sur votre ordinateur. Vous continuez à travailler dans votre application habituelle.</div>
+        <div class="alpha-intro-sub">Le but est de créer un dossier HumanOrigin relié à votre version finale.</div>
 
         <button id="alpha-pick" class="alpha-btn" type="button">1. Choisir un document</button>
-        <div class="alpha-help">Choisissez le PDF sur lequel vous allez travailler.</div>
+        <div class="alpha-help">Choisissez le PDF que vous allez produire ou finaliser.</div>
         <div id="alpha-doc" class="alpha-val">Aucun document sélectionné</div>
 
         <button id="alpha-prepare" class="alpha-btn" type="button" disabled>2. Préparer ce document</button>
         <button id="alpha-start" class="alpha-btn" type="button" disabled>3. Démarrer l'observation</button>
-        <div class="alpha-help">Lorsque vous démarrez, HumanOrigin enregistre localement une période de travail reliée à ce document. Il n'enregistre pas le contenu de votre écran.</div>
+        <div class="alpha-help">Lorsque vous démarrez, HumanOrigin enregistre localement une période de travail reliée à ce document. Travaillez dans votre application habituelle et enregistrez votre version finale avant de terminer l'observation. HumanOrigin n'enregistre pas le contenu de votre écran.</div>
         <button id="alpha-stop" class="alpha-btn" type="button" disabled>4. Terminer cette période de travail</button>
         <button id="alpha-close-interrupted" class="alpha-btn alpha-ghost" type="button" style="display:none;">Clôturer l'observation interrompue</button>
         <button id="alpha-create" class="alpha-btn alpha-primary" type="button" disabled>5. Créer mon document HumanOrigin</button>
@@ -1714,6 +1715,12 @@
         <div id="alpha-count" class="alpha-count"></div>
         <div id="alpha-version-note" class="alpha-version-note"></div>
         <div id="alpha-status" class="alpha-status" role="status" aria-live="polite"></div>
+
+        <div id="alpha-not-ready" style="display:none;">
+          <div class="alpha-nr-title">Pas encore prêt à créer</div>
+          <div class="alpha-nr-text">Pour créer un document HumanOrigin, il faut une période de travail suffisante et une version finale enregistrée du document.</div>
+          <div class="alpha-nr-help">Continuez à travailler quelques minutes, enregistrez votre document, puis lancez ou terminez une nouvelle observation.</div>
+        </div>
 
         <div id="alpha-success" style="display:none;">
           <div class="alpha-success-title">Votre document HumanOrigin est prêt</div>
@@ -1762,6 +1769,11 @@
         #alpha-screen .alpha-version-note { font-size: 12px; color: rgba(232,238,252,.6); margin: 0 0 4px; }
         #alpha-screen .alpha-version-note:empty { display: none; }
         #alpha-screen .alpha-status { min-height: 20px; margin: 12px 0; font-size: 13px; color: #cbd5e1; }
+        #alpha-screen #alpha-not-ready { margin: 8px 0 4px; padding: 12px 14px; border-radius: 12px;
+          background: rgba(180,83,9,.12); border: 1px solid rgba(180,83,9,.4); }
+        #alpha-screen .alpha-nr-title { font-size: 14px; font-weight: 800; color: #fbbf24; margin-bottom: 4px; }
+        #alpha-screen .alpha-nr-text { font-size: 13px; line-height: 1.5; color: rgba(232,238,252,.85); }
+        #alpha-screen .alpha-nr-help { font-size: 12px; line-height: 1.45; color: rgba(232,238,252,.6); margin-top: 6px; }
         #alpha-screen .alpha-success-title { font-size: 18px; font-weight: 800; color: #34d399; margin-top: 6px; }
         #alpha-screen .alpha-success-sub { font-size: 12px; font-weight: 700; letter-spacing: .06em;
           text-transform: uppercase; color: rgba(232,238,252,.5); margin: 3px 0 10px; }
