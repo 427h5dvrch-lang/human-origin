@@ -132,14 +132,16 @@ fn render_cartouche_on_page(
     is_first_page: bool,
 ) -> Result<CartouchePlacement, PdfiumError> {
     let page_w = page.width().value;
+    let page_h = page.height().value;
 
     let (img_w, img_h) = cartouche.dimensions();
     let image_ratio = img_h as f32 / img_w as f32;
 
+    // Cartouche micro-estampille B4 (0.1.27) : ~44×60 mm, 1re page uniquement.
     let (base_w_mm, base_h_mm) = if is_first_page {
-        (78.0_f32, 24.0_f32)
+        (44.0_f32, 60.0_f32)
     } else {
-        (58.0_f32, 20.0_f32)
+        (44.0_f32, 58.0_f32)
     };
 
     let margin = if margin_pt > 0.0 {
@@ -153,7 +155,7 @@ fn render_cartouche_on_page(
     let box_h = mm_to_pt(base_h_mm) * scale;
 
     let box_ratio = box_h / box_w;
-    let (target_w, target_h) = if image_ratio > box_ratio {
+    let (mut target_w, mut target_h) = if image_ratio > box_ratio {
         let h = box_h;
         let w = h / image_ratio;
         (w, h)
@@ -162,6 +164,19 @@ fn render_cartouche_on_page(
         let h = w * image_ratio;
         (w, h)
     };
+
+    // Garde-fou : sur une page trop petite, réduire proprement pour ne pas déborder.
+    let avail_w = (page_w - 2.0 * margin).max(1.0);
+    let avail_h = (page_h - 2.0 * margin).max(1.0);
+    let mut fit = 1.0_f32;
+    if target_w > avail_w {
+        fit = fit.min(avail_w / target_w);
+    }
+    if target_h > avail_h {
+        fit = fit.min(avail_h / target_h);
+    }
+    target_w *= fit;
+    target_h *= fit;
 
     let x = (page_w - margin - target_w).max(0.0);
     let y = margin.max(0.0);
@@ -254,8 +269,13 @@ pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
     };
 
     let mut warnings = vec![];
+    let mut pages_marked = 0u32;
 
     for index in 0..page_count {
+        // Cartouche premium (0.1.27) : PREMIÈRE PAGE UNIQUEMENT.
+        if index != 0 {
+            continue;
+        }
         let page_res = document.pages_mut().get(index);
 
         let mut page = match page_res {
@@ -295,6 +315,7 @@ pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
         if let Err(e) = add_clickable_link_on_page(&mut page, &job.verify_url, placement) {
             warnings.push(format!("Page {} link annotation failed: {}", index + 1, e));
         }
+        pages_marked += 1;
     }
 
     if let Err(e) = document.save_to_file(&job.output_pdf_path) {
@@ -306,7 +327,7 @@ pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
 
     PublicationResult::ok(
         job.output_pdf_path.clone(),
-        page_count as u32,
+        pages_marked,
         "pdfium-auto-core",
         warnings,
     )

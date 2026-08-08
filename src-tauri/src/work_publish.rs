@@ -205,7 +205,7 @@ fn generate_pdf_real(
         "verdict": verdict,
         "render": {
             "mode": "compact_cartouche",
-            "pages": "all",
+            "pages": "first",
             "first_page_scale": 1.0,
             "other_pages_scale": 0.85,
             "anchor": "bottom_right",

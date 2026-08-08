@@ -6,14 +6,14 @@
 //! Ne touche NI `publication_core.rs`, NI la cartouche legacy (`tools/`), NI
 //! `render_svg_to_png` (on ne fait que réemployer la même API resvg ici).
 //!
-//! Wording HUMAIN affiché (8C-3) : « Travail observé avec HumanOrigin » ·
-//! « Des périodes de travail ont été enregistrées localement » · « et reliées à
-//! cette version du document. » · « Scannez pour vérifier les détails. » ·
-//! « ID preuve : … » (secondaire). Les tokens techniques (OBSERVED_WORK_*,
-//! LOCAL_DEVICE) restent des ENTRÉES validées mais NE SONT PLUS affichés. Aucun
-//! claim (INCOMPLETE, Biological Origin Record, HUMAN PROCESS PROOF, NO_AI,
-//! HUMAN_PROVEN, AUTHENTIC, GUARANTEED, AUTHORSHIP, ORIGINAL, « 100% human »,
-//! « absence d'IA », « certifié humain », « origine humaine », « cohérent »).
+//! Wording affiché — micro-estampille B4 (0.1.27), minimal : « HumanOrigin » ·
+//! « Travail observé » · « ID … » (secondaire). Silhouette estampille verticale
+//! (cadre navy + encoches, QR central respirant). Les tokens techniques
+//! (OBSERVED_WORK_*, LOCAL_DEVICE) restent des ENTRÉES validées mais NE SONT PLUS
+//! affichés. Aucun claim (INCOMPLETE, Biological Origin Record, HUMAN PROCESS
+//! PROOF, NO_AI, HUMAN_PROVEN, AUTHENTIC, GUARANTEED, AUTHORSHIP, ORIGINAL,
+//! « 100% human », « absence d'IA », « certifié humain », « origine humaine »,
+//! « cohérent », « verified human », « validé », « certifié »).
 
 // Fondation (6E-1) : générateur consommé par l'orchestration package au 6E-2.
 #![allow(dead_code)]
@@ -25,15 +25,16 @@ use resvg::usvg::{Options, Tree};
 use std::fs;
 use std::path::Path;
 
-// Dimensions du viewBox : 780×240 unités = ~78×24 mm (10 u/mm).
-const VIEW_W: u32 = 780;
-const VIEW_H: u32 = 240;
-/// Facteur de rendu PNG (crispness). PNG = 1560×480.
-const PNG_SCALE: u32 = 2;
+// Cartouche micro-estampille B4 (0.1.27) : viewBox 220×300 unités (5 u/mm ~ 44×60 mm).
+const VIEW_W: u32 = 220;
+const VIEW_H: u32 = 300;
+/// Facteur de rendu PNG (crispness). PNG = 880×1200.
+const PNG_SCALE: u32 = 4;
 
 const NAVY: &str = "#14233a";
 const CREAM: &str = "#f8f4ec";
 const WHITE: &str = "#ffffff";
+const MUTED: &str = "#606c7c";
 
 const VERDICT_CONSISTENT: &str = "OBSERVED_WORK_CONSISTENT";
 const VERDICT_WITH_GAPS: &str = "OBSERVED_WORK_WITH_GAPS";
@@ -128,33 +129,32 @@ pub(crate) fn build_work_cartouche_svg(inputs: &WorkCartoucheInputs) -> Result<S
     }
 
     let ids = id_short(&inputs.certificate_id);
-    let vcolor = verdict_color(&inputs.verdict);
 
-    // QR à gauche.
-    let qr_size = 176.0;
-    let qr_x = 32.0;
-    let qr_y = 28.0;
+    // QR central dans le cadre (respiration : QR plus petit que le cadre).
+    let qr_x = 55.0;
+    let qr_y = 89.0;
+    let qr_size = 110.0;
     let qr = build_qr_rects(&inputs.verify_url, qr_x, qr_y, qr_size)?;
 
-    // Colonne texte à droite.
-    let tx = 250.0;
+    // Centre horizontal (estampille verticale).
+    let cx = (VIEW_W as f64) / 2.0;
 
     let svg = format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" viewBox="0 0 {W} {H}">
   <style>
-    .brand{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:800;fill:{NAVY};font-size:26px;}}
-    .line{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:600;fill:{NAVY};font-size:15px;}}
-    .cta{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:700;fill:{NAVY};font-size:14px;}}
-    .idmono{{font-family:Menlo,Consolas,monospace;font-weight:600;fill:#5b6b82;font-size:12px;letter-spacing:0.04em;}}
+    .brand{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:800;fill:{NAVY};font-size:22px;}}
+    .line{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;font-weight:700;fill:{NAVY};font-size:13px;}}
+    .idmono{{font-family:Menlo,Consolas,monospace;font-weight:600;fill:{MUTED};font-size:11px;letter-spacing:0.04em;}}
   </style>
-  <rect x="3" y="3" width="{WB}" height="{HB}" rx="16" fill="{CREAM}" stroke="{NAVY}" stroke-width="2"/>
+  <rect x="3" y="3" width="{WB}" height="{HB}" rx="16" fill="{CREAM}" stroke="{NAVY}" stroke-width="2.5"/>
+  <text x="{CX}" y="34" text-anchor="middle" class="brand">HumanOrigin</text>
+  <rect x="22" y="48" width="176" height="192" rx="12" fill="none" stroke="{NAVY}" stroke-width="5"/>
+  <line x1="84" y1="48" x2="136" y2="48" stroke="{CREAM}" stroke-width="9"/>
+  <line x1="84" y1="240" x2="136" y2="240" stroke="{CREAM}" stroke-width="9"/>
+  <rect x="49" y="83" width="122" height="122" rx="7" fill="{WHITE}" stroke="{NAVY}" stroke-width="2"/>
   {QR}
-  <text x="{TX}" y="60" class="brand">Travail observé avec HumanOrigin</text>
-  <rect x="{TX}" y="72" width="44" height="4" rx="2" fill="{VC}"/>
-  <text x="{TX}" y="108" class="line">Des périodes de travail ont été enregistrées localement</text>
-  <text x="{TX}" y="132" class="line">et reliées à cette version du document.</text>
-  <text x="{TX}" y="172" class="cta">Scannez pour vérifier les détails.</text>
-  <text x="{TX}" y="208" class="idmono">ID preuve : {IDS}</text>
+  <text x="{CX}" y="262" text-anchor="middle" class="line">Travail observé</text>
+  <text x="{CX}" y="282" text-anchor="middle" class="idmono">ID {IDS}</text>
 </svg>"##,
         W = VIEW_W,
         H = VIEW_H,
@@ -162,9 +162,10 @@ pub(crate) fn build_work_cartouche_svg(inputs: &WorkCartoucheInputs) -> Result<S
         HB = VIEW_H - 6,
         NAVY = NAVY,
         CREAM = CREAM,
+        WHITE = WHITE,
+        MUTED = MUTED,
+        CX = cx,
         QR = qr,
-        TX = tx,
-        VC = vcolor,
         IDS = ids,
     );
     Ok(svg)
@@ -229,13 +230,11 @@ mod tests {
 
     #[test]
     fn test_1_svg_contient_wording_humain() {
+        // Wording micro-estampille B4 (0.1.27), minimal et safe.
         let s = ok_svg();
-        assert!(s.contains("Travail observé avec HumanOrigin"));
-        assert!(s.contains("périodes de travail"));
-        assert!(s.contains("enregistrées localement"));
-        assert!(s.contains("reliées à cette version du document"));
-        assert!(s.contains("vérifier les détails"));
-        assert!(s.contains("ID preuve : 1405DEEF"), "ID preuve court attendu");
+        assert!(s.contains(">HumanOrigin</text>"));
+        assert!(s.contains(">Travail observé</text>"));
+        assert!(s.contains("ID 1405DEEF"), "ID court attendu");
     }
 
     #[test]
@@ -275,6 +274,13 @@ mod tests {
             "certifié humain",
             "origine humaine",
             "cohérent",
+            "verified human",
+            "Human Process Proof",
+            "authenticité garantie",
+            "originalité garantie",
+            "auteur garanti",
+            "validé",
+            "certifié",
         ] {
             assert!(!s.contains(tok), "token interdit présent : {tok}");
         }
@@ -361,14 +367,14 @@ mod tests {
 
     #[test]
     fn test_15_dimensions_viewbox() {
-        // SVG : viewBox attendu.
-        assert!(ok_svg().contains("viewBox=\"0 0 780 240\""));
-        // PNG : dimensions attendues (1560×480).
+        // SVG : viewBox micro-estampille B4.
+        assert!(ok_svg().contains("viewBox=\"0 0 220 300\""));
+        // PNG : dimensions attendues (880×1200).
         let out: PathBuf =
             std::env::temp_dir().join(format!("ho_cartouche_dim_{}.png", Uuid::new_v4()));
         render_work_cartouche_png(&inputs(VERDICT_CONSISTENT, "LOCAL_DEVICE", URL), &out).unwrap();
         let (w, h) = image::image_dimensions(&out).unwrap();
-        assert_eq!((w, h), (780 * 2, 240 * 2));
+        assert_eq!((w, h), (220 * 4, 300 * 4));
         let _ = fs::remove_file(&out);
     }
 }
