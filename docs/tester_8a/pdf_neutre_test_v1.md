@@ -28,8 +28,7 @@ Ce document est un **support de test neutre** pour essayer HumanOrigin. Il ne co
 
 ## Instruction pour le testeur (pendant l'observation)
 
-> **Pendant l'observation, ajoutez une annotation ou une courte ligne**, enregistrez,
-> puis **continuez à travailler encore un instant avant de terminer.**
-> (par exemple : « testé le [date] » ou une note dans la marge via Aperçu.)
+> Pendant l'observation, **travaillez sur ce document dans votre application habituelle** : ajoutez une courte ligne ou une annotation, puis **enregistrez votre version finale** (⌘S) avant de terminer.
+> (par exemple : « testé le [date] », ou une note dans la marge via Aperçu.)
 >
-> Cette modification permet à HumanOrigin de constater que le document a évolué pendant votre travail observé.
+> HumanOrigin relie ainsi la période de travail observée à la **version finale enregistrée** de votre document.
