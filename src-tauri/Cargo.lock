@@ -2077,7 +2077,7 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "human-origin"
-version = "0.1.26"
+version = "0.1.27"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
