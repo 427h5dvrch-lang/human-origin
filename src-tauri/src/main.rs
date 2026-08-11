@@ -34,6 +34,7 @@ use resvg::usvg::{Options, Tree};
 use macos_accessibility_client::accessibility;
 
 mod drafts;
+mod evidence_kernel; // V2-M2 : vocabulaire media-agnostic read-only, non câblé au runtime.
 mod work_cartouche;
 mod work_certificate;
 mod work_commands;
