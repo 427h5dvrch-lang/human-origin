@@ -1717,9 +1717,11 @@
         <div id="alpha-status" class="alpha-status" role="status" aria-live="polite"></div>
 
         <div id="alpha-not-ready" style="display:none;">
-          <div class="alpha-nr-title">Pas encore prêt à créer</div>
-          <div class="alpha-nr-text">Pour créer un document HumanOrigin, il faut une période de travail suffisante et une version finale enregistrée du document.</div>
-          <div class="alpha-nr-help">Continuez à travailler quelques minutes, enregistrez votre document, puis lancez ou terminez une nouvelle observation.</div>
+          <div class="alpha-nr-title">État de création</div>
+          <div class="alpha-rd-row"><span class="alpha-rd-label">Travail observé</span><span id="rd-work" class="alpha-rd-state rd-todo">—</span></div>
+          <div class="alpha-rd-row"><span class="alpha-rd-label">Version finale enregistrée</span><span id="rd-final" class="alpha-rd-state rd-todo">—</span></div>
+          <div class="alpha-rd-row"><span class="alpha-rd-label">Document HumanOrigin</span><span id="rd-doc" class="alpha-rd-state rd-todo">—</span></div>
+          <div id="rd-action" class="alpha-nr-help"></div>
         </div>
 
         <div id="alpha-success" style="display:none;">
@@ -1770,10 +1772,16 @@
         #alpha-screen .alpha-version-note:empty { display: none; }
         #alpha-screen .alpha-status { min-height: 20px; margin: 12px 0; font-size: 13px; color: #cbd5e1; }
         #alpha-screen #alpha-not-ready { margin: 8px 0 4px; padding: 12px 14px; border-radius: 12px;
-          background: rgba(180,83,9,.12); border: 1px solid rgba(180,83,9,.4); }
-        #alpha-screen .alpha-nr-title { font-size: 14px; font-weight: 800; color: #fbbf24; margin-bottom: 4px; }
-        #alpha-screen .alpha-nr-text { font-size: 13px; line-height: 1.5; color: rgba(232,238,252,.85); }
+          background: rgba(148,163,184,.10); border: 1px solid rgba(148,163,184,.28); }
+        #alpha-screen .alpha-nr-title { font-size: 13px; font-weight: 800; letter-spacing: .04em;
+          text-transform: uppercase; color: rgba(232,238,252,.55); margin-bottom: 8px; }
         #alpha-screen .alpha-nr-help { font-size: 12px; line-height: 1.45; color: rgba(232,238,252,.6); margin-top: 6px; }
+        #alpha-screen .alpha-rd-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin: 4px 0; }
+        #alpha-screen .alpha-rd-label { color: rgba(232,238,252,.85); }
+        #alpha-screen .alpha-rd-state { font-weight: 800; font-size: 12px; }
+        #alpha-screen .rd-ok { color: #34d399; }
+        #alpha-screen .rd-progress { color: #fbbf24; }
+        #alpha-screen .rd-todo { color: rgba(232,238,252,.45); }
         #alpha-screen .alpha-success-title { font-size: 18px; font-weight: 800; color: #34d399; margin-top: 6px; }
         #alpha-screen .alpha-success-sub { font-size: 12px; font-weight: 700; letter-spacing: .06em;
           text-transform: uppercase; color: rgba(232,238,252,.5); margin: 3px 0 10px; }

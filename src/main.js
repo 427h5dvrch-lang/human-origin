@@ -7730,14 +7730,61 @@ window.addEventListener("DOMContentLoaded", async () => {
           enable("alpha-create", qual >= 1);
           // status laissé au contexte appelant
         }
-        // 8C-5 : message humain « Pas encore prêt à créer » quand des observations
-        // existent mais aucune n'est encore qualifiante (ni en cours, ni en succès).
+        // 0.1.28B : panneau « État de création » — voyants d'aide dérivés des champs
+        // read-only du résumé. N'active JAMAIS « Créer » (piloté par qual >= 1 ci-dessus).
+        const suf = !!(s && s.sufficient_work_observed);
+        const finalSaved = !!(s && s.final_version_saved_during_observation);
         const nr = el("alpha-not-ready");
         if (nr) {
           const successVisible =
             el("alpha-success") && el("alpha-success").style.display === "block";
-          nr.style.display =
-            !pending && !successVisible && obs >= 1 && qual < 1 ? "block" : "none";
+          const setState = (id, txt, cls) => {
+            const e = el(id);
+            if (e) {
+              e.textContent = txt;
+              e.className = "alpha-rd-state " + cls;
+            }
+          };
+          // Voyant « Travail observé »
+          if (suf) setState("rd-work", "OK", "rd-ok");
+          else if (observationRunning) setState("rd-work", "en cours", "rd-progress");
+          else setState("rd-work", "pas encore", "rd-todo");
+          // Voyant « Version finale enregistrée »
+          setState("rd-final", finalSaved ? "OK" : "non", finalSaved ? "rd-ok" : "rd-todo");
+          // Voyant « Document HumanOrigin »
+          setState("rd-doc", qual >= 1 ? "prêt" : "pas encore", qual >= 1 ? "rd-ok" : "rd-todo");
+
+          // Une seule action suivante claire.
+          let action;
+          if (observationRunning) {
+            action =
+              "Observation en cours — travaillez dans votre application habituelle et enregistrez votre version finale avant de terminer.";
+          } else if (qual >= 1) {
+            action = "Prêt à créer votre document HumanOrigin.";
+          } else if (pending) {
+            action = "Observation interrompue — reprenez une observation continue.";
+          } else if (suf && finalSaved) {
+            action =
+              "Votre travail et votre enregistrement n'étaient pas dans la même observation. Refaites une observation continue.";
+          } else if (suf && !finalSaved) {
+            action =
+              "Il manque l'enregistrement de votre version finale pendant l'observation.";
+          } else if (!suf && finalSaved) {
+            action = "Il manque un peu de travail observé en continu.";
+          } else if (obs >= 1) {
+            action =
+              "Continuez à travailler et enregistrez votre version finale pendant l'observation.";
+          } else {
+            action = "Choisissez un document, puis démarrez une observation.";
+          }
+          const act = el("rd-action");
+          if (act) act.textContent = action;
+
+          // Visibilité : dès qu'il y a une observation (en cours, enregistrée, ou
+          // interrompue) et hors écran de succès.
+          const show =
+            !successVisible && (observationRunning || pending || obs >= 1);
+          nr.style.display = show ? "block" : "none";
         }
         return pending;
       };
