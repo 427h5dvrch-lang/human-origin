@@ -400,6 +400,12 @@ pub struct WorkSummary {
     pub last_observation_sequence: Option<u64>,
     /// `pending.json` présent (observation en cours ou interrompue).
     pub has_pending_observation: bool,
+    /// Voyant d'aide (READ-ONLY) : au moins une période vérifiée a `gate_passed`.
+    /// N'active JAMAIS la création ; sert uniquement à guider l'utilisateur.
+    pub sufficient_work_observed: bool,
+    /// Voyant d'aide (READ-ONLY) : au moins une période vérifiée a
+    /// `net_document_change`. N'active JAMAIS la création ; guidage uniquement.
+    pub final_version_saved_during_observation: bool,
     /// Dernière séquence de certificat valide si elle existe, sinon null.
     pub latest_certificate_sequence: Option<u64>,
     /// Dernière séquence de package existante si elle existe, sinon null.
@@ -445,6 +451,16 @@ pub fn get_work_summary_core(
         .filter(|p| crate::work_certificate::period_is_qualifying(p))
         .count() as u64;
 
+    // Voyants d'aide dérivés (READ-ONLY) : ils N'affectent PAS la qualification ni
+    // la création (toujours pilotée par qualifying_observation_count >= 1). Ils
+    // servent uniquement à expliquer au front ce qu'il manque (cas fragmentation :
+    // les deux vrais mais dans des périodes différentes).
+    let sufficient_work_observed = chain
+        .iter()
+        .any(crate::work_certificate::period_gate_passed);
+    let final_version_saved_during_observation =
+        chain.iter().any(|p| p.net_document_change);
+
     let has_pending_observation =
         crate::work_pending::detect_pending_for_work(works_root, work_id)?.is_some();
 
@@ -461,6 +477,8 @@ pub fn get_work_summary_core(
         qualifying_observation_count,
         last_observation_sequence,
         has_pending_observation,
+        sufficient_work_observed,
+        final_version_saved_during_observation,
         latest_certificate_sequence,
         latest_package_sequence,
     })
@@ -1034,6 +1052,37 @@ mod tests {
         assert_eq!(s.observation_count, 2);
         assert_eq!(s.qualifying_observation_count, 1);
         cleanup(&root);
+    }
+
+    #[test]
+    fn test_summary_readiness_voyants() {
+        // Vérifie les 2 voyants dérivés READ-ONLY sans jamais changer la création
+        // (toujours pilotée par qualifying_observation_count).
+        let cases: &[(&[(bool, bool)], bool, bool, u64, &str)] = &[
+            // specs, sufficient_work, final_saved, qualifying, libellé
+            (&[(false, false)], false, false, 0, "rien"),
+            (&[(true, false)], true, false, 0, "travail sans enregistrement"),
+            (&[(false, true)], false, true, 0, "enregistrement sans travail"),
+            (&[(true, true)], true, true, 1, "même période => qualifiante"),
+            (&[(true, false), (false, true)], true, true, 0, "fragmentation"),
+        ];
+        for (specs, exp_suf, exp_final, exp_qual, label) in cases {
+            let root = temp_root();
+            let works = root.join("Works");
+            let wid = seed_summary_work(&root, &works);
+            write_valid_chain(&works, &wid, &sk(), specs);
+            let s = get_work_summary_core(&works, &wid).unwrap();
+            assert_eq!(s.sufficient_work_observed, *exp_suf, "sufficient [{label}]");
+            assert_eq!(
+                s.final_version_saved_during_observation, *exp_final,
+                "final_saved [{label}]"
+            );
+            assert_eq!(
+                s.qualifying_observation_count, *exp_qual,
+                "qualifying [{label}]"
+            );
+            cleanup(&root);
+        }
     }
 
     #[test]

@@ -157,7 +157,9 @@ pub(crate) struct CertificateDraft {
 
 /// `gate_passed` extrait de `engine.analysis.gate_passed` (défaut conservateur
 /// `false` si absent/malformé).
-fn period_gate_passed(p: &ObservationPeriod) -> bool {
+/// `pub(crate)` : réutilisé en LECTURE SEULE par `get_work_summary` pour dériver
+/// des voyants d'aide (aucune duplication de logique, aucune règle de preuve modifiée).
+pub(crate) fn period_gate_passed(p: &ObservationPeriod) -> bool {
     p.engine
         .get("analysis")
         .and_then(|a| a.get("gate_passed"))
