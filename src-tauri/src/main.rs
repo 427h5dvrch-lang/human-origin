@@ -35,6 +35,8 @@ use macos_accessibility_client::accessibility;
 
 mod drafts;
 mod evidence_kernel; // V2-M2 : vocabulaire media-agnostic read-only, non câblé au runtime.
+#[cfg(test)]
+mod compat_v1; // V2-M4B : golden fixtures V1 (test-only), compat signature HO-JSON.
 mod work_cartouche;
 mod work_certificate;
 mod work_commands;
