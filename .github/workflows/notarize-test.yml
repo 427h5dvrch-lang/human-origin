@@ -21,7 +21,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install dependencies (NPM)
-        run: npm install
+        run: npm ci
 
       # Décodage de la clé App Store Connect (.p8) vers un fichier temporaire
       # éphémère du runner. Le secret n'est jamais imprimé ; le .p8 n'est jamais committé.

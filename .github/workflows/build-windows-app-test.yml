@@ -58,7 +58,7 @@ jobs:
           Get-ChildItem src-tauri/binaries | Format-Table Name, Length
 
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build frontend
         run: npm run build
