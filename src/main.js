@@ -25,6 +25,7 @@ import * as app from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/api/process";
 import QRCode from "qrcode";
 import { Command } from "@tauri-apps/api/shell";
+import { shortId, shortHash, formatDisplayDate, basenameAnyPath, guessMime } from "./helpers.js";
 import { zip as fflateZip, zipSync as fflateZipSync } from "fflate";
 
 console.log("HumanOrigin main.js V3.2.1 FULL + Publication Kit V1 loaded ✅");
@@ -988,10 +989,6 @@ function verdictFromScp(scp) {
   return { label: "SUSPECT", color: "#ef4444" };
 }
 
-function basenameAnyPath(p) {
-  return String(p ?? "").split(/[\\/]/).pop() || "document";
-}
-
 function dirnameAnyPath(p) {
   const s = String(p ?? "");
   const parts = s.split(/[\\/]/);
@@ -1000,25 +997,6 @@ function dirnameAnyPath(p) {
   return parts.join(sep);
 }
 
-function guessMime(filename) {
-  const ext = (filename.split(".").pop() || "").toLowerCase();
-  const map = {
-    pdf: "application/pdf",
-    png: "image/png",
-    jpg: "image/jpeg",
-    jpeg: "image/jpeg",
-    webp: "image/webp",
-    gif: "image/gif",
-    txt: "text/plain",
-    md: "text/markdown",
-    html: "text/html",
-    htm: "text/html",
-    json: "application/json",
-    doc: "application/msword",
-    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  };
-  return map[ext] || "application/octet-stream";
-}
 function fileExtLower(filename) {
   const ext = (String(filename || "").split(".").pop() || "").toLowerCase();
   return ext || "bin";
@@ -5151,29 +5129,6 @@ async function sha256Hex(str) {
 // =========================================================
 // STAMP / BADGE / CARTOUCHE (SVG + QR)
 // =========================================================
-function shortId(uuid) {
-  const s = String(uuid || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-  return s ? s.slice(0, 10) : "HO";
-}
-
-function shortHash(h) {
-  const s = String(h || "");
-  return s.length > 14 ? `${s.slice(0, 8)}…${s.slice(-6)}` : s || "—";
-}
-
-function formatDisplayDate(isoString) {
-  try {
-    const d = new Date(isoString);
-    return d.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  } catch {
-    return "—";
-  }
-}
-
 function getVisualVerdictMeta(verdict) {
   const v = String(verdict || "").toUpperCase();
 
