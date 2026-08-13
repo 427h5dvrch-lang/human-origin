@@ -29,3 +29,12 @@ dist-ssr
 
 # PDFium binary — téléchargé en CI, ne jamais committer
 src-tauri/libpdfium.dylib
+
+# Environment files / secrets
+.env
+.env.*
+**/.env
+**/.env.*
+# ...mais garder les exemples sans valeurs
+!.env.example
+!**/.env.example
