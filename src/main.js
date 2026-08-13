@@ -7255,11 +7255,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     await invoke("open_file", { path: __lastExportContext.pdfPath }).catch(() => {});
   });
 
-  on("send-reveal-btn", async () => {
-    if (!__lastExportContext) return;
-    await invoke("open_file", { path: __lastExportContext.sendDir }).catch(() => {});
-  });
-
   on("send-copy-msg-btn", async () => {
     if (!__lastExportContext) return;
     const msg = [
