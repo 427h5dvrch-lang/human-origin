@@ -261,9 +261,27 @@ fn key_storage_path() -> Result<PathBuf, String> {
     Ok(base.join(KEY_FILE_NAME))
 }
 
+/// Durcit les permissions du fichier de clé à `0o600` (lecture/écriture
+/// propriétaire uniquement) sur Unix/macOS. No-op propre sur les autres OS.
+/// Ne lit ni ne modifie le contenu de la clé.
+fn harden_key_file_permissions(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+    }
+    Ok(())
+}
+
 fn ensure_signing_key() -> Result<SigningKey, String> {
     let p = key_storage_path()?;
     if p.exists() {
+        // Durcit une clé existante (corrige d'anciennes permissions 0o644). Best-effort.
+        let _ = harden_key_file_permissions(&p);
         let b64 = fs::read_to_string(&p).map_err(|e| e.to_string())?;
         let raw = general_purpose::STANDARD
             .decode(b64.trim())
@@ -279,7 +297,38 @@ fn ensure_signing_key() -> Result<SigningKey, String> {
     let seed = sk.to_bytes();
     let b64 = general_purpose::STANDARD.encode(seed);
     fs::write(&p, b64).map_err(|e| e.to_string())?;
+    // Durcit immédiatement les permissions de la nouvelle clé (0o600 sur Unix). Best-effort.
+    let _ = harden_key_file_permissions(&p);
     Ok(sk)
+}
+
+#[cfg(test)]
+mod key_perm_tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn harden_sets_key_file_to_600() {
+        use std::os::unix::fs::PermissionsExt;
+        // Faux fichier temporaire — JAMAIS la vraie clé.
+        let p = std::env::temp_dir().join(format!(
+            "ho_test_key_{}_{}.tmp",
+            std::process::id(),
+            "s2b"
+        ));
+        std::fs::write(&p, b"not-a-real-key").unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(
+            std::fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+            0o644
+        );
+        harden_key_file_permissions(&p).unwrap();
+        assert_eq!(
+            std::fs::metadata(&p).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        let _ = std::fs::remove_file(&p);
+    }
 }
 
 fn hex_to_bytes32(hex: &str) -> Result<[u8; 32], String> {
