@@ -29,6 +29,7 @@ import { zip as fflateZip, zipSync as fflateZipSync } from "fflate";
 
 console.log("HumanOrigin main.js V3.2.1 FULL + Publication Kit V1 loaded ✅");
 
+// === BLOC: BOOT / SESSION / LOCAL MODE ===
 async function hoGetSessionSafe(timeoutMs = 1800) {
   return await Promise.race([
     supabase.auth.getSession(),
@@ -91,6 +92,7 @@ let __lastExportContext = null;
 let __isExportSuccessVisible = false;
 
 // showSendReadyBanner/hideSendReadyBanner délèguent à la vue dédiée
+// === BLOC: SUCCESS LEGACY / SEND BANNER ===
 function showSendReadyBanner() {
   showExportSuccessView();
 }
@@ -393,6 +395,7 @@ function resetPasteStats() {
   pasteStats = { paste_events: 0, pasted_chars: 0, max_paste_chars: 0 };
 }
 
+// === BLOC: PROOF HELPERS / CLAIMS ===
 function buildDocumentDelta(initialSize, finalSize, initialMime, finalMime) {
   const i = Number(initialSize || 0);
   const f = Number(finalSize || 0);
@@ -675,6 +678,7 @@ function applyBindingVerdictCap(rawVerdict, documentBinding, objectEvidence = nu
 
 // ── Object Evidence Core ──────────────────────────────────────────────────────
 
+// === BLOC: DOCUMENT POLLING / EVIDENCE ===
 function startDocumentPolling() {
   stopDocumentPolling();
   if (!currentBoundDocument?.path) return;
@@ -1032,6 +1036,7 @@ const _UNSUPPORTED_DOC_ALERT =
   "Pour cette version, liez un PDF ou un document compatible.\n" +
   "Les images, vidéos et sons seront traités dans un futur mode média dédié.";
 
+// === BLOC: DOCUMENT BINDING / READINESS ===
 async function pickDocumentToBind() {
   const isWindows = (navigator.platform || "").toLowerCase().includes("win");
 
@@ -1390,6 +1395,7 @@ function renderProofGuideBlock() {
 // =========================================================
 // SCREEN ROUTER
 // =========================================================
+// === BLOC: SCREENS / RESET / PERMISSIONS ===
 function showScreen(screenName) {
   hoBootMark("showScreen:" + screenName);
   currentScreenName = screenName;
@@ -1623,6 +1629,7 @@ async function openMacSettings(kind) {
   }
 }
 
+// === BLOC: I18N / SCREEN COPY ===
 function hoUiLang() {
   try {
     const saved = (localStorage.getItem("ho_lang") || "").toLowerCase();
@@ -2032,6 +2039,7 @@ function applyPermissionsScreenCopy() {
   );
 }
 
+// === BLOC: PERMISSIONS / DEEP LINKS ===
 async function refreshPermissionsStateAndMaybeContinue(autoAdvance = false) {
   hoBootMark("permissions:refresh:start");
   const accessOk = await invoke("is_accessibility_trusted").catch(() => false);
@@ -2448,6 +2456,7 @@ async function setupDeepLinkListeners() {
 // =========================================================
 // PROJECTS
 // =========================================================
+// === BLOC: PROJECT / DASHBOARD / SCAN CONTROL ===
 async function loadProjectList() {
   hoBootMark("projects:load:start");
   try {
@@ -2825,6 +2834,7 @@ function updateDashboardUI(state) {
 // =========================================================
 // CERTIFICATION (TRAVAIL) — BROUILLON always possible
 // =========================================================
+// === BLOC: SCAN START / SESSION FINALIZATION ===
 async function finalizeSession() {
   if (!currentSessionId) {
     alert("Aucune session.");
@@ -3213,6 +3223,7 @@ async function refreshHistory() {
     })
     .join("");
 }
+// === BLOC: PUBLICATION JOB / SIDECARS / COUNTERSIGN ===
 function buildPublicationJob({
   sourcePdfPath,
   outputPdfPath,
@@ -3362,6 +3373,7 @@ async function tryCountersignHoJson(hoDocV1) {
 // =========================================================
 // FINAL PROJECT CERTIFICATE (HTML + HO-JSON + PUBLICATION KIT)
 // =========================================================
+// === BLOC: EXPORT ORCHESTRATION — CRITICAL, DO NOT REFACTOR BLINDLY ===
 async function exportFinalProjectCertificate() {
   hideSendReadyBanner();
 
@@ -4807,6 +4819,7 @@ async function exportFinalProjectCertificate() {
 // =========================================================
 // VIEWER (DOWNLOAD + RELOAD + OPEN EXTERNAL)
 // =========================================================
+// === BLOC: CERT VIEWER / DRAFTS ===
 async function openCertViewer(filePath) {
   const overlay = $("viewer-overlay");
   const iframe = $("viewer-iframe");
@@ -5109,6 +5122,7 @@ async function recoverDraft(sid) {
 // =========================================================
 // CRYPTO
 // =========================================================
+// === BLOC: CRYPTO HELPERS / SVG BUILDERS — CRITICAL ===
 function canonicalize(value) {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -5460,6 +5474,7 @@ const qrSvg = qrSvgRaw
 </svg>`;
 }
 
+// === BLOC: VERIFY TEXT / MANIFEST / SHARE TEXTS ===
 function buildVerifyTxt({
   certificateId,
   projectTitle,
@@ -5934,6 +5949,7 @@ function buildPublicationManifest({
   );
 }
 
+// === BLOC: OPEN FIRST HTML BUILDER — CRITICAL, DO NOT REFACTOR BLINDLY ===
 function buildOpenFirstHtml({
   projectTitle,
   documentFilename,
@@ -6965,6 +6981,7 @@ function buildOpenFirstHtml({
 </html>`;
 }
 
+// === BLOC: SEND ZIP / UPDATER ===
 async function syncWindowsCorePdfToSendPackage({
   dir,
   sep,
@@ -7220,6 +7237,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   on("new-project-btn", initProject);
 
+  // === BLOC: LEGACY SEND HANDLERS ===
   on("send-copy-pdf-btn", async () => {
     const path = __lastExportContext?.pdfPath;
     if (!path) {
@@ -7596,6 +7614,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 })();
 
 // ============================================================================
+// === BLOC: ALPHA FLOW — CANONICAL TARGET ===
 // ALPHA UI (7A-1) — parcours utilisateur PRINCIPAL au-dessus du pipeline Work natif.
 // Actif PAR DÉFAUT (8C-1) ; le legacy s'obtient en échappement interne via
 // ?classic=1 ou localStorage.humanOriginClassicMode==="1". N'utilise QUE des
