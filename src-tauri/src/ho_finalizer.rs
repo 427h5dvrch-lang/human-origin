@@ -138,6 +138,20 @@ fn decrypt_facts(blob: &str, key: &[u8; 32], record_id: &str) -> Option<serde_js
     serde_json::from_slice(&pt).ok()
 }
 
+/// Charge scellée par le volet. Forme 1 : le tableau des faits (une seule période d'observation,
+/// forme historique, inchangée). Forme 2 : `{ "schema": "ho-facts/2", "periods": [...], "facts": [...] }`
+/// lorsque le document a connu plusieurs périodes d'observation.
+fn split_facts(v: &serde_json::Value) -> (Vec<serde_json::Value>, Option<Vec<serde_json::Value>>) {
+    match v {
+        serde_json::Value::Array(a) => (a.clone(), None),
+        serde_json::Value::Object(o) if o.get("schema").and_then(|s| s.as_str()) == Some("ho-facts/2") => (
+            o.get("facts").and_then(|f| f.as_array()).cloned().unwrap_or_default(),
+            o.get("periods").and_then(|p| p.as_array()).cloned(),
+        ),
+        _ => (vec![], None),
+    }
+}
+
 // ---------------------------------------------------------------- dépôt au registre
 fn put_record(registry: &str, record_id: &str, body: &str) -> Result<(), String> {
     // HTTPS sans ajouter de dépendance : on délègue au curl du système, présent sur macOS.
@@ -257,7 +271,7 @@ impl Finalizer {
             return None;
         }
         let facts = decrypt_facts(&m.facts_blob, &m.key, &m.record_id)?;
-        let facts_arr = facts.as_array().cloned().unwrap_or_default();
+        let (facts_arr, periods) = split_facts(&facts);
 
         // Le document envoyé ne doit pas dépendre du complément Office : la référence HumanOrigin,
         // et elle seule, est retirée du paquet AVANT la liaison. Si le fichier est remplacé, rien
@@ -328,6 +342,21 @@ impl Finalizer {
                 "l'origine d'un contenu entrant hors événement observable n'est pas établie"
             ]
         });
+
+        // Plusieurs périodes d'observation : elles sont reprises telles que le volet les a scellées,
+        // et la preuve dit explicitement que l'intervalle entre deux périodes n'a pas été observé.
+        if let Some(p) = periods {
+            let several = p.len() > 1;
+            evidence["process_evidence"]["observation_periods"] = serde_json::Value::Array(p);
+            if several {
+                if let Some(b) = evidence["process_evidence"]["blind_spots"].as_array_mut() {
+                    b.push(serde_json::json!({ "fact": "entre deux périodes d'observation, le document n'a pas été observé ; ce qui s'y est passé n'est pas établi" }));
+                }
+                if let Some(l) = evidence["limitations"].as_array_mut() {
+                    l.push(serde_json::json!("l'observation n'est pas continue : les intervalles entre les périodes d'observation n'ont pas été observés"));
+                }
+            }
+        }
 
         // signature Ed25519 sur les champs de cœur
         let mut seed = [0u8; 32];
@@ -412,6 +441,21 @@ impl Finalizer {
 #[cfg(test)]
 mod tests {
     use super::forbidden_work_folder;
+
+    #[test]
+    fn facts_payload_forms() {
+        let v1 = serde_json::json!([{ "sequence": 0, "length_delta": 3 }]);
+        let (f, p) = super::split_facts(&v1);
+        assert_eq!(f.len(), 1);
+        assert!(p.is_none());
+        let v2 = serde_json::json!({ "schema": "ho-facts/2",
+            "periods": [{ "period": 1 }, { "period": 2 }],
+            "facts": [{ "sequence": 0, "period": 1 }, { "sequence": 1, "period": 2 }, { "sequence": 2, "period": 2 }] });
+        let (f, p) = super::split_facts(&v2);
+        assert_eq!((f.len(), p.map(|x| x.len())), (3, Some(2)));
+        let (f, p) = super::split_facts(&serde_json::json!({ "facts": [1] }));
+        assert!(f.is_empty() && p.is_none());
+    }
 
     #[test]
     fn container_folders_are_refused() {
