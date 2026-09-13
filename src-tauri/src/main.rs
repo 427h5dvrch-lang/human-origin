@@ -3,6 +3,7 @@
     windows_subsystem = "windows"
 )]
 
+#[cfg(feature = "legacy")]
 mod publication_core;
 
 use chrono::Utc;
@@ -33,19 +34,32 @@ use resvg::usvg::{Options, Tree};
 #[cfg(target_os = "macos")]
 use macos_accessibility_client::accessibility;
 
+#[cfg(feature = "legacy")]
 mod drafts;
+#[cfg(feature = "legacy")]
 mod evidence_kernel; // V2-M2 : vocabulaire media-agnostic read-only, non câblé au runtime.
 #[cfg(test)]
+#[cfg(feature = "legacy")]
 mod compat_v1; // V2-M4B : golden fixtures V1 (test-only), compat signature HO-JSON.
+#[cfg(feature = "legacy")]
 mod work_cartouche;
+#[cfg(feature = "legacy")]
 mod work_certificate;
+#[cfg(feature = "legacy")]
 mod work_commands;
+#[cfg(feature = "legacy")]
 mod work_engine;
+#[cfg(feature = "legacy")]
 mod work_package;
+#[cfg(feature = "legacy")]
 mod work_pending;
+#[cfg(feature = "legacy")]
 mod work_period;
+#[cfg(feature = "legacy")]
 mod work_publish;
+#[cfg(feature = "legacy")]
 mod work_store;
+mod ho_finalizer; // Create V1 : finalisation native, dossiers autorisés uniquement.
 
 const EXTRA_CARRE_DRAIN: bool = true;
 const EXTRA_CARRE_DRAIN_MS: u64 = 40;
@@ -970,6 +984,7 @@ td {{ padding:14px 0; border-bottom:1px solid #f1f5f9; vertical-align:middle; }}
     )
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
     let is_scanning = *state.is_scanning.lock().unwrap();
@@ -995,6 +1010,7 @@ fn get_live_stats(state: State<AppState>) -> Result<LiveStats, String> {
     })
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn get_projects() -> Result<Vec<String>, String> {
     let Some(doc_path) = dirs::document_dir() else {
@@ -1019,6 +1035,7 @@ fn get_projects() -> Result<Vec<String>, String> {
     Ok(projects)
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn initialize_project(project_name: String) -> Result<String, String> {
     let root = humanorigin_root_dir()?;
@@ -1042,6 +1059,7 @@ fn initialize_project(project_name: String) -> Result<String, String> {
     Ok(project_path.to_string_lossy().to_string())
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn activate_project(project_name: String, state: State<AppState>) -> Result<String, String> {
     let root = humanorigin_root_dir()?;
@@ -1253,6 +1271,7 @@ fn finalize_capture(
     }
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn start_scan(state: State<AppState>, session_id: String) -> Result<String, String> {
     begin_capture(&state, ActiveCaptureOwner::LegacyProject, session_id)?;
@@ -1260,6 +1279,7 @@ fn start_scan(state: State<AppState>, session_id: String) -> Result<String, Stri
 }
 
 /// Démarre une période Work (pending crash-safe -> moteur owner WORK).
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn start_work_period(
     state: State<AppState>,
@@ -1270,6 +1290,7 @@ fn start_work_period(
 }
 
 /// Arrête une période Work (moteur -> scoring -> période signée immuable).
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn stop_work_period(
     state: State<AppState>,
@@ -1281,6 +1302,7 @@ fn stop_work_period(
 }
 
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn pick_document_to_bind_windows() -> Result<serde_json::Value, String> {
     #[cfg(target_os = "windows")]
@@ -1377,6 +1399,7 @@ if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
     }
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn sha256_file(path: String) -> Result<String, String> {
     let file = File::open(&path).map_err(|e| format!("open failed: {e}"))?;
@@ -1397,12 +1420,14 @@ fn sha256_file(path: String) -> Result<String, String> {
 
     Ok(format!("{:x}", hasher.finalize()))
 }
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn file_size_bytes(path: String) -> Result<u64, String> {
     std::fs::metadata(&path)
         .map(|m| m.len())
         .map_err(|e| e.to_string())
 }
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn file_mtime_iso(path: String) -> Result<String, String> {
     use std::time::UNIX_EPOCH;
@@ -1416,6 +1441,7 @@ fn file_mtime_iso(path: String) -> Result<String, String> {
         .ok_or_else(|| "mtime_overflow".to_string())?;
     Ok(dt.to_rfc3339())
 }
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn pdf_page_count(path: String) -> Result<u32, String> {
     use pdfium_render::prelude::*;
@@ -1427,6 +1453,7 @@ fn pdf_page_count(path: String) -> Result<u32, String> {
     let doc = pdfium.load_pdf_from_file(&path, None).map_err(|e| format!("{:?}", e))?;
     Ok(doc.pages().len() as u32)
 }
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn extract_docx_text_metrics(path: String) -> Result<serde_json::Value, String> {
     let file = File::open(&path).map_err(|e| e.to_string())?;
@@ -1462,6 +1489,7 @@ fn extract_docx_text_metrics(path: String) -> Result<serde_json::Value, String> 
         "extraction_status": "ok"
     }))
 }
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn copy_file(src_path: String, dest_path: String) -> Result<(), String> {
     use std::path::Path;
@@ -1473,11 +1501,13 @@ fn copy_file(src_path: String, dest_path: String) -> Result<(), String> {
     std::fs::copy(&src_path, &dest_path).map_err(|e| e.to_string())?;
     Ok(())
 }
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn publish_pdf_native(_input: serde_json::Value) -> Result<String, String> {
     Err("publish_pdf_native is deprecated; PDF publication now uses the Publisher sidecar.".to_string())
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn stop_scan(
     app: tauri::AppHandle,
@@ -1598,6 +1628,7 @@ fn stop_scan(
     }))
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn finalize_project(project_path: String) -> Result<FinalizationResult, String> {
     let path = PathBuf::from(project_path);
@@ -1714,6 +1745,7 @@ fn finalize_project(project_path: String) -> Result<FinalizationResult, String> 
     })
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn open_file(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -1743,6 +1775,7 @@ fn open_file(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn copy_file_to_clipboard(path: String) -> Result<(), String> {
     if !std::path::Path::new(&path).exists() {
@@ -1788,11 +1821,13 @@ fn copy_file_to_clipboard(path: String) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn read_text_file(path: String) -> Result<String, String> {
     fs::read_to_string(path).map_err(|e| e.to_string())
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn sign_payload_hash(payload_hash: String) -> Result<serde_json::Value, String> {
     let sk = ensure_signing_key()?;
@@ -1806,6 +1841,7 @@ fn sign_payload_hash(payload_hash: String) -> Result<serde_json::Value, String> 
     }))
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn render_svg_to_png(
     svg: String,
@@ -1845,18 +1881,21 @@ fn render_svg_to_png(
 }
 
 // --- DRAFT COMMANDS ---
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn list_local_drafts(app: tauri::AppHandle) -> Result<Vec<drafts::DraftInfo>, String> {
     let dir = app.path_resolver().app_data_dir().ok_or("No AppData")?;
     drafts::list_drafts(&dir)
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn load_local_draft(app: tauri::AppHandle, session_id: String) -> Result<String, String> {
     let dir = app.path_resolver().app_data_dir().ok_or("No AppData")?;
     drafts::load_draft(&dir, &session_id)
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn delete_local_draft(app: tauri::AppHandle, session_id: String) -> Result<(), String> {
     let dir = app.path_resolver().app_data_dir().ok_or("No AppData")?;
@@ -1867,6 +1906,7 @@ fn delete_local_draft(app: tauri::AppHandle, session_id: String) -> Result<(), S
 // ✅✅ PERMISSIONS (macOS) ✅✅
 // ===============================
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn is_accessibility_trusted() -> bool {
     #[cfg(target_os = "macos")]
@@ -1879,6 +1919,7 @@ fn is_accessibility_trusted() -> bool {
     }
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn open_mac_settings(kind: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -1930,11 +1971,13 @@ fn open_mac_settings(kind: String) -> Result<(), String> {
     }
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn get_input_status(state: State<AppState>) -> u64 {
     state.last_input_seen.load(Ordering::Relaxed)
 }
 
+#[cfg(feature = "legacy")]
 #[tauri::command]
 fn take_pending_deep_link(state: State<AppState>) -> Option<serde_json::Value> {
     match state.pending_deep_link.lock() {
@@ -2014,6 +2057,31 @@ thread::spawn(move || {
     }
 });
 
+    
+// ---------------------------------------------------------------- Create V1 : finalizer natif
+fn ho_finalizer_dir() -> std::path::PathBuf {
+    dirs::data_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join("com.humanorigin.app")
+}
+
+#[tauri::command]
+fn ho_finalizer_get_folders() -> Vec<String> {
+    ho_finalizer::Finalizer::new(ho_finalizer_dir()).config().folders
+}
+
+#[tauri::command]
+fn ho_finalizer_set_folders(folders: Vec<String>, registry: Option<String>) -> Result<(), String> {
+    let f = ho_finalizer::Finalizer::new(ho_finalizer_dir());
+    f.set_config(&ho_finalizer::FinalizerConfig { folders, registry })
+}
+
+#[tauri::command]
+fn ho_finalizer_status() -> serde_json::Value {
+    let cfg = ho_finalizer::Finalizer::new(ho_finalizer_dir()).config();
+    serde_json::json!({ "folders": cfg.folders.len(), "active": !cfg.folders.is_empty() })
+}
+
     tauri::Builder::default()
         .manage(AppState {
             is_scanning,
@@ -2026,6 +2094,15 @@ thread::spawn(move || {
         .setup(move |app| {
             let handle = app.handle();
             let pending_for_deep_link = pending_deep_link.clone();
+
+            // Create V1 — finalisation en tâche de fond. Silencieuse, sans écran, sans port ouvert.
+            std::thread::spawn(|| {
+                let f = ho_finalizer::Finalizer::new(ho_finalizer_dir());
+                loop {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| { f.scan_once(); }));
+                    std::thread::sleep(std::time::Duration::from_millis(1500));
+                }
+            });
 
             let _ = tauri_plugin_deep_link::register("humanorigin", move |request| {
                 let payload = serde_json::to_value(&request).unwrap_or(serde_json::Value::Null);
@@ -2040,45 +2117,13 @@ thread::spawn(move || {
             Ok(())
         })
               .invoke_handler(tauri::generate_handler![
-            get_projects,
-            initialize_project,
-            activate_project,
-            start_scan,
-            stop_scan,
-            finalize_project,
-            open_file,
-            read_text_file,
-            get_live_stats,
-            sign_payload_hash,
-            render_svg_to_png,
-            publication_core::publish_pdf_core,
-            list_local_drafts,
-            load_local_draft,
-            delete_local_draft,
-            is_accessibility_trusted,
-            open_mac_settings,
-            get_input_status,
-            take_pending_deep_link,
-            pick_document_to_bind_windows,
-            sha256_file,
-            file_size_bytes,
-            file_mtime_iso,
-            pdf_page_count,
-            extract_docx_text_metrics,
-            copy_file,
-            copy_file_to_clipboard,
-            publish_pdf_native,
-            work_commands::resolve_work_for_document,
-            work_commands::create_work,
-            work_commands::list_works,
-            work_commands::load_work,
-            work_commands::archive_work,
-            work_commands::get_work_summary,
-            work_commands::close_interrupted_observation,
-            start_work_period,
-            stop_work_period,
-            work_publish::create_labeled_work_package,
-            work_publish::create_native_labeled_work_package,
+            // HumanOrigin V1 — le Desktop n'expose QUE la configuration du finalizer.
+            // Les commandes de l'ancien produit (projets, scan d'activité, analyse de session,
+            // publication, cartouches, verdicts) ne sont plus exposées : rien dans la fenêtre ne
+            // peut les atteindre, et aucune ne s'exécute au démarrage.
+            ho_finalizer_get_folders,
+            ho_finalizer_set_folders,
+            ho_finalizer_status
         ])
         .run(tauri::generate_context!())
         .expect("error");

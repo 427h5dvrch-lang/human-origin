@@ -1,6 +1,6 @@
 [package]
 name = "human-origin"
-version = "0.1.28"
+version = "0.2.1"
 description = "HumanOrigin Core V1"
 authors = ["Philippe"]
 edition = "2021"
@@ -63,4 +63,7 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 macos-accessibility-client = "0.0.2"
 [features]
 default = ["custom-protocol"]
+# Ancien produit (projets, analyse de session, scores, cartouches, verdicts).
+# JAMAIS activée en production : ce code n'est ni compilé, ni exposé, ni exécutable.
+legacy = []
 custom-protocol = ["tauri/custom-protocol"]

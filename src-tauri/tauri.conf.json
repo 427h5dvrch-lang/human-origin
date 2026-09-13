@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "HumanOrigin",
-    "version": "0.1.28"
+    "version": "0.2.1"
   },
   "tauri": {
     "allowlist": {
@@ -87,7 +87,12 @@
     },
     "bundle": {
       "active": true,
-      "targets": ["app", "dmg", "nsis", "updater"],
+      "targets": [
+        "app",
+        "dmg",
+        "nsis",
+        "updater"
+      ],
       "identifier": "com.humanorigin.app",
       "icon": [
         "icons/32x32.png",
@@ -103,10 +108,15 @@
       "category": "DeveloperTool",
       "publisher": "HumanOrigin",
       "windows": {
-        "webviewInstallMode": { "type": "downloadBootstrapper" },
+        "webviewInstallMode": {
+          "type": "downloadBootstrapper"
+        },
         "nsis": {
           "installMode": "currentUser",
-          "languages": ["en-US", "fr-FR"],
+          "languages": [
+            "en-US",
+            "fr-FR"
+          ],
           "displayLanguageSelector": true,
           "installerIcon": "icons/icon.ico"
         }
@@ -114,7 +124,9 @@
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
-        "frameworks": ["libpdfium.dylib"],
+        "frameworks": [
+          "libpdfium.dylib"
+        ],
         "providerShortName": null,
         "signingIdentity": null
       }
