@@ -7,7 +7,7 @@ import { invoke } from "@tauri-apps/api/tauri";
 import { open } from "@tauri-apps/api/dialog";
 import { readTextFile } from "@tauri-apps/api/fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { PAPER, INK, MUTED, put } from "./ho_ui.js";
+import { PAPER, INK, MUTED, put, mkButton } from "./ho_ui.js";
 import { showOnboarding } from "./ho_onboarding.js";
 
 const el = (tag, decls, text) => {
@@ -27,6 +27,95 @@ async function lastProofAt() {
     const d = new Date(dates[dates.length - 1]);
     return isNaN(d) ? null : d;
   } catch (e) { return null; }
+}
+
+const ERROR_INK = "#8C2F2F";
+const SETUP_EXPLAIN = "HumanOrigin doit préparer Microsoft Word. macOS va vous demander l’autorisation "
+  + "d’accéder aux données de Word.";
+
+/** Bouton secondaire : même aspect que « Modifier les dossiers ». */
+function secondaryButton(label) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = label;
+  put(b, {
+    font: '500 13px/1 -apple-system, system-ui, sans-serif', padding: "7px 13px",
+    "border-radius": "7px", cursor: "pointer", border: "1px solid #D9D5CC",
+    background: "#FFFFFF", color: INK, "box-shadow": "0 1px 1px rgba(26,30,36,.05)",
+    appearance: "none", "pointer-events": "auto",
+  });
+  return b;
+}
+
+const say = (node, text, isError) => {
+  node.textContent = text || "";
+  put(node, { color: isError ? ERROR_INK : MUTED });
+};
+
+/** L'installation (ou la réparation) est le SEUL moment où HumanOrigin accède au dossier de Word. */
+async function runSetup(box, button, msg) {
+  button.disabled = true;
+  say(msg, "Préparation de Word… Répondez à la demande de macOS si elle s’affiche.");
+  try {
+    await invoke("ho_word_setup_install");
+    await renderWord(box);
+  } catch (e) {
+    say(msg, String((e && (e.message || e)) || "La préparation de Word a échoué."), true);
+    button.disabled = false;
+  }
+}
+
+/** Section Microsoft Word. L'état vient uniquement de la sentinelle locale de l'application. */
+async function renderWord(box) {
+  box.textContent = "";
+  let st = null;
+  try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
+  const msg = el("p", { margin: "12px 0 0", font: "14px/1.5 inherit", color: MUTED });
+
+  if (!st || st.state !== "installed") {
+    const outdated = st && st.state === "outdated";
+    box.appendChild(el("p", { margin: "0 0 8px", color: INK, font: "500 15px/1.5 inherit" },
+      outdated ? "L’intégration Word doit être mise à jour." : "Word n’est pas encore prêt pour HumanOrigin."));
+    box.appendChild(el("p", { margin: "0 0 16px", color: MUTED }, SETUP_EXPLAIN));
+    const install = mkButton(outdated ? "Mettre à jour l’intégration Word" : "Installer l’intégration Word", true);
+    install.addEventListener("click", () => runSetup(box, install, msg));
+    box.appendChild(install);
+    box.appendChild(msg);
+    return;
+  }
+
+  box.appendChild(el("p", { margin: "0 0 16px", color: INK, font: "500 15px/1.5 inherit" },
+    "Microsoft Word est prêt."));
+  const create = mkButton("Nouveau document HumanOrigin", true);
+  create.addEventListener("click", async () => {
+    create.disabled = true;
+    say(msg, "");
+    try {
+      const r = await invoke("ho_new_document");
+      say(msg, r.opened_in_word
+        ? `« ${r.name} » a été créé dans votre dossier de travail et s’ouvre dans Word.`
+        : `« ${r.name} » a été créé dans votre dossier de travail. Ouvrez-le dans Word.`);
+    } catch (e) {
+      say(msg, String((e && (e.message || e)) || "Le document n’a pas pu être créé."), true);
+    } finally { create.disabled = false; }
+  });
+  box.appendChild(create);
+  box.appendChild(msg);
+  box.appendChild(el("p", { margin: "12px 0 18px", color: MUTED, font: "14px/1.5 inherit" },
+    "Gardez l’application HumanOrigin ouverte pendant votre travail."));
+
+  // Action secondaire : elle accède de nouveau au dossier de Word, donc macOS peut redemander.
+  const repair = secondaryButton("Réparer l’intégration Word");
+  const confirmBox = el("div", { margin: "12px 0 0" });
+  repair.addEventListener("click", () => {
+    confirmBox.textContent = "";
+    confirmBox.appendChild(el("p", { margin: "0 0 12px", color: MUTED, font: "14px/1.5 inherit" }, SETUP_EXPLAIN));
+    const go = mkButton("Continuer", true);
+    go.addEventListener("click", () => runSetup(box, go, msg));
+    confirmBox.appendChild(go);
+  });
+  box.appendChild(repair);
+  box.appendChild(confirmBox);
 }
 
 const frenchDate = (d) =>
@@ -49,6 +138,13 @@ async function panel() {
     "HumanOrigin est prêt"));
   wrap.appendChild(el("p", { margin: "0 0 38px", color: MUTED },
     "HumanOrigin fonctionne en arrière-plan lorsque vous finalisez un document depuis Word."));
+
+  // --- Microsoft Word
+  wrap.appendChild(el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",
+    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, "Microsoft Word"));
+  const wordBox = el("div", { margin: "0 0 38px" });
+  wrap.appendChild(wordBox);
+  await renderWord(wordBox);
 
   // --- dossiers surveillés
   wrap.appendChild(el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",
@@ -102,7 +198,8 @@ async function panel() {
         fill();
       }
     } catch (e) {
-      list.appendChild(el("li", { color: "#8C2F2F" }, "La modification n'a pas pu être enregistrée."));
+      list.appendChild(el("li", { color: ERROR_INK },
+        typeof e === "string" ? e : "La modification n'a pas pu être enregistrée."));
     } finally { modify.disabled = false; }
   });
   wrap.appendChild(modify);

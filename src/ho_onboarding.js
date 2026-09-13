@@ -43,6 +43,9 @@ export function showOnboarding() {
     put(list, { margin: "0 0 18px", padding: "0 0 0 18px", color: MUTED,
       font: "13px/1.6 ui-monospace, Menlo, monospace" });
 
+    const err = document.createElement("p");
+    put(err, { margin: "0 0 14px", color: "#8C2F2F", font: "14px/1.5 inherit" });
+
     const row = document.createElement("div");
     put(row, { display: "flex", gap: "8px", "align-items": "center" });
     const add = mkButton("Ajouter un dossier", false);
@@ -66,7 +69,11 @@ export function showOnboarding() {
     add.addEventListener("click", async () => {
       try {
         const picked = await open({ directory: true, multiple: false });
-        if (typeof picked === "string" && !folders.includes(picked)) { folders.push(picked); render(); }
+        err.textContent = "";
+        if (typeof picked !== "string") return;
+        const refusal = await invoke("ho_check_work_folder", { folder: picked });
+        if (refusal) { err.textContent = refusal; return; }
+        if (!folders.includes(picked)) { folders.push(picked); render(); }
       } catch (e) { reject(e); }
     });
     ok.addEventListener("click", async () => {
@@ -75,11 +82,14 @@ export function showOnboarding() {
         await invoke("ho_finalizer_set_folders", { folders, registry: null });
         root.remove();
         resolve(folders);
-      } catch (e) { reject(e); }
+      } catch (e) {
+        if (typeof e === "string") { err.textContent = e; ok.disabled = false; render(); }
+        else reject(e);
+      }
     });
 
     row.appendChild(add); row.appendChild(ok);
-    card.appendChild(h); card.appendChild(p); card.appendChild(list); card.appendChild(row);
+    card.appendChild(h); card.appendChild(p); card.appendChild(list); card.appendChild(err); card.appendChild(row);
     root.appendChild(card);
     document.body.appendChild(root);
     render();

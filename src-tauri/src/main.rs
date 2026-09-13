@@ -60,6 +60,8 @@ mod work_publish;
 #[cfg(feature = "legacy")]
 mod work_store;
 mod ho_finalizer; // Create V1 : finalisation native, dossiers autorisés uniquement.
+mod ho_docx_scrub; // First Run V1 : retrait de la seule référence au complément HumanOrigin.
+mod ho_word_setup; // First Run V1 : intégration Word, une fois, sur geste explicite.
 
 const EXTRA_CARRE_DRAIN: bool = true;
 const EXTRA_CARRE_DRAIN_MS: u64 = 40;
@@ -2060,9 +2062,10 @@ thread::spawn(move || {
     
 // ---------------------------------------------------------------- Create V1 : finalizer natif
 fn ho_finalizer_dir() -> std::path::PathBuf {
+    // Une build de test (RC) peut isoler ses données à la compilation ; la production n'en change pas.
     dirs::data_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("com.humanorigin.app")
+        .join(option_env!("HO_DATA_DIR_ID").unwrap_or("com.humanorigin.app"))
 }
 
 #[tauri::command]
@@ -2072,6 +2075,9 @@ fn ho_finalizer_get_folders() -> Vec<String> {
 
 #[tauri::command]
 fn ho_finalizer_set_folders(folders: Vec<String>, registry: Option<String>) -> Result<(), String> {
+    if let Some(msg) = folders.iter().find_map(|f| ho_finalizer::forbidden_work_folder(f)) {
+        return Err(msg.to_string());
+    }
     let f = ho_finalizer::Finalizer::new(ho_finalizer_dir());
     f.set_config(&ho_finalizer::FinalizerConfig { folders, registry })
 }
@@ -2080,6 +2086,29 @@ fn ho_finalizer_set_folders(folders: Vec<String>, registry: Option<String>) -> R
 fn ho_finalizer_status() -> serde_json::Value {
     let cfg = ho_finalizer::Finalizer::new(ho_finalizer_dir()).config();
     serde_json::json!({ "folders": cfg.folders.len(), "active": !cfg.folders.is_empty() })
+}
+
+#[tauri::command]
+fn ho_check_work_folder(folder: String) -> Option<String> {
+    ho_finalizer::forbidden_work_folder(&folder).map(|m| m.to_string())
+}
+
+/// État de l'intégration Word : sentinelle locale uniquement, jamais le conteneur de Word.
+#[tauri::command]
+fn ho_word_setup_status() -> serde_json::Value {
+    ho_word_setup::status(&ho_finalizer_dir())
+}
+
+/// « Installer » ou « Réparer l'intégration Word » : geste explicite, hors du fil principal.
+#[tauri::command]
+async fn ho_word_setup_install() -> Result<serde_json::Value, String> {
+    ho_word_setup::install(&ho_finalizer_dir(), env!("CARGO_PKG_VERSION"))
+}
+
+#[tauri::command]
+async fn ho_new_document() -> Result<serde_json::Value, String> {
+    let folders = ho_finalizer::Finalizer::new(ho_finalizer_dir()).config().folders;
+    ho_word_setup::new_document(&folders)
 }
 
     tauri::Builder::default()
@@ -2123,7 +2152,11 @@ fn ho_finalizer_status() -> serde_json::Value {
             // peut les atteindre, et aucune ne s'exécute au démarrage.
             ho_finalizer_get_folders,
             ho_finalizer_set_folders,
-            ho_finalizer_status
+            ho_finalizer_status,
+            ho_check_work_folder,
+            ho_word_setup_status,
+            ho_word_setup_install,
+            ho_new_document
         ])
         .run(tauri::generate_context!())
         .expect("error");

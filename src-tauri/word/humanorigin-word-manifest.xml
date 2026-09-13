@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+  <Id>7b3e1c62-4a58-4d1f-9c05-8e2f6a4b90d3</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>HumanOrigin</ProviderName>
+  <DefaultLocale>fr-FR</DefaultLocale>
+  <DisplayName DefaultValue="HumanOrigin"/>
+  <Description DefaultValue="Suit la réalisation de votre document et prépare une preuve qui l'accompagne."/>
+  <IconUrl DefaultValue="https://create.humanorigin.io/word/icon-32.png"/>
+  <HighResolutionIconUrl DefaultValue="https://create.humanorigin.io/word/icon-80.png"/>
+  <SupportUrl DefaultValue="https://humanorigin.io"/>
+  <AppDomains><AppDomain>https://registry.humanorigin.io</AppDomain></AppDomains>
+  <Hosts><Host Name="Document"/></Hosts>
+  <Requirements>
+    <Sets DefaultMinVersion="1.5">
+      <Set Name="WordApi" MinVersion="1.5"/>
+    </Sets>
+  </Requirements>
+  <DefaultSettings><SourceLocation DefaultValue="https://create.humanorigin.io/word/taskpane.html"/></DefaultSettings>
+  <Permissions>ReadWriteDocument</Permissions>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements>
+      <bt:Sets DefaultMinVersion="1.1">
+        <bt:Set Name="SharedRuntime" MinVersion="1.1"/>
+      </bt:Sets>
+    </Requirements>
+    <Hosts>
+      <Host xsi:type="Document">
+        <Runtimes><Runtime resid="Taskpane.Url" lifetime="long"/></Runtimes>
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="GetStarted.Title"/>
+            <Description resid="GetStarted.Description"/>
+            <LearnMoreUrl resid="GetStarted.Url"/>
+          </GetStarted>
+          <FunctionFile resid="Taskpane.Url"/>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="HOGroup">
+                <Label resid="HOGroup.Label"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16"/>
+                  <bt:Image size="32" resid="Icon.32"/>
+                  <bt:Image size="80" resid="Icon.80"/>
+                </Icon>
+                <Control xsi:type="Button" id="HOOpen">
+                  <Label resid="HOOpen.Label"/>
+                  <Supertip><Title resid="HOOpen.Label"/><Description resid="HOOpen.Tip"/></Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16"/>
+                    <bt:Image size="32" resid="Icon.32"/>
+                    <bt:Image size="80" resid="Icon.80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>HOTaskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.Url"/>
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://create.humanorigin.io/word/icon-16.png"/>
+        <bt:Image id="Icon.32" DefaultValue="https://create.humanorigin.io/word/icon-32.png"/>
+        <bt:Image id="Icon.80" DefaultValue="https://create.humanorigin.io/word/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://create.humanorigin.io/word/taskpane.html"/>
+        <bt:Url id="GetStarted.Url" DefaultValue="https://humanorigin.io"/>
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="HOGroup.Label" DefaultValue="HumanOrigin"/>
+        <bt:String id="HOOpen.Label" DefaultValue="HumanOrigin"/>
+        <bt:String id="GetStarted.Title" DefaultValue="HumanOrigin"/>
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="HOOpen.Tip" DefaultValue="Suivre la réalisation de ce document."/>
+        <bt:String id="GetStarted.Description" DefaultValue="Suivre la réalisation de ce document."/>
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

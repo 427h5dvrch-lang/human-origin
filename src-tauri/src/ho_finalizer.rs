@@ -167,6 +167,22 @@ fn put_record(registry: &str, record_id: &str, body: &str) -> Result<(), String>
     }
 }
 
+// ---------------------------------------------------------------- dossiers de travail
+/// Refuse un dossier de travail situé dans le conteneur d'une application (~/Library/Containers,
+/// ~/Library/Group Containers). Examen du seul texte du chemin : aucun accès au disque.
+pub fn forbidden_work_folder(folder: &str) -> Option<&'static str> {
+    let parts: Vec<String> = folder.split('/').map(|s| s.to_lowercase()).collect();
+    let inside = parts.windows(2).any(|w| {
+        w[0] == "library" && (w[1] == "containers" || w[1] == "group containers")
+    });
+    if inside {
+        Some("Ce dossier appartient au conteneur d'une application. Choisissez un dossier ordinaire, \
+              par exemple dans Documents ou sur le Bureau.")
+    } else {
+        None
+    }
+}
+
 // ---------------------------------------------------------------- finalisation
 impl Finalizer {
     pub fn new(dir: PathBuf) -> Self {
@@ -242,6 +258,21 @@ impl Finalizer {
         }
         let facts = decrypt_facts(&m.facts_blob, &m.key, &m.record_id)?;
         let facts_arr = facts.as_array().cloned().unwrap_or_default();
+
+        // Le document envoyé ne doit pas dépendre du complément Office : la référence HumanOrigin,
+        // et elle seule, est retirée du paquet AVANT la liaison. Si le fichier est remplacé, rien
+        // n'est engagé maintenant : le passage suivant lie les octets réellement présents sur le
+        // disque, une fois le fichier stable.
+        {
+            use crate::ho_docx_scrub::{scrub_file_atomic, Outcome, ScrubError, HUMANORIGIN_ADDIN_IDS};
+            match scrub_file_atomic(path, &bytes, &after, HUMANORIGIN_ADDIN_IDS) {
+                Ok(Outcome::NotPresent) => {}
+                Ok(Outcome::Scrubbed(_)) => return None,
+                Err(ScrubError::Transient(_)) => return None,
+                // Structure non reconnue avec certitude : paquet laissé intact, liaison inchangée.
+                Err(ScrubError::Refused(_)) => {}
+            }
+        }
 
         let commitment = commit_bytes(&bytes);
         let filename = path.file_name()?.to_string_lossy().to_string();
@@ -353,6 +384,11 @@ impl Finalizer {
         let registry = cfg.registry.unwrap_or_else(|| "https://registry.humanorigin.io".to_string());
         let mut done = vec![];
         for folder in cfg.folders.iter() {
+            // Un dossier situé dans le conteneur d'une application n'est jamais lu : macOS
+            // redemanderait l'autorisation à chaque lancement.
+            if forbidden_work_folder(folder).is_some() {
+                continue;
+            }
             let dir = PathBuf::from(folder);
             let entries = match fs::read_dir(&dir) {
                 Ok(e) => e,
@@ -370,5 +406,19 @@ impl Finalizer {
             }
         }
         done
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::forbidden_work_folder;
+
+    #[test]
+    fn container_folders_are_refused() {
+        assert!(forbidden_work_folder("/Users/x/Library/Containers/com.microsoft.Word/Data/Documents").is_some());
+        assert!(forbidden_work_folder("/Users/x/Library/Group Containers/UBF8T346G9.Office").is_some());
+        assert!(forbidden_work_folder("/Users/x/library/containers/foo").is_some());
+        assert!(forbidden_work_folder("/Users/x/Desktop/human origin test ").is_none());
+        assert!(forbidden_work_folder("/Users/x/Documents/Library/Notes").is_none());
     }
 }
