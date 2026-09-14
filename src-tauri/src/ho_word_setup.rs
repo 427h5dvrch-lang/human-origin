@@ -178,10 +178,12 @@ pub fn bootstrap_docx(work_folders: &[String]) -> Result<Vec<u8>, String> {
     Ok(w.finish().map_err(|e| e.to_string())?.into_inner())
 }
 
-/// Emplacement proposé au premier document : Documents/HumanOrigin. Calcul du chemin seul, sans
-/// aucun accès au disque.
+/// Emplacement proposé au premier document : Documents/HumanOrigin Documents. Calcul du chemin
+/// seul, sans aucun accès au disque. Documents/HumanOrigin est écarté : l'ancien produit y range
+/// ses projets et sa clé de signature ; il n'est ni proposé, ni touché.
+pub const DEFAULT_WORK_FOLDER_NAME: &str = "HumanOrigin Documents";
 pub fn default_work_folder() -> Option<String> {
-    dirs::document_dir().map(|d| d.join("HumanOrigin").to_string_lossy().to_string())
+    dirs::document_dir().map(|d| d.join(DEFAULT_WORK_FOLDER_NAME).to_string_lossy().to_string())
 }
 
 /// Prépare l'emplacement accepté par l'utilisateur, au moment où il crée son premier document :
@@ -271,9 +273,11 @@ mod tests {
 
     #[test]
     fn work_folder_is_proposed_then_prepared() {
-        assert!(default_work_folder().unwrap().ends_with("/Documents/HumanOrigin"));
+        let proposed = default_work_folder().unwrap();
+        assert!(proposed.ends_with("/Documents/HumanOrigin Documents"), "{}", proposed);
+        assert!(!proposed.ends_with("/Documents/HumanOrigin"));
         let base = std::env::temp_dir().join(format!("ho-work-folder-{}", std::process::id()));
-        let target = base.join("Documents").join("HumanOrigin");
+        let target = base.join("Documents").join(DEFAULT_WORK_FOLDER_NAME);
         assert!(!target.exists());
         prepare_work_folder(target.to_str().unwrap()).unwrap();
         assert!(target.is_dir());
