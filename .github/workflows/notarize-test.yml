@@ -1,10 +1,16 @@
 name: Notarize Test (macOS)
 
+# Qualification uniquement. Le push déclenche ce workflow sur la SEULE branche first-run-v1-p0 :
+# aucun tag, aucune release publiée, aucun latest.json. Le DMG est joint à la release BROUILLON
+# v0.3.0 existante, jamais publié comme artefact Actions.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - first-run-v1-p0
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   notarize-test:
@@ -39,6 +45,13 @@ jobs:
           out.write_bytes(base64.b64decode(data))
           out.chmod(0o600)
           PY
+
+      - name: Download libpdfium
+        run: |
+          curl -fsSL \
+            "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7690/pdfium-mac-arm64.tgz" \
+            | tar xz lib/libpdfium.dylib
+          cp lib/libpdfium.dylib src-tauri/libpdfium.dylib
 
       # Build local signé Developer ID + notarisé + staplé (PAS de tauri-action,
       # donc aucune release et aucun tag ne peuvent être créés).
@@ -78,9 +91,31 @@ jobs:
           xcrun stapler validate "$APP"
           xcrun stapler validate "$DMG"
 
-      - name: Upload notarized DMG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: humanorigin-macos-notarized-dmg
-          path: src-tauri/target/release/bundle/dmg/*.dmg
-          if-no-files-found: error
+      # Diffusion restreinte : le DMG de qualification est ajouté à la release BROUILLON v0.3.0, sous
+      # un nom portant le commit réellement construit. Aucun remplacement, aucun tag, aucune publication.
+      - name: Attach qualification DMG to the draft release v0.3.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          SHA12=$(git rev-parse --short=12 HEAD)
+          echo "Commit construit : $GITHUB_SHA"
+          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n1)
+          NAME="HumanOrigin_0.3.0-qualification-post-v0.3.0-${SHA12}_aarch64.dmg"
+          api() { curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+          REL=$(api "https://api.github.com/repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -c '[.[] | select(.tag_name == "v0.3.0")]')
+          test "$(echo "$REL" | jq length)" = "1" || { echo "Release v0.3.0 introuvable ou multiple : arrêt"; exit 1; }
+          echo "$REL" | jq -e '.[0].draft == true' >/dev/null || { echo "La release v0.3.0 n'est pas en brouillon : arrêt"; exit 1; }
+          ID=$(echo "$REL" | jq -r '.[0].id')
+          echo "Avant ajout : brouillon=$(echo "$REL" | jq -r '.[0].draft') · pré-release=$(echo "$REL" | jq -r '.[0].prerelease')"
+          echo "$REL" | jq -r '.[0].assets[].name' | tee assets_before.txt
+          if grep -qxF "$NAME" assets_before.txt; then echo "Un fichier de ce nom existe déjà : arrêt sans remplacement"; exit 1; fi
+          cp "$DMG" "$NAME"
+          shasum -a 256 "$NAME"
+          api -X POST -H "Content-Type: application/octet-stream" --data-binary @"$NAME" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$ID/assets?name=$NAME" | jq -r '"Ajouté : " + .name + " (" + (.size|tostring) + " octets)"'
+          AFTER=$(api "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$ID")
+          echo "$AFTER" | jq -e '.draft == true' >/dev/null || { echo "La release n'est plus en brouillon"; exit 1; }
+          echo "Après ajout : brouillon=$(echo "$AFTER" | jq -r .draft) · pré-release=$(echo "$AFTER" | jq -r .prerelease)"
+          echo "$AFTER" | jq -r '.assets[].name'
