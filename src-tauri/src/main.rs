@@ -2106,9 +2106,26 @@ async fn ho_word_setup_install() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-async fn ho_new_document() -> Result<serde_json::Value, String> {
-    let folders = ho_finalizer::Finalizer::new(ho_finalizer_dir()).config().folders;
-    ho_word_setup::new_document(&folders)
+fn ho_default_work_folder() -> Option<String> {
+    ho_word_setup::default_work_folder()
+}
+
+/// Premier document : l'emplacement proposé (ou choisi) n'est enregistré qu'ici, quand
+/// l'utilisateur crée son document. Une configuration existante n'est jamais remplacée.
+#[tauri::command]
+async fn ho_new_document(folder: Option<String>) -> Result<serde_json::Value, String> {
+    let f = ho_finalizer::Finalizer::new(ho_finalizer_dir());
+    let mut cfg = f.config();
+    if cfg.folders.is_empty() {
+        let chosen = folder.ok_or("Choisissez l’emplacement de vos documents HumanOrigin.")?;
+        if let Some(msg) = ho_finalizer::forbidden_work_folder(&chosen) {
+            return Err(msg.to_string());
+        }
+        ho_word_setup::prepare_work_folder(&chosen)?;
+        cfg.folders = vec![chosen];
+        f.set_config(&cfg)?;
+    }
+    ho_word_setup::new_document(&cfg.folders)
 }
 
     tauri::Builder::default()
@@ -2156,6 +2173,7 @@ async fn ho_new_document() -> Result<serde_json::Value, String> {
             ho_check_work_folder,
             ho_word_setup_status,
             ho_word_setup_install,
+            ho_default_work_folder,
             ho_new_document
         ])
         .run(tauri::generate_context!())

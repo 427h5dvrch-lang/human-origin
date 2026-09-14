@@ -178,6 +178,31 @@ pub fn bootstrap_docx(work_folders: &[String]) -> Result<Vec<u8>, String> {
     Ok(w.finish().map_err(|e| e.to_string())?.into_inner())
 }
 
+/// Emplacement proposé au premier document : Documents/HumanOrigin. Calcul du chemin seul, sans
+/// aucun accès au disque.
+pub fn default_work_folder() -> Option<String> {
+    dirs::document_dir().map(|d| d.join("HumanOrigin").to_string_lossy().to_string())
+}
+
+/// Prépare l'emplacement accepté par l'utilisateur, au moment où il crée son premier document :
+/// création du dossier s'il n'existe pas. macOS peut alors demander l'accès (dossier Documents…).
+pub fn prepare_work_folder(folder: &str) -> Result<(), String> {
+    let p = Path::new(folder);
+    if folder.trim().is_empty() || !p.is_absolute() {
+        return Err("L’emplacement choisi n’est pas valide.".into());
+    }
+    fs::create_dir_all(p).map_err(|e| match e.kind() {
+        std::io::ErrorKind::PermissionDenied => "macOS n’a pas autorisé HumanOrigin à créer ce dossier. \
+            Autorisez l’accès demandé, ou choisissez un autre emplacement."
+            .to_string(),
+        _ => format!("Le dossier n’a pas pu être créé : {}", e),
+    })?;
+    if !p.is_dir() {
+        return Err("L’emplacement choisi n’est pas un dossier accessible.".into());
+    }
+    Ok(())
+}
+
 /// Crée « Nouveau document HumanOrigin.docx » (ou « … 2 », « … 3 ») dans le premier dossier de
 /// travail, sans jamais écraser un fichier, puis l'ouvre dans Word.
 pub fn new_document(work_folders: &[String]) -> Result<serde_json::Value, String> {
@@ -207,7 +232,7 @@ pub fn new_document(work_folders: &[String]) -> Result<serde_json::Value, String
                     .map(|s| s.success())
                     .unwrap_or(false);
                 return Ok(serde_json::json!({
-                    "path": path.to_string_lossy(), "name": name, "opened_in_word": opened
+                    "path": path.to_string_lossy(), "name": name, "folder": folder, "opened_in_word": opened
                 }));
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -242,6 +267,21 @@ mod tests {
         }).to_string()).unwrap();
         assert_eq!(status(&dir)["state"], "installed");
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn work_folder_is_proposed_then_prepared() {
+        assert!(default_work_folder().unwrap().ends_with("/Documents/HumanOrigin"));
+        let base = std::env::temp_dir().join(format!("ho-work-folder-{}", std::process::id()));
+        let target = base.join("Documents").join("HumanOrigin");
+        assert!(!target.exists());
+        prepare_work_folder(target.to_str().unwrap()).unwrap();
+        assert!(target.is_dir());
+        fs::write(target.join("existant.docx"), b"x").unwrap();
+        prepare_work_folder(target.to_str().unwrap()).unwrap();          // dossier existant : rien n'est touché
+        assert_eq!(fs::read(target.join("existant.docx")).unwrap(), b"x");
+        assert!(prepare_work_folder("relatif/HumanOrigin").is_err());
+        fs::remove_dir_all(&base).ok();
     }
 
     #[test]

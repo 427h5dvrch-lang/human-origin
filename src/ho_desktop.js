@@ -8,7 +8,6 @@ import { open } from "@tauri-apps/api/dialog";
 import { readTextFile } from "@tauri-apps/api/fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { PAPER, INK, MUTED, put, mkButton } from "./ho_ui.js";
-import { showOnboarding } from "./ho_onboarding.js";
 
 const el = (tag, decls, text) => {
   const n = document.createElement(tag);
@@ -65,6 +64,64 @@ async function runSetup(box, button, msg) {
   }
 }
 
+// Mise à jour de la liste « Dossiers surveillés » après la création du premier document.
+let refreshFolderList = async () => {};
+
+const errorText = (e, fallback) => String((e && (e.message || e)) || fallback);
+
+/** Crée le document ; `folder` n'est utilisé que si aucun emplacement n'est encore configuré. */
+async function createDocument(button, msg, folder, proposalBox) {
+  button.disabled = true;
+  say(msg, folder ? "Préparation de l’emplacement et création du document…" : "");
+  try {
+    const r = await invoke("ho_new_document", { folder });
+    if (proposalBox) proposalBox.textContent = "";
+    say(msg, r.opened_in_word
+      ? `« ${r.name} » a été créé dans ${r.folder} et s’ouvre dans Word.`
+      : `« ${r.name} » a été créé dans ${r.folder}. Ouvrez-le dans Word.`);
+    await refreshFolderList();
+  } catch (e) {
+    say(msg, errorText(e, "Le document n’a pas pu être créé."), true);
+  } finally { button.disabled = false; }
+}
+
+/** Premier document : l'emplacement dédié est proposé, visible et modifiable, avant toute création. */
+async function proposeLocation(box, msg) {
+  let proposed = "";
+  try { proposed = (await invoke("ho_default_work_folder")) || ""; } catch (e) { proposed = ""; }
+  box.textContent = "";
+  put(box, { margin: "16px 0 0", padding: "14px 16px", border: "1px solid #D9D5CC",
+    "border-radius": "8px", background: "#FFFFFF" });
+  box.appendChild(el("p", { margin: "0 0 4px", color: INK, font: "500 15px/1.5 inherit" },
+    "Emplacement de vos documents HumanOrigin"));
+  const path = el("p", { margin: "0 0 10px", color: INK, "word-break": "break-all",
+    font: "13px/1.5 ui-monospace, Menlo, monospace" }, proposed || "aucun emplacement proposé");
+  box.appendChild(path);
+  box.appendChild(el("p", { margin: "0 0 14px", color: MUTED, font: "14px/1.5 inherit" },
+    "HumanOrigin crée ce dossier s’il n’existe pas, y enregistre vos documents HumanOrigin et ne "
+    + "surveille que lui. Vous pourrez le changer plus tard. macOS peut vous demander d’autoriser "
+    + "HumanOrigin à accéder à cet emplacement."));
+  const row = el("div", { display: "flex", gap: "10px", "align-items": "center", "flex-wrap": "wrap" });
+  const go = mkButton("Créer le document ici", true);
+  go.disabled = !proposed;
+  const other = secondaryButton("Choisir un autre emplacement…");
+  go.addEventListener("click", () => createDocument(go, msg, proposed, box));
+  other.addEventListener("click", async () => {
+    try {
+      const picked = await open({ directory: true, multiple: false });
+      if (typeof picked !== "string") return;
+      const refusal = await invoke("ho_check_work_folder", { folder: picked });
+      if (refusal) { say(msg, refusal, true); return; }
+      proposed = picked;
+      path.textContent = picked;
+      go.disabled = false;
+      say(msg, "");
+    } catch (e) { say(msg, errorText(e, "L’emplacement n’a pas pu être choisi."), true); }
+  });
+  row.appendChild(go); row.appendChild(other);
+  box.appendChild(row);
+}
+
 /** Section Microsoft Word. L'état vient uniquement de la sentinelle locale de l'application. */
 async function renderWord(box) {
   box.textContent = "";
@@ -87,19 +144,16 @@ async function renderWord(box) {
   box.appendChild(el("p", { margin: "0 0 16px", color: INK, font: "500 15px/1.5 inherit" },
     "Microsoft Word est prêt."));
   const create = mkButton("Nouveau document HumanOrigin", true);
+  const proposal = el("div");
   create.addEventListener("click", async () => {
-    create.disabled = true;
     say(msg, "");
-    try {
-      const r = await invoke("ho_new_document");
-      say(msg, r.opened_in_word
-        ? `« ${r.name} » a été créé dans votre dossier de travail et s’ouvre dans Word.`
-        : `« ${r.name} » a été créé dans votre dossier de travail. Ouvrez-le dans Word.`);
-    } catch (e) {
-      say(msg, String((e && (e.message || e)) || "Le document n’a pas pu être créé."), true);
-    } finally { create.disabled = false; }
+    let folders = [];
+    try { folders = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { folders = []; }
+    if (folders.length) return createDocument(create, msg, null, proposal);
+    await proposeLocation(proposal, msg);
   });
   box.appendChild(create);
+  box.appendChild(proposal);
   box.appendChild(msg);
   box.appendChild(el("p", { margin: "12px 0 18px", color: MUTED, font: "14px/1.5 inherit" },
     "Gardez l’application HumanOrigin ouverte pendant votre travail."));
@@ -162,7 +216,8 @@ async function panel() {
   const fill = () => {
     list.textContent = "";
     if (!folders.length) {
-      list.appendChild(el("li", { color: MUTED, font: "15px/1.6 inherit" }, "aucun dossier configuré"));
+      list.appendChild(el("li", { color: MUTED, font: "15px/1.6 inherit" },
+        "Aucun pour l’instant. Un emplacement vous sera proposé à la création de votre premier document."));
       return;
     }
     for (const f of folders) {
@@ -175,6 +230,10 @@ async function panel() {
     }
   };
   fill();
+  refreshFolderList = async () => {
+    try { folders = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { folders = []; }
+    fill();
+  };
   wrap.appendChild(list);
 
   const modify = document.createElement("button");
@@ -240,8 +299,7 @@ function fatal(e) {
 
 (async () => {
   try {
-    const st = await invoke("ho_finalizer_status");
-    if (!st || !st.active) await showOnboarding();
+    // Aucun choix de dossier au démarrage : l'emplacement est proposé au premier document.
     await panel();
   } catch (e) {
     fatal(e);
