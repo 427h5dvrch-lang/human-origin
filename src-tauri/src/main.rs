@@ -7,7 +7,6 @@
 mod publication_core;
 
 use chrono::Utc;
-use device_query::{DeviceQuery, DeviceState, Keycode};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::fs::File;
@@ -32,6 +31,7 @@ use resvg::tiny_skia::{Pixmap, Transform};
 use resvg::usvg::{Options, Tree};
 
 #[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", feature = "legacy"))]
 use macos_accessibility_client::accessibility;
 
 #[cfg(feature = "legacy")]
@@ -2007,57 +2007,14 @@ fn main() {
 
     let _ = tauri_plugin_deep_link::prepare("com.humanorigin.app");
 
-let is_scanning_clone = is_scanning.clone();
-let runtime_clone = runtime.clone();
-let last_input_seen_clone = last_input_seen.clone();
-
-thread::spawn(move || {
-    let device_state = DeviceState::new();
-    let mut prev_keys: Vec<Keycode> = vec![];
-    let mut prev_mouse: Vec<bool> = vec![];
-
-    loop {
-        thread::sleep(Duration::from_millis(20));
-
-        let keys = device_state.get_keys();
-        let mouse = device_state.get_mouse();
-        let now_u64 = Utc::now().timestamp_millis() as u64;
-        let now_i64 = now_u64 as i64;
-
-        if keys != prev_keys && keys.len() > prev_keys.len() {
-            last_input_seen_clone.store(now_u64, Ordering::Relaxed);
-
-            if *is_scanning_clone.lock().unwrap() {
-                let mut rt = runtime_clone.lock().unwrap();
-                if rt.active_gen != 0 {
-                    rt.keystroke_timestamps.push(now_i64);
-                    if keys.contains(&Keycode::Backspace)
-                        && !prev_keys.contains(&Keycode::Backspace)
-                    {
-                        rt.backspace_timestamps.push(now_i64);
-                    }
-                }
-            }
-        }
-
-        let current_buttons = mouse.button_pressed;
-        if current_buttons.iter().filter(|&&b| b).count()
-            > prev_mouse.iter().filter(|&&b| b).count()
-        {
-            last_input_seen_clone.store(now_u64, Ordering::Relaxed);
-
-            if *is_scanning_clone.lock().unwrap() {
-                let mut rt = runtime_clone.lock().unwrap();
-                if rt.active_gen != 0 {
-                    rt.click_timestamps.push(now_i64);
-                }
-            }
-        }
-
-        prev_keys = keys;
-        prev_mouse = current_buttons;
-    }
-});
+// First Run V1 : plus aucune observation d'entrées. L'observation du travail vient du volet Word,
+// qui scelle ses faits dans le document ; l'application ne fait que surveiller des dossiers,
+// retirer le complément du paquet, poser la liaison exacte et déposer le Record.
+//
+// La boucle de capture héritée a été retirée ici : lancée inconditionnellement, elle réclamait
+// l'Accessibilité (AXIsProcessTrustedWithOptions, avec dialogue) puis interrogeait clavier et
+// souris toutes les 20 ms — donc la Surveillance de la saisie — pour alimenter des compteurs
+// qu'aucune commande exposée ne lisait.
 
     
 // ---------------------------------------------------------------- Create V1 : finalizer natif

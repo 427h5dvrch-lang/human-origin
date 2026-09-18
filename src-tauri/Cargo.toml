@@ -31,7 +31,6 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 
 # --- SYSTEM (keyboard/mouse + dirs) ---
-device_query = "4.0.1"
 dirs = "5.0"
 
 # --- CRYPTO (device signature + drafts encryption) ---
@@ -60,10 +59,12 @@ pdfium-render = "0.8.37"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-macos-accessibility-client = "0.0.2"
+# Uniquement pour l'ancien produit : la version First Run ne consulte jamais
+# l'Accessibilité, donc l'API n'entre pas dans le binaire normal.
+macos-accessibility-client = { version = "0.0.2", optional = true }
 [features]
 default = ["custom-protocol"]
 # Ancien produit (projets, analyse de session, scores, cartouches, verdicts).
 # JAMAIS activée en production : ce code n'est ni compilé, ni exposé, ni exécutable.
-legacy = []
+legacy = ["dep:macos-accessibility-client"]
 custom-protocol = ["tauri/custom-protocol"]
