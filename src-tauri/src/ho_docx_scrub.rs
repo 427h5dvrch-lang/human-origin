@@ -723,6 +723,37 @@ mod tests {
         assert!(matches!(scrub_bytes(&input, HUMANORIGIN_ADDIN_IDS), Err(ScrubError::Refused(_))));
     }
 
+    /// SHARED WEBEXTENSION -> NO BINDING.
+    /// Un volet partagé avec un autre complément fait refuser le retrait ; le paquet reste donc
+    /// porteur de la référence HumanOrigin. La finalisation doit s'arrêter là : pas de liaison,
+    /// donc pas de Record, pas de succès, pas de renommage. Ce test tient les deux bouts de la
+    /// chaîne : le refus du scrub, et la décision du finalizer qui en découle.
+    #[test]
+    fn shared_webextension_yields_no_binding() {
+        let input = docx(&[
+            ("[Content_Types].xml", ct(&format!("{}{}", OV_TP, OV_W1))),
+            ("_rels/.rels", ROOT_RELS.to_string()),
+            ("word/document.xml", DOC.to_string()),
+            ("word/_rels/document.xml.rels", rels(r#"<Relationship Id="rId9" Type="http://schemas.microsoft.com/office/2011/relationships/webextension" Target="webextensions/webextension1.xml"/>"#)),
+            ("word/webextensions/taskpanes.xml", taskpanes(TP_HO)),
+            ("word/webextensions/_rels/taskpanes.xml.rels", rels(REL_W1)),
+            ("word/webextensions/webextension1.xml", webext(HO, "AAAA-HO")),
+        ]);
+        let refus = scrub_bytes(&input, HUMANORIGIN_ADDIN_IDS)
+            .expect_err("un volet partagé doit faire refuser le retrait");
+        assert!(matches!(refus, ScrubError::Refused(_)));
+        assert!(
+            !crate::ho_finalizer::binding_allowed(&Err::<Outcome, ScrubError>(refus)),
+            "un retrait refusé ne doit jamais autoriser la liaison"
+        );
+        // Les autres états restent inchangés.
+        assert!(crate::ho_finalizer::binding_allowed(&Ok::<Outcome, ScrubError>(Outcome::NotPresent)));
+        assert!(!crate::ho_finalizer::binding_allowed(&Ok::<Outcome, ScrubError>(Outcome::Scrubbed(vec![]))));
+        assert!(!crate::ho_finalizer::binding_allowed(&Err::<Outcome, ScrubError>(
+            ScrubError::Transient("x".into())
+        )));
+    }
+
     #[test]
     fn atomic_replace_and_change_detection() {
         let input = docx(&[

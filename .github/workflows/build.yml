@@ -1,41 +1,19 @@
-name: Release App
+name: Build (contrôle)
 
-# Neutralisé (Sprint 3A) : ne se déclenche plus sur tag v* pour éviter une double release.
-# Le pipeline de release sur tag v* est release.yml (unique publisher). Ce workflow reste
-# disponible en déclenchement manuel uniquement.
+# Ce workflow NE PUBLIE RIEN. Il compile et dépose les artefacts dans l'exécution GitHub Actions,
+# où seules les personnes ayant accès au dépôt peuvent les récupérer, et où ils expirent.
+#
+# Le seul chemin vers une Release GitHub est release.yml, déclenché par un tag v*, qui publie en
+# brouillon et en préversion. Cette séparation est volontaire : un déclenchement manuel ne doit
+# pas pouvoir créer une release publique, ni déplacer releases/latest, que l'updater interroge.
 on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    outputs:
-      release_id: ${{ steps.create_release.outputs.id }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Get version
-        id: get_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ env.VERSION }}
-          release_name: HumanOrigin ${{ env.VERSION }}
-          draft: false
-          prerelease: false
-
   build-tauri:
-    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -51,9 +29,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - name: Install frontend dependencies
         run: npm ci
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test --bin human-origin
       - name: Build Tauri App
         uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Ni GITHUB_TOKEN, ni releaseId, ni tagName : l'action ne peut donc rien publier.
+      - name: Collect bundles
+        uses: actions/upload-artifact@v4
         with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
+          name: bundle-${{ matrix.platform }}
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: warn
+          retention-days: 7

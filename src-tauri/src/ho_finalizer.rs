@@ -198,6 +198,20 @@ pub fn forbidden_work_folder(folder: &str) -> Option<&'static str> {
 }
 
 // ---------------------------------------------------------------- finalisation
+/// Le seul état qui autorise à engager le document : aucune référence HumanOrigin ne subsiste
+/// dans le paquet tel qu'il est sur le disque.
+///
+/// Un scrub REFUSÉ — structure partagée avec un autre complément — laisse le paquet intact, donc
+/// porteur de la référence au complément HumanOrigin. Engager ce fichier reviendrait à sceller un
+/// objet qui dépend encore du complément : on refuse, et la finalisation s'arrête sans liaison,
+/// sans Record, sans succès, sans renommage. Un scrub RÉUSSI a réécrit le fichier : la liaison
+/// attendra le passage suivant, sur les octets réellement présents.
+pub(crate) fn binding_allowed(
+    outcome: &Result<crate::ho_docx_scrub::Outcome, crate::ho_docx_scrub::ScrubError>,
+) -> bool {
+    matches!(outcome, Ok(crate::ho_docx_scrub::Outcome::NotPresent))
+}
+
 impl Finalizer {
     pub fn new(dir: PathBuf) -> Self {
         fs::create_dir_all(&dir).ok();
@@ -278,13 +292,9 @@ impl Finalizer {
         // n'est engagé maintenant : le passage suivant lie les octets réellement présents sur le
         // disque, une fois le fichier stable.
         {
-            use crate::ho_docx_scrub::{scrub_file_atomic, Outcome, ScrubError, HUMANORIGIN_ADDIN_IDS};
-            match scrub_file_atomic(path, &bytes, &after, HUMANORIGIN_ADDIN_IDS) {
-                Ok(Outcome::NotPresent) => {}
-                Ok(Outcome::Scrubbed(_)) => return None,
-                Err(ScrubError::Transient(_)) => return None,
-                // Structure non reconnue avec certitude : paquet laissé intact, liaison inchangée.
-                Err(ScrubError::Refused(_)) => {}
+            use crate::ho_docx_scrub::{scrub_file_atomic, HUMANORIGIN_ADDIN_IDS};
+            if !binding_allowed(&scrub_file_atomic(path, &bytes, &after, HUMANORIGIN_ADDIN_IDS)) {
+                return None;
             }
         }
 
