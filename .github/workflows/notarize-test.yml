@@ -9,8 +9,9 @@ on:
     branches:
       - first-run-v1-p0
 
+# Aucun droit d'écriture : ce workflow qualifie, il ne publie pas.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   notarize-test:
@@ -91,31 +92,14 @@ jobs:
           xcrun stapler validate "$APP"
           xcrun stapler validate "$DMG"
 
-      # Diffusion restreinte : le DMG de qualification est ajouté à la release BROUILLON v0.3.0, sous
-      # un nom portant le commit réellement construit. Aucun remplacement, aucun tag, aucune publication.
-      - name: Attach qualification DMG to the draft release v0.3.0
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          SHA12=$(git rev-parse --short=12 HEAD)
-          echo "Commit construit : $GITHUB_SHA"
-          DMG=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -n1)
-          NAME="HumanOrigin_0.3.0-qualification-post-v0.3.0-${SHA12}_aarch64.dmg"
-          api() { curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
-          REL=$(api "https://api.github.com/repos/$GITHUB_REPOSITORY/releases?per_page=100" | jq -c '[.[] | select(.tag_name == "v0.3.0")]')
-          test "$(echo "$REL" | jq length)" = "1" || { echo "Release v0.3.0 introuvable ou multiple : arrêt"; exit 1; }
-          echo "$REL" | jq -e '.[0].draft == true' >/dev/null || { echo "La release v0.3.0 n'est pas en brouillon : arrêt"; exit 1; }
-          ID=$(echo "$REL" | jq -r '.[0].id')
-          echo "Avant ajout : brouillon=$(echo "$REL" | jq -r '.[0].draft') · pré-release=$(echo "$REL" | jq -r '.[0].prerelease')"
-          echo "$REL" | jq -r '.[0].assets[].name' | tee assets_before.txt
-          if grep -qxF "$NAME" assets_before.txt; then echo "Un fichier de ce nom existe déjà : arrêt sans remplacement"; exit 1; fi
-          cp "$DMG" "$NAME"
-          shasum -a 256 "$NAME"
-          api -X POST -H "Content-Type: application/octet-stream" --data-binary @"$NAME" \
-            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$ID/assets?name=$NAME" | jq -r '"Ajouté : " + .name + " (" + (.size|tostring) + " octets)"'
-          AFTER=$(api "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$ID")
-          echo "$AFTER" | jq -e '.draft == true' >/dev/null || { echo "La release n'est plus en brouillon"; exit 1; }
-          echo "Après ajout : brouillon=$(echo "$AFTER" | jq -r .draft) · pré-release=$(echo "$AFTER" | jq -r .prerelease)"
-          echo "$AFTER" | jq -r '.assets[].name'
+      # Le DMG de qualification NE PART PLUS dans une Release GitHub : un push de branche ne doit
+      # pas pouvoir écrire dans une release existante, fût-elle en brouillon. Il reste disponible
+      # comme artefact de l'exécution, accessible aux seules personnes ayant accès au dépôt, et il
+      # expire. Le seul chemin vers une Release reste release.yml, sur tag.
+      - name: Collect qualification DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualification-${{ github.sha }}
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 14
