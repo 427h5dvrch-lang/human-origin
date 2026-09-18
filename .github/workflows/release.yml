@@ -81,8 +81,11 @@ jobs:
           APPLE_API_KEY_PATH: ${{ matrix.platform == 'macos-latest' && format('{0}/AuthKey.p8', runner.temp) || '' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: "HumanOrigin v__VERSION__"
+          # Le tag poussé fait autorité, et lui seul : la version embarquée nomme les artefacts de
+          # l'application, elle ne décide plus dans quelle Release GitHub ils atterrissent. Ainsi
+          # v0.3.0-rc.1 va dans la release v0.3.0-rc.1, et un futur v0.3.0 dans la release v0.3.0.
+          tagName: ${{ github.ref_name }}
+          releaseName: "HumanOrigin ${{ github.ref_name }}"
           releaseBody: "Release signed (Developer ID) and notarized."
           releaseDraft: true
           prerelease: true
@@ -103,7 +106,7 @@ jobs:
           echo "Version: $VERSION"
           xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
           xcrun stapler staple "$DMG"
-          gh release upload "v$VERSION" "$DMG" --clobber
+          gh release upload "${GITHUB_REF_NAME}" "$DMG" --clobber
 
       # Vérification post-build : échoue si Gatekeeper n'accepte pas l'app
       # (notarisation absente) ou si le DMG n'est pas staplé.
