@@ -33,7 +33,14 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-/** Recursive lexicographic key sort (RFC 8785 JCS). */
+/**
+ * Recursive lexicographic key sort, then JSON.stringify by the caller.
+ *
+ * NOT RFC 8785 (JCS), despite an earlier comment that said so: this profile only
+ * sorts keys. It does not specify number serialization, string escaping or Unicode
+ * handling, and JavaScript's default sort orders keys by UTF-16 code unit rather
+ * than by code point. Behaviour is unchanged — only this description is corrected.
+ */
 function canonicalize(obj: unknown): unknown {
   if (obj === null || typeof obj !== "object") return obj;
   if (Array.isArray(obj)) return obj.map(canonicalize);
