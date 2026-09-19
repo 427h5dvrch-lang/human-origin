@@ -96,6 +96,7 @@ Entrée à ajouter **ensuite** dans `verify-record/src/trust_keys.js` — pas av
   status: "active",
   valid_from: "<date de la cérémonie, ISO 8601 UTC, millisecondes, Z>",
   retired_at: null,
+  revoked_at: null,
 },
 ```
 
@@ -104,34 +105,19 @@ les premières attestations seraient refusées. La poser à l'instant de la cér
 
 ---
 
-## 4. Sauvegarde — deux options, à trancher avant génération
+## 4. Sauvegarde — décision actée : AUCUNE
 
-### A — clé privée uniquement dans le secret Supabase
+La clé privée de `ho-record-server-v1` vit **uniquement** dans le secret Supabase
+`HUMANORIGIN_RECORD_SIGNING_PRIVATE_KEY_B64`. Aucune sauvegarde hors ligne pour V1.
 
-| | |
-|---|---|
-| Risque de perte | **Élevé.** Un secret supprimé, un projet perdu ou recréé, et la clé n'existe plus nulle part. |
-| Risque de compromission | **Faible.** Une seule copie, une seule surface : le magasin de secrets. |
-| Si perdue | Aucune nouvelle attestation possible sous `v1`. **Les Records déjà attestés restent vérifiables**, la clé publique restant dans le jeu de confiance. Il faut émettre `v2` et reprendre les attestations à partir de là. |
-| Si compromise | Un tiers peut contre-signer n'importe quel condensé. Révocation de `v1`, ce qui invalide **toutes** ses attestations, passées comprises. |
-| Rotation | Générer `v2`, l'ajouter en `active`, passer `v1` en `retiring` puis `retired`. |
+Ce que cela coûte, et pourquoi c'est tenable : perdre la clé privée **n'invalide aucune
+attestation déjà émise**, Verify ne se servant que de la clé publique. En cas de perte :
 
-### B — secret Supabase, plus une sauvegarde chiffrée hors ligne
+1. retirer `v1` de l'émission — `status: "retiring"` puis `"retired"` ;
+2. générer `v2` lors d'une nouvelle cérémonie ;
+3. **conserver la clé publique de `v1`** dans le jeu, pour que l'historique reste vérifiable.
 
-| | |
-|---|---|
-| Risque de perte | **Faible**, tant que la sauvegarde et sa phrase de passe survivent à leur détenteur. |
-| Risque de compromission | **Plus élevé** : deux surfaces au lieu d'une, et la sauvegarde vit plus longtemps que le secret. Une phrase de passe faible annule tout le bénéfice. |
-| Si perdue | Restauration depuis la sauvegarde ; le service reprend sans changer de clé. |
-| Si compromise | Identique à A, **et** il faut détruire la sauvegarde, sans preuve possible qu'elle n'a pas été copiée. |
-| Rotation | Identique à A, plus la destruction contrôlée de l'ancienne sauvegarde. |
-
-**Je ne tranche pas.** Le point de bascule est simple : A protège contre le vol, B contre l'oubli.
-Comme la perte de `v1` **n'invalide aucune attestation déjà émise** et coûte seulement une
-rotation, l'argument habituel en faveur d'une sauvegarde — « sinon tout est perdu » — ne
-s'applique pas ici. C'est ce qui rend A défendable, contrairement à une clé de chiffrement.
-
----
+Une seule copie, une seule surface d'exposition. Le risque assumé est la perte, pas le vol.
 
 ## 5. Rotation
 
@@ -147,16 +133,23 @@ attestations émises pendant sa validité restent vérifiables, même si la clé
 contrôle la fenêtre de validité contre `server_signed_at`. Deux entrées coexistent sans ambiguïté :
 chaque attestation désigne la sienne.
 
-### Trois états
+### Quatre situations, distinctes
 
-| État | `trust_keys.js` | Effet dans Verify |
+Une entrée révoquée **n'est jamais supprimée** du jeu. La supprimer ferait dire à Verify
+« je ne connais pas cette clé » là où la vérité est « je la connais et je la refuse ».
+`UNKNOWN_KEY_ID` reste réservé à une clé **réellement** inconnue.
+
+| Situation | Entrée dans `trust_keys.js` | Résultat dans Verify |
 |---|---|---|
-| **ACTIVE** | présente, `retired_at: null` | nouvelles attestations émises sous cette clé ; vérification normale |
-| **RETIRED_BUT_TRUSTED** | présente, `retired_at` renseignée | plus aucune émission ; les attestations **antérieures** à `retired_at` restent `SERVER_ATTESTED`, les postérieures deviennent `ATTESTATION_PROBLEM / UNKNOWN_KEY_ID`. **Le retrait n'invalide pas le passé.** |
-| **REVOKED** | **entrée retirée du fichier** | **toutes** les attestations de cette clé deviennent `ATTESTATION_PROBLEM / UNKNOWN_KEY_ID`, passées comprises. Jamais `LEGACY`. |
+| **ACTIVE** | `status: "active"`, `retired_at: null`, `revoked_at: null` | émission sous cette clé ; vérification normale |
+| **RETIRED_BUT_TRUSTED** | `status: "retired"`, `retired_at` renseignée | plus aucune émission. Les attestations **antérieures** à `retired_at` restent `SERVER_ATTESTED` ; les postérieures donnent `ATTESTATION_PROBLEM / KEY_NOT_VALID_AT_TIME`. **Le retrait n'invalide pas le passé.** |
+| **REVOKED** | `status: "revoked"`, `revoked_at` renseignée — **entrée conservée** | **toutes** les attestations de cette clé donnent `ATTESTATION_PROBLEM / REVOKED_KEY`, passées comprises. Jamais `SERVER_ATTESTED`, jamais `LEGACY`, jamais `UNKNOWN_KEY_ID`. |
+| **INCONNUE** | absente du jeu | `ATTESTATION_PROBLEM / UNKNOWN_KEY_ID` |
 
-La distinction tient à un seul geste : un retrait renseigne `retired_at`, une révocation
-**supprime l'entrée**. La seconde est destructrice et ne se décide que sur compromission avérée.
+La révocation est **totale et non bornée dans le temps** : une compromission se découvre
+après coup, et l'on ignore quand la clé a fui. `revoked_at` consigne la date de la
+**décision**, il ne sert pas de seuil. Une variante bornée dans le temps serait possible,
+mais elle supposerait connaître l'instant de la fuite — ce qui n'est presque jamais le cas.
 
 **Recouvrement.** Une clé en retrait reste au moins **90 jours** dans le jeu, le temps qu'une
 version de Verify portant `v2` atteigne les utilisateurs. Un utilisateur sur une vieille version
