@@ -4,6 +4,7 @@
 // Les styles sont posés EN LIGNE, en priorité `important` : une feuille injectée s'était révélée
 // inopérante dans cette fenêtre, et rien de l'application ne doit pouvoir masquer cette couche.
 import { invoke } from "@tauri-apps/api/tauri";
+import { t } from "./ho_i18n.js";
 import { open } from "@tauri-apps/api/dialog";
 import { PAPER, INK, MUTED, BLUE, LAYER, TOP, put, mkButton } from "./ho_ui.js";
 
@@ -31,12 +32,11 @@ export function showOnboarding() {
     });
 
     const h = document.createElement("h2");
-    h.textContent = "Choisissez les dossiers dans lesquels HumanOrigin peut finaliser vos documents.";
+    h.textContent = t("onboarding.folders.title");
     put(h, { font: "600 18px/1.4 inherit", margin: "0 0 10px", color: INK });
 
     const p = document.createElement("p");
-    p.textContent = "HumanOrigin n'ouvrira que les documents qu'il a lui-même marqués, et seulement "
-      + "dans ces dossiers. Rien d'autre n'est lu.";
+    p.textContent = t("onboarding.folders.explain");
     put(p, { margin: "0 0 16px", color: MUTED, font: "15px/1.55 inherit" });
 
     const list = document.createElement("ul");
@@ -48,14 +48,14 @@ export function showOnboarding() {
 
     const row = document.createElement("div");
     put(row, { display: "flex", gap: "8px", "align-items": "center" });
-    const add = mkButton("Ajouter un dossier", false);
+    const add = mkButton(t("onboarding.folders.add"), false);
     const ok = mkButton("Terminer", true);
 
     const render = () => {
       list.textContent = "";
       if (!folders.length) {
         const li = document.createElement("li");
-        li.textContent = "aucun dossier pour l'instant";
+        li.textContent = t("onboarding.folders.none");
         list.appendChild(li);
       } else for (const f of folders) {
         const li = document.createElement("li");

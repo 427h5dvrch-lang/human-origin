@@ -4,6 +4,7 @@
 // Cet écran répond à une seule question — HumanOrigin est-il prêt et que surveille-t-il ?
 // Il ne propose donc AUCUNE action de création de preuve.
 import { invoke } from "@tauri-apps/api/tauri";
+import { t } from "./ho_i18n.js";
 import { open } from "@tauri-apps/api/dialog";
 import { readTextFile } from "@tauri-apps/api/fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
@@ -29,8 +30,7 @@ async function lastProofAt() {
 }
 
 const ERROR_INK = "#8C2F2F";
-const SETUP_EXPLAIN = "HumanOrigin doit préparer Microsoft Word. macOS va vous demander l’autorisation "
-  + "d’accéder aux données de Word.";
+const SETUP_EXPLAIN = () => t("setup.word.explain");
 
 /** Bouton secondaire : même aspect que « Modifier les dossiers ». */
 function secondaryButton(label) {
@@ -54,12 +54,12 @@ const say = (node, text, isError) => {
 /** L'installation (ou la réparation) est le SEUL moment où HumanOrigin accède au dossier de Word. */
 async function runSetup(box, button, msg) {
   button.disabled = true;
-  say(msg, "Préparation de Word… Répondez à la demande de macOS si elle s’affiche.");
+  say(msg, t("setup.word.progress"));
   try {
     await invoke("ho_word_setup_install");
     await renderWord(box);
   } catch (e) {
-    say(msg, String((e && (e.message || e)) || "La préparation de Word a échoué."), true);
+    say(msg, String((e && (e.message || e)) || t("setup.word.failed")), true);
     button.disabled = false;
   }
 }
@@ -72,7 +72,7 @@ const errorText = (e, fallback) => String((e && (e.message || e)) || fallback);
 /** Crée le document ; `folder` n'est utilisé que si aucun emplacement n'est encore configuré. */
 async function createDocument(button, msg, folder, proposalBox) {
   button.disabled = true;
-  say(msg, folder ? "Préparation de l’emplacement et création du document…" : "");
+  say(msg, folder ? t("document.creating") : "");
   try {
     const r = await invoke("ho_new_document", { folder });
     if (proposalBox) proposalBox.textContent = "";
@@ -81,7 +81,7 @@ async function createDocument(button, msg, folder, proposalBox) {
       : `« ${r.name} » a été créé dans ${r.folder}. Ouvrez-le dans Word.`);
     await refreshFolderList();
   } catch (e) {
-    say(msg, errorText(e, "Le document n’a pas pu être créé."), true);
+    say(msg, errorText(e, t("document.failed")), true);
   } finally { button.disabled = false; }
 }
 
@@ -93,18 +93,16 @@ async function proposeLocation(box, msg) {
   put(box, { margin: "16px 0 0", padding: "14px 16px", border: "1px solid #D9D5CC",
     "border-radius": "8px", background: "#FFFFFF" });
   box.appendChild(el("p", { margin: "0 0 4px", color: INK, font: "500 15px/1.5 inherit" },
-    "Emplacement de vos documents HumanOrigin"));
+    t("location.title")));
   const path = el("p", { margin: "0 0 10px", color: INK, "word-break": "break-all",
-    font: "13px/1.5 ui-monospace, Menlo, monospace" }, proposed || "aucun emplacement proposé");
+    font: "13px/1.5 ui-monospace, Menlo, monospace" }, proposed || t("location.none"));
   box.appendChild(path);
   box.appendChild(el("p", { margin: "0 0 14px", color: MUTED, font: "14px/1.5 inherit" },
-    "HumanOrigin crée ce dossier s’il n’existe pas, y enregistre vos documents HumanOrigin et ne "
-    + "surveille que lui. Vous pourrez le changer plus tard. macOS peut vous demander d’autoriser "
-    + "HumanOrigin à accéder à cet emplacement."));
+      t("location.explain")))
   const row = el("div", { display: "flex", gap: "10px", "align-items": "center", "flex-wrap": "wrap" });
-  const go = mkButton("Créer le document ici", true);
+  const go = mkButton(t("location.confirm"), true);
   go.disabled = !proposed;
-  const other = secondaryButton("Choisir un autre emplacement…");
+  const other = secondaryButton(t("location.other"));
   go.addEventListener("click", () => createDocument(go, msg, proposed, box));
   other.addEventListener("click", async () => {
     try {
@@ -116,7 +114,7 @@ async function proposeLocation(box, msg) {
       path.textContent = picked;
       go.disabled = false;
       say(msg, "");
-    } catch (e) { say(msg, errorText(e, "L’emplacement n’a pas pu être choisi."), true); }
+    } catch (e) { say(msg, errorText(e, t("location.failed")), true); }
   });
   row.appendChild(go); row.appendChild(other);
   box.appendChild(row);
@@ -132,9 +130,9 @@ async function renderWord(box) {
   if (!st || st.state !== "installed") {
     const outdated = st && st.state === "outdated";
     box.appendChild(el("p", { margin: "0 0 8px", color: INK, font: "500 15px/1.5 inherit" },
-      outdated ? "L’intégration Word doit être mise à jour." : "Word n’est pas encore prêt pour HumanOrigin."));
-    box.appendChild(el("p", { margin: "0 0 16px", color: MUTED }, SETUP_EXPLAIN));
-    const install = mkButton(outdated ? "Mettre à jour l’intégration Word" : "Installer l’intégration Word", true);
+      outdated ? t("word.outdated") : t("word.notReady")));
+    box.appendChild(el("p", { margin: "0 0 16px", color: MUTED }, SETUP_EXPLAIN()));
+    const install = mkButton(outdated ? t("word.update") : t("word.install"), true);
     install.addEventListener("click", () => runSetup(box, install, msg));
     box.appendChild(install);
     box.appendChild(msg);
@@ -142,8 +140,8 @@ async function renderWord(box) {
   }
 
   box.appendChild(el("p", { margin: "0 0 16px", color: INK, font: "500 15px/1.5 inherit" },
-    "Microsoft Word est prêt."));
-  const create = mkButton("Nouveau document HumanOrigin", true);
+    t("word.ready")));
+  const create = mkButton(t("word.newDocument"), true);
   const proposal = el("div");
   create.addEventListener("click", async () => {
     say(msg, "");
@@ -156,14 +154,14 @@ async function renderWord(box) {
   box.appendChild(proposal);
   box.appendChild(msg);
   box.appendChild(el("p", { margin: "12px 0 18px", color: MUTED, font: "14px/1.5 inherit" },
-    "Gardez l’application HumanOrigin ouverte pendant votre travail."));
+    t("word.keepAppOpen")));
 
   // Action secondaire : elle accède de nouveau au dossier de Word, donc macOS peut redemander.
-  const repair = secondaryButton("Réparer l’intégration Word");
+  const repair = secondaryButton(t("word.repair"));
   const confirmBox = el("div", { margin: "12px 0 0" });
   repair.addEventListener("click", () => {
     confirmBox.textContent = "";
-    confirmBox.appendChild(el("p", { margin: "0 0 12px", color: MUTED, font: "14px/1.5 inherit" }, SETUP_EXPLAIN));
+    confirmBox.appendChild(el("p", { margin: "0 0 12px", color: MUTED, font: "14px/1.5 inherit" }, SETUP_EXPLAIN()));
     const go = mkButton("Continuer", true);
     go.addEventListener("click", () => runSetup(box, go, msg));
     confirmBox.appendChild(go);
@@ -189,20 +187,20 @@ async function panel() {
     "letter-spacing": ".14em", "text-transform": "uppercase", color: MUTED }, "HumanOrigin"));
 
   wrap.appendChild(el("h2", { font: "600 26px/1.25 inherit", margin: "0 0 10px", color: INK },
-    "HumanOrigin est prêt"));
+    t("panel.title")));
   wrap.appendChild(el("p", { margin: "0 0 38px", color: MUTED },
-    "HumanOrigin fonctionne en arrière-plan lorsque vous finalisez un document depuis Word."));
+    t("panel.subtitle")));
 
   // --- Microsoft Word
   wrap.appendChild(el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",
-    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, "Microsoft Word"));
+    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, t("panel.section.word")));
   const wordBox = el("div", { margin: "0 0 38px" });
   wrap.appendChild(wordBox);
   await renderWord(wordBox);
 
   // --- dossiers surveillés
   wrap.appendChild(el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",
-    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, "Dossiers surveillés"));
+    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, t("panel.section.folders")));
 
   let folders = [];
   try { folders = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { folders = []; }
@@ -217,7 +215,7 @@ async function panel() {
     list.textContent = "";
     if (!folders.length) {
       list.appendChild(el("li", { color: MUTED, font: "15px/1.6 inherit" },
-        "Aucun pour l’instant. Un emplacement vous sera proposé à la création de votre premier document."));
+        t("panel.folders.none")));
       return;
     }
     for (const f of folders) {
@@ -238,7 +236,7 @@ async function panel() {
 
   const modify = document.createElement("button");
   modify.type = "button";
-  modify.textContent = "Modifier les dossiers";
+  modify.textContent = t("panel.folders.edit");
   // Action inchangée. Aspect volontairement secondaire : ce n'est pas l'action principale du produit.
   put(modify, {
     font: '500 13px/1 -apple-system, system-ui, sans-serif', padding: "7px 13px",
@@ -258,23 +256,23 @@ async function panel() {
       }
     } catch (e) {
       list.appendChild(el("li", { color: ERROR_INK },
-        typeof e === "string" ? e : "La modification n'a pas pu être enregistrée."));
+        typeof e === "string" ? e : t("panel.folders.saveFailed")));
     } finally { modify.disabled = false; }
   });
   wrap.appendChild(modify);
 
   // --- dernière activité
   wrap.appendChild(el("h3", { font: "600 12px/1 inherit", margin: "40px 0 12px",
-    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, "Dernière activité"));
+    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, t("panel.section.activity")));
   const when = await lastProofAt();
   if (when) {
     wrap.appendChild(el("p", { margin: "0 0 2px", color: MUTED, font: "15px/1.5 inherit" },
-      "Dernière preuve finalisée"));
+      t("panel.activity.lastProof")));
     wrap.appendChild(el("p", { margin: "0", color: INK, font: "500 15px/1.5 inherit" },
       frenchDate(when)));
   } else {
     wrap.appendChild(el("p", { margin: "0", color: MUTED },
-      "Aucune preuve finalisée pour le moment."));
+      t("panel.activity.none")));
   }
 
   document.body.appendChild(wrap);
@@ -287,13 +285,12 @@ function fatal(e) {
     font: '15px/1.6 -apple-system, system-ui, sans-serif' });
   const w = el("main", { "max-width": "520px", margin: "0 auto", padding: "60px 32px" });
   w.appendChild(el("h2", { font: "600 20px/1.3 inherit", margin: "0 0 10px" },
-    "HumanOrigin n'a pas pu démarrer"));
+    t("fatal.title")));
   w.appendChild(el("p", { margin: "0 0 14px", color: MUTED },
-    "L'application n'a pas pu lire sa configuration. Relancez-la ; si le problème persiste, "
-    + "ce message aidera à l'identifier."));
+    t("fatal.body")));
   w.appendChild(el("pre", { margin: "0", padding: "12px 14px", "border-radius": "8px",
     background: "#F2F0EA", color: INK, font: "12px/1.5 ui-monospace, Menlo, monospace",
-    "white-space": "pre-wrap" }, String((e && (e.message || e)) || "erreur inconnue")));
+    "white-space": "pre-wrap" }, String((e && (e.message || e)) || t("fatal.unknown"))));
   document.body.appendChild(w);
 }
 
