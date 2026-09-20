@@ -92,7 +92,7 @@ NEW LOGIN UX                    = NO    (la session existante est réutilisée)
 ## Tests
 
 ```bash
-node supabase/functions/countersign-record/tests/run.mjs      # 45 contrôles
+node supabase/functions/countersign-record/tests/run.mjs      # 47 contrôles
 node supabase/functions/countersign-record/tests/croise.mjs   # accord avec Verify
 ```
 

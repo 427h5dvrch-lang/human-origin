@@ -8,7 +8,7 @@
 // Record. » Il ne prouve ni le client employé, ni la réalité d'une observation, ni un
 // auteur humain, ni l'absence d'intelligence artificielle.
 
-import { ALG, HEX64, VERSION, enonce, signerEnonce } from "./protocol.ts";
+import { ALG, HEX64, VERSION, enonce, signerEnonce, horodatage } from "./protocol.ts";
 
 export interface LigneAttestation {
   record_digest: string;
@@ -48,7 +48,7 @@ const attestationDe = (l: LigneAttestation) => ({
   alg: ALG,
   key_id: l.key_id,
   record_digest: l.record_digest,
-  server_signed_at: l.server_signed_at,
+  server_signed_at: horodatage(new Date(l.server_signed_at)),
   signature: l.signature,
 });
 

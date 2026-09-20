@@ -16,7 +16,7 @@ const pubB64 = Buffer.from(await crypto.subtle.exportKey("raw", kp.publicKey)).t
 const KEY_ID = "TEST-ONLY-ho-record-server-test";
 
 // --- dépendances simulées
-function fabrique({ secrets = true, compteValide = "compte-a", instant = "2026-01-01T00:00:00.000Z" } = {}) {
+function fabrique({ secrets = true, compteValide = "compte-a", instant = "2026-01-01T00:00:00.000Z", roundTripTimestamptz = false } = {}) {
   const base = new Map();
   let signatures = 0;
   const deps = {
@@ -24,7 +24,12 @@ function fabrique({ secrets = true, compteValide = "compte-a", instant = "2026-0
       : n === "HUMANORIGIN_RECORD_SIGNING_PRIVATE_KEY_B64" ? pkcs8
       : n === "HUMANORIGIN_RECORD_KEY_ID" ? KEY_ID : undefined,
     compte: async (j) => (j === "jeton-a" ? "compte-a" : j === "jeton-b" ? "compte-b" : null),
-    lire: async (d) => base.get(d) ?? null,
+    lire: async (d) => {
+      const l = base.get(d);
+      if (!l) return null;
+      if (!roundTripTimestamptz) return l;
+      return { ...l, server_signed_at: l.server_signed_at.replace(/Z$/, "+00:00") };
+    },
     ecrire: async (l) => { if (base.has(l.record_digest)) return { conflit: true };
       base.set(l.record_digest, { ...l }); return { conflit: false }; },
     maintenant: () => { signatures++; return instant; },
@@ -130,6 +135,20 @@ console.log("\n── anti-rejeu, décision figée ──");
   ck("le 409 ne porte aucun horodatage ni identifiant",
     !/server_signed_at|account|compte-a|user/i.test(JSON.stringify(b3)), JSON.stringify(b3));
   ck("une seule attestation stockée pour ce digest", nbSignatures() === 1);
+}
+
+console.log("\n── round-trip PostgreSQL timestamptz ──");
+{
+  const { deps, nbSignatures } = fabrique({ roundTripTimestamptz: true });
+  const r1 = await traiter(POST({ record_digest: D }, "jeton-a"), deps);
+  const a1 = (await r1.json()).server_attestation;
+  const r2 = await traiter(POST({ record_digest: D }, "jeton-a"), deps);
+  const b2 = await r2.json();
+
+  ck("round-trip timestamptz → attestation strictement identique",
+    JSON.stringify(a1) === JSON.stringify(b2.server_attestation));
+  ck("round-trip timestamptz → aucun nouvel événement de signature",
+    nbSignatures() === 1, nbSignatures() + " horodatage(s)");
 }
 
 console.log("\n── course à l'écriture ──");
