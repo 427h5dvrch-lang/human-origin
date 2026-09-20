@@ -8,10 +8,20 @@ const P = await import(path.join(ici, "../protocol.ts"));
 let ok = 0, ko = 0;
 const ck = (n, c, d = "") => { c ? ok++ : ko++; console.log(`  ${c ? "✓" : "✗"} ${n}${d ? "  → " + d : ""}`); };
 
-const verifyRacine = path.resolve(ici, "../../../../../humanorigin-web-consultation/verify-record");
+// Le module de Verify vit dans un autre dépôt. Chemin surchargeable, plusieurs candidats,
+// et le banc dit lesquels il a essayés plutôt que d'être ignoré sans explication.
+const CANDIDATS = [
+  process.env.HO_VERIFY_DIR,
+  "/tmp/rwa/verify-record",
+  path.resolve(ici, "../../../../../humanorigin-web-consultation/verify-record"),
+  path.join(process.env.HOME, "Developer/HO_FIRSTRUN_RC/humanorigin-web-consultation/verify-record"),
+].filter(Boolean);
+const verifyRacine = CANDIDATS.find((d) => fs.existsSync(path.join(d, "src/record_attestation.js")))
+  || CANDIDATS[CANDIDATS.length - 1];
 const modB = path.join(verifyRacine, "src/record_attestation.js");
 if (!fs.existsSync(modB)) {
-  console.log("\n  ⚠ module de Verify absent — test croisé ignoré\n     attendu :", modB);
+  console.log("\n  ⚠ module de Verify absent — test croisé ignoré. Chemins essayés :");
+  CANDIDATS.forEach((c) => console.log("     " + c));
   process.exit(0);
 }
 
