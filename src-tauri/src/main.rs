@@ -2127,16 +2127,17 @@ async fn ho_new_document_inner(
         cfg.folders = vec![chosen];
         f.set_config(&cfg)?;
     }
-    // Trousseau AVANT création : sans capability conservée, aucun document n'est créé.
-    ho_capability::stocker(&record_id, &capability)?;
-    match ho_word_setup::new_document(&cfg.folders, &record_id) {
-        Ok(v) => Ok(v),
-        Err(e) => {
-            // Nettoyage au mieux de l'entrée créée par CETTE tentative.
-            ho_capability::oublier(&record_id);
-            Err(e)
-        }
-    }
+    // L'ordre — trousseau, puis création, puis nettoyage en cas d'échec — vit dans
+    // ho_capability, où il est testé par injection. Ici on ne fait que lui fournir les
+    // opérations réelles : le chemin de production passe bien par le trousseau du système.
+    let folders = cfg.folders.clone();
+    ho_capability::creer_document_avec_capability(
+        &record_id,
+        &capability,
+        ho_capability::stocker,
+        |id| ho_word_setup::new_document(&folders, id),
+        ho_capability::oublier,
+    )
 }
 
     tauri::Builder::default()
