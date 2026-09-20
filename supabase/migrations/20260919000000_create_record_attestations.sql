@@ -9,7 +9,7 @@
 -- account_id reste côté serveur, pour l'anti-abus et l'audit ; il n'apparaît
 -- jamais dans l'attestation distribuée.
 
-create table if not exists public.record_attestations (
+create table public.record_attestations (
   record_digest     text          primary key
                     check (record_digest ~ '^[0-9a-f]{64}$'),
   account_id        uuid          not null,
@@ -21,7 +21,7 @@ create table if not exists public.record_attestations (
 );
 
 -- Recherche par compte, pour l'anti-abus. Jamais exposée publiquement.
-create index if not exists record_attestations_account_idx
+create index record_attestations_account_idx
   on public.record_attestations (account_id, created_at desc);
 
 -- Aucun accès direct : la fonction edge opère avec la clé service role.
