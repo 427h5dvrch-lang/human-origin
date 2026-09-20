@@ -212,6 +212,121 @@ pub(crate) fn binding_allowed(
     matches!(outcome, Ok(crate::ho_docx_scrub::Outcome::NotPresent))
 }
 
+/// Construit le Record V1 — tout sauf la signature, qui dépend d'un aléa.
+///
+/// Fonction PURE : mêmes entrées, même sortie, aucune entrée-sortie, aucun aléa. C'est
+/// ce qui la rend testable, et c'est la seule raison de l'avoir extraite de
+/// `finalize_file`. Le contrat de référence est `record_synthetic.json` du banc Verify.
+///
+/// Les identifiants sont stables et accompagnent une prose INCHANGÉE : ils portent le
+/// sens, le texte reste ce qu'il était. Aucun identifiant n'est dérivé du texte.
+fn build_record_v1(
+    record_id: &str,
+    filename: &str,
+    bytes_len: usize,
+    bytes_sha256: &str,
+    commitment: &str,
+    facts_arr: Vec<serde_json::Value>,
+    periods: Option<&[serde_json::Value]>,
+) -> serde_json::Value {
+    let undetermined = facts_arr
+        .iter()
+        .filter(|f| f.get("source").and_then(|s| s.as_str()) == Some("unknown"))
+        .count();
+    let chain_head = sha256_hex(
+        serde_json::to_string(&facts_arr)
+            .unwrap_or_default()
+            .as_bytes(),
+    );
+    let event_count = facts_arr.len();
+
+    let mut evidence = serde_json::json!({
+        "schema": "ho-evidence/1.0",
+        "session_id": format!("c6-{}", &record_id[..record_id.len().min(15)]),
+        "object_id": filename,
+        "event_count": event_count,
+        "chain_head_hash": chain_head,
+        "final_state_commit": commitment,
+        "events": facts_arr,
+        "record_id": record_id,
+        "artifact": {
+            "filename": filename,
+            "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "size_bytes": bytes_len,
+            "sha256": bytes_sha256
+        },
+        "process_evidence": {
+            "observation_method": "événements de paragraphe de l'application hôte",
+            "capability": ["identité de paragraphe", "horodatage", "variation de longueur"],
+            "capability_ids": [
+                "process.capability.paragraphIdentity",
+                "process.capability.timestamping",
+                "process.capability.lengthVariation"
+            ],
+            "adapter": "word-office-js",
+            "observed_facts": { "recorded_changes": event_count, "undetermined_source": undetermined },
+            "blind_spots": [
+                { "fact_id": "process.blindSpot.nonObservableIngressOrigin",
+                  "fact": "l'origine d'un contenu entrant hors événement observable n'est pas déterminée" },
+                { "fact_id": "process.blindSpot.nonParagraphRegions",
+                  "fact": "en-têtes, pieds de page, notes et zones de texte ne produisent pas d'événement de paragraphe" }
+            ],
+            "cannot_establish": [
+                { "fact_id": "process.cannotEstablish.composedVsRetyped",
+                  "fact": "une observation de saisie ne distingue pas la composition de la transcription" }
+            ]
+        },
+        "final_object_binding": {
+            "commitment": commitment,
+            "commitment_algorithm": "sha256-over-base64-bytes",
+            "computed_on": "les octets du fichier enregistré sur le disque",
+            "establishes": "cette preuve engage cet artefact",
+            "does_not_establish": "rien sur le contenu de l'artefact"
+        },
+        "causal_reconstruction": {
+            "established": false,
+            "measured_by": "non mesurable depuis des événements de paragraphe",
+            "reason": "les faits observés décrivent des variations de paragraphes ; ils ne reconstruisent pas les octets d'un conteneur OOXML",
+            "never_inferred_from": ["process_evidence", "final_object_binding"]
+        },
+        "limitations": [
+            "une observation de saisie ne distingue pas la composition de la transcription",
+            "l'exhaustivité de l'observation est déclarée par l'outil et n'est pas vérifiable indépendamment",
+            "l'origine d'un contenu entrant hors événement observable n'est pas établie"
+        ],
+        "limitation_ids": [
+            "process.limitation.composedVsRetyped",
+            "process.limitation.completenessNotIndependentlyVerifiable",
+            "process.limitation.nonObservableIngressOrigin"
+        ]
+    });
+
+    // Plusieurs périodes d'observation : elles sont reprises telles que le volet les a scellées,
+    // et la preuve dit explicitement que l'intervalle entre deux périodes n'a pas été observé.
+    if let Some(p) = periods {
+        let several = p.len() > 1;
+        evidence["process_evidence"]["observation_periods"] = serde_json::Value::Array(p.to_vec());
+        if several {
+            if let Some(b) = evidence["process_evidence"]["blind_spots"].as_array_mut() {
+                b.push(serde_json::json!({
+                    "fact_id": "process.blindSpot.betweenObservationPeriods",
+                    "fact": "entre deux périodes d'observation, le document n'a pas été observé ; ce qui s'y est passé n'est pas établi"
+                }));
+            }
+            // La prose et son identifiant sont ajoutés ENSEMBLE : les deux tableaux ne
+            // doivent jamais se désaligner, sous peine de rendre un sens à un autre texte.
+            if let Some(l) = evidence["limitations"].as_array_mut() {
+                l.push(serde_json::json!("l'observation n'est pas continue : les intervalles entre les périodes d'observation n'ont pas été observés"));
+            }
+            if let Some(l) = evidence["limitation_ids"].as_array_mut() {
+                l.push(serde_json::json!("process.limitation.observationNotContinuous"));
+            }
+        }
+    }
+
+    evidence
+}
+
 impl Finalizer {
     pub fn new(dir: PathBuf) -> Self {
         fs::create_dir_all(&dir).ok();
@@ -305,68 +420,15 @@ impl Finalizer {
             .filter(|f| f.get("source").and_then(|s| s.as_str()) == Some("unknown"))
             .count();
 
-        let mut evidence = serde_json::json!({
-            "schema": "ho-evidence/1.0",
-            "session_id": format!("c6-{}", &m.record_id[..m.record_id.len().min(15)]),
-            "object_id": filename,
-            "event_count": facts_arr.len(),
-            "chain_head_hash": sha256_hex(serde_json::to_string(&facts_arr).ok()?.as_bytes()),
-            "final_state_commit": commitment,
-            "events": facts_arr,
-            "record_id": m.record_id,
-            "artifact": {
-                "filename": filename,
-                "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "size_bytes": bytes.len(),
-                "sha256": sha256_hex(&bytes)
-            },
-            "process_evidence": {
-                "observation_method": "événements de paragraphe de l'application hôte",
-                "capability": ["identité de paragraphe", "horodatage", "variation de longueur"],
-                "adapter": "word-office-js",
-                "observed_facts": { "recorded_changes": facts_arr.len(), "undetermined_source": undetermined },
-                "blind_spots": [
-                    { "fact": "l'origine d'un contenu entrant hors événement observable n'est pas déterminée" },
-                    { "fact": "en-têtes, pieds de page, notes et zones de texte ne produisent pas d'événement de paragraphe" }
-                ],
-                "cannot_establish": [
-                    { "fact": "une observation de saisie ne distingue pas la composition de la transcription" }
-                ]
-            },
-            "final_object_binding": {
-                "commitment": commitment,
-                "commitment_algorithm": "sha256-over-base64-bytes",
-                "computed_on": "les octets du fichier enregistré sur le disque",
-                "establishes": "cette preuve engage cet artefact",
-                "does_not_establish": "rien sur le contenu de l'artefact"
-            },
-            "causal_reconstruction": {
-                "established": false,
-                "measured_by": "non mesurable depuis des événements de paragraphe",
-                "reason": "les faits observés décrivent des variations de paragraphes ; ils ne reconstruisent pas les octets d'un conteneur OOXML",
-                "never_inferred_from": ["process_evidence", "final_object_binding"]
-            },
-            "limitations": [
-                "une observation de saisie ne distingue pas la composition de la transcription",
-                "l'exhaustivité de l'observation est déclarée par l'outil et n'est pas vérifiable indépendamment",
-                "l'origine d'un contenu entrant hors événement observable n'est pas établie"
-            ]
-        });
-
-        // Plusieurs périodes d'observation : elles sont reprises telles que le volet les a scellées,
-        // et la preuve dit explicitement que l'intervalle entre deux périodes n'a pas été observé.
-        if let Some(p) = periods {
-            let several = p.len() > 1;
-            evidence["process_evidence"]["observation_periods"] = serde_json::Value::Array(p);
-            if several {
-                if let Some(b) = evidence["process_evidence"]["blind_spots"].as_array_mut() {
-                    b.push(serde_json::json!({ "fact": "entre deux périodes d'observation, le document n'a pas été observé ; ce qui s'y est passé n'est pas établi" }));
-                }
-                if let Some(l) = evidence["limitations"].as_array_mut() {
-                    l.push(serde_json::json!("l'observation n'est pas continue : les intervalles entre les périodes d'observation n'ont pas été observés"));
-                }
-            }
-        }
+        let mut evidence = build_record_v1(
+            &m.record_id,
+            &filename,
+            bytes.len(),
+            &sha256_hex(&bytes),
+            &commitment,
+            facts_arr,
+            periods.as_deref(),
+        );
 
         // signature Ed25519 sur les champs de cœur
         let mut seed = [0u8; 32];
@@ -465,6 +527,151 @@ mod tests {
         assert_eq!((f.len(), p.map(|x| x.len())), (3, Some(2)));
         let (f, p) = super::split_facts(&serde_json::json!({ "facts": [1] }));
         assert!(f.is_empty() && p.is_none());
+    }
+
+    // ---------------------------------------------------------------- contrat Record V1
+    // Référence : record_synthetic.json du banc Verify. Les identifiants sont stables et
+    // accompagnent une prose inchangée. Aucun identifiant dérivé du texte.
+
+    fn rec(periods: Option<Vec<serde_json::Value>>) -> serde_json::Value {
+        let faits = vec![
+            serde_json::json!({ "sequence": 0, "source": "local_editing", "length_delta": 8 }),
+            serde_json::json!({ "sequence": 1, "source": "unknown", "length_delta": 0 }),
+        ];
+        super::build_record_v1(
+            "HO-CONTRAT000001",
+            "contrat.docx",
+            123456,
+            "aa".repeat(32).as_str(),
+            "bb".repeat(32).as_str(),
+            faits,
+            periods.as_deref(),
+        )
+    }
+
+    fn textes(v: &serde_json::Value, champ: &str) -> Vec<String> {
+        v[champ].as_array().unwrap().iter()
+            .map(|x| x.as_str().unwrap().to_string()).collect()
+    }
+
+    #[test]
+    fn capability_ids_accompagnent_les_capacites() {
+        let r = rec(None);
+        let pe = &r["process_evidence"];
+        let caps = textes(pe, "capability");
+        let ids = textes(pe, "capability_ids");
+        assert_eq!(caps.len(), ids.len(), "un identifiant par capacité, même ordre");
+        assert_eq!(ids, vec![
+            "process.capability.paragraphIdentity",
+            "process.capability.timestamping",
+            "process.capability.lengthVariation",
+        ]);
+        // La prose reste celle du contrat.
+        assert_eq!(caps, vec!["identité de paragraphe", "horodatage", "variation de longueur"]);
+    }
+
+    #[test]
+    fn blind_spots_portent_un_fact_id() {
+        let r = rec(None);
+        let bs = r["process_evidence"]["blind_spots"].as_array().unwrap().clone();
+        let ids: Vec<&str> = bs.iter().map(|b| b["fact_id"].as_str().unwrap()).collect();
+        assert_eq!(ids, vec![
+            "process.blindSpot.nonObservableIngressOrigin",
+            "process.blindSpot.nonParagraphRegions",
+        ]);
+        assert!(bs.iter().all(|b| b["fact"].as_str().map(|x| !x.is_empty()).unwrap_or(false)),
+            "chaque angle mort garde sa prose");
+    }
+
+    #[test]
+    fn cannot_establish_porte_un_fact_id() {
+        let r = rec(None);
+        let ce = r["process_evidence"]["cannot_establish"].as_array().unwrap().clone();
+        assert_eq!(ce.len(), 1);
+        assert_eq!(ce[0]["fact_id"].as_str().unwrap(), "process.cannotEstablish.composedVsRetyped");
+        assert_eq!(ce[0]["fact"].as_str().unwrap(),
+            "une observation de saisie ne distingue pas la composition de la transcription");
+    }
+
+    #[test]
+    fn limitation_ids_accompagnent_les_limitations() {
+        let r = rec(None);
+        let lim = textes(&r, "limitations");
+        let ids = textes(&r, "limitation_ids");
+        assert_eq!(lim.len(), ids.len(), "un identifiant par limitation, même ordre");
+        assert_eq!(ids, vec![
+            "process.limitation.composedVsRetyped",
+            "process.limitation.completenessNotIndependentlyVerifiable",
+            "process.limitation.nonObservableIngressOrigin",
+        ]);
+    }
+
+    #[test]
+    fn plusieurs_periodes_ajoutent_des_elements_identifies() {
+        let p = vec![serde_json::json!({ "period": 1 }), serde_json::json!({ "period": 2 })];
+        let r = rec(Some(p));
+        let bs = r["process_evidence"]["blind_spots"].as_array().unwrap().clone();
+        let lim = textes(&r, "limitations");
+        let ids_lim = textes(&r, "limitation_ids");
+        assert_eq!(bs.len(), 3, "un angle mort de plus");
+        assert_eq!(lim.len(), 4, "une limitation de plus");
+        assert_eq!(lim.len(), ids_lim.len(), "l'alignement survit à l'ajout");
+        // L'élément ajouté doit lui aussi porter une identité stable.
+        assert_eq!(bs[2]["fact_id"].as_str().unwrap(), "process.blindSpot.betweenObservationPeriods");
+        assert_eq!(ids_lim[3], "process.limitation.observationNotContinuous");
+    }
+
+    #[test]
+    fn une_seule_periode_n_ajoute_rien() {
+        let p = vec![serde_json::json!({ "period": 1 })];
+        let r = rec(Some(p));
+        assert_eq!(r["process_evidence"]["blind_spots"].as_array().unwrap().len(), 2);
+        assert_eq!(textes(&r, "limitations").len(), 3);
+        assert_eq!(textes(&r, "limitation_ids").len(), 3);
+        assert!(r["process_evidence"]["observation_periods"].is_array(),
+            "les périodes restent reprises telles quelles");
+    }
+
+    #[test]
+    fn construction_deterministe() {
+        assert_eq!(rec(None), rec(None), "mêmes entrées, même sortie");
+        let p = vec![serde_json::json!({ "period": 1 }), serde_json::json!({ "period": 2 })];
+        assert_eq!(rec(Some(p.clone())), rec(Some(p)));
+    }
+
+    #[test]
+    fn aucun_identifiant_derive_du_texte() {
+        let r = rec(None);
+        let tous: Vec<String> = textes(&r["process_evidence"], "capability_ids")
+            .into_iter()
+            .chain(textes(&r, "limitation_ids"))
+            .collect();
+        for id in &tous {
+            assert!(id.starts_with("process."), "espace de noms stable : {}", id);
+            assert!(!id.contains(' '), "un identifiant n'est pas une phrase : {}", id);
+            assert!(id.is_ascii(), "un identifiant ne porte pas d'accent : {}", id);
+        }
+    }
+
+    #[test]
+    fn aucune_pretention_nouvelle() {
+        let r = rec(None).to_string().to_lowercase();
+        for interdit in ["humain", "ai-free", "sans ia", "authentique", "certifi",
+                         "human verified", "pensée originale"] {
+            assert!(!r.contains(interdit), "prétention interdite : {}", interdit);
+        }
+    }
+
+    #[test]
+    fn le_coeur_signe_reste_intact() {
+        let r = rec(None);
+        // Les six champs de cœur sont ceux que la signature engage : leur forme ne bouge pas.
+        assert_eq!(r["schema"].as_str().unwrap(), "ho-evidence/1.0");
+        assert_eq!(r["event_count"].as_u64().unwrap(), 2);
+        assert_eq!(r["chain_head_hash"].as_str().unwrap().len(), 64);
+        assert_eq!(r["final_state_commit"].as_str().unwrap(), "bb".repeat(32));
+        assert!(r["session_id"].as_str().unwrap().starts_with("c6-"));
+        assert_eq!(r["object_id"].as_str().unwrap(), "contrat.docx");
     }
 
     #[test]
