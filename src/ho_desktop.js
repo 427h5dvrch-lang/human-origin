@@ -74,7 +74,10 @@ async function createDocument(button, msg, folder, proposalBox) {
   button.disabled = true;
   say(msg, folder ? t("document.creating") : "");
   try {
-    const r = await invoke("ho_new_document", { folder });
+    // Réservation AVANT la commande native : sans identifiant réservé ni capability,
+    // aucun document HumanOrigin n'est créé. Le jeton de session reste côté frontend.
+    const { record_id, capability } = await window.__HO_RESERVE__();
+    const r = await invoke("ho_new_document", { folder, recordId: record_id, capability });
     if (proposalBox) proposalBox.textContent = "";
     say(msg, r.opened_in_word
       ? `« ${r.name} » a été créé dans ${r.folder} et s’ouvre dans Word.`
