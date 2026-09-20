@@ -141,14 +141,30 @@ fn xml_attr_escape(s: &str) -> String {
 /// DOCX vide qui référence le complément HumanOrigin et demande l'ouverture de son volet.
 /// Les dossiers de travail sont transmis au volet dans les réglages du complément : ils vivent dans
 /// la partie du complément, retirée du paquet à la finalisation.
-pub fn bootstrap_docx(work_folders: &[String]) -> Result<Vec<u8>, String> {
+/// Identifiant réservé côté serveur, semé dans le document à sa création.
+///
+/// Le volet Word lit cette propriété au lieu d'en générer une : l'identifiant existe donc
+/// déjà, lié à un compte, AVANT d'apparaître dans un document. C'est ce qui interdit la
+/// préemption. La capability, elle, n'entre JAMAIS ici — elle vit au Keychain.
+pub const RESERVED_ID_PROP: &str = "HOReservedId";
+
+/// Forme acceptée par le registre et par le volet.
+pub fn record_id_valide(id: &str) -> bool {
+    (6..=64).contains(&id.len())
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+}
+
+pub fn bootstrap_docx(work_folders: &[String], record_id: &str) -> Result<Vec<u8>, String> {
+    if !record_id_valide(record_id) {
+        return Err("identifiant réservé invalide".into());
+    }
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let folders = xml_attr_escape(&serde_json::to_string(work_folders).map_err(|e| e.to_string())?);
     let parts: Vec<(&str, String)> = vec![
         ("[Content_Types].xml", r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/word/webextensions/taskpanes.xml" ContentType="application/vnd.ms-office.webextensiontaskpanes+xml"/><Override PartName="/word/webextensions/webextension1.xml" ContentType="application/vnd.ms-office.webextension+xml"/></Types>"#.to_string()),
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/><Override PartName="/word/webextensions/taskpanes.xml" ContentType="application/vnd.ms-office.webextensiontaskpanes+xml"/><Override PartName="/word/webextensions/webextension1.xml" ContentType="application/vnd.ms-office.webextension+xml"/></Types>"#.to_string()),
         ("_rels/.rels", r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/><Relationship Id="rId4" Type="http://schemas.microsoft.com/office/2011/relationships/webextensiontaskpanes" Target="word/webextensions/taskpanes.xml"/></Relationships>"#.to_string()),
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/><Relationship Id="rId4" Type="http://schemas.microsoft.com/office/2011/relationships/webextensiontaskpanes" Target="word/webextensions/taskpanes.xml"/><Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/></Relationships>"#.to_string()),
         ("word/document.xml", r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/><w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1417" w:right="1417" w:bottom="1417" w:left="1417" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr></w:body></w:document>"#.to_string()),
         // Sans réglages, Word traite le document comme un document Word 2007 (compatibilityMode 12)
@@ -161,6 +177,10 @@ pub fn bootstrap_docx(work_folders: &[String]) -> Result<Vec<u8>, String> {
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dcterms:created xsi:type="dcterms:W3CDTF">{now}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">{now}</dcterms:modified></cp:coreProperties>"#)),
         ("docProps/app.xml", r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>HumanOrigin</Application></Properties>"#.to_string()),
+        // L'identifiant réservé, et rien d'autre : la capability n'entre jamais dans le document.
+        ("docProps/custom.xml", format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><property fmtid="{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}" pid="2" name="{prop}"><vt:lpwstr>{id}</vt:lpwstr></property></Properties>"#,
+            prop = RESERVED_ID_PROP, id = xml_attr_escape(record_id))),
         ("word/webextensions/taskpanes.xml", r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <wetp:taskpanes xmlns:wetp="http://schemas.microsoft.com/office/webextensions/taskpanes/2010/11"><wetp:taskpane dockstate="right" visibility="1" width="350" row="0"><wetp:webextensionref xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></wetp:taskpane></wetp:taskpanes>"#.to_string()),
         ("word/webextensions/_rels/taskpanes.xml.rels", r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -207,13 +227,13 @@ pub fn prepare_work_folder(folder: &str) -> Result<(), String> {
 
 /// Crée « Nouveau document HumanOrigin.docx » (ou « … 2 », « … 3 ») dans le premier dossier de
 /// travail, sans jamais écraser un fichier, puis l'ouvre dans Word.
-pub fn new_document(work_folders: &[String]) -> Result<serde_json::Value, String> {
+pub fn new_document(work_folders: &[String], record_id: &str) -> Result<serde_json::Value, String> {
     let folder = work_folders.first().ok_or("Choisissez d'abord votre dossier de travail HumanOrigin.")?;
     let dir = PathBuf::from(folder);
     if !dir.is_dir() {
         return Err(format!("Le dossier de travail est introuvable : {}", folder));
     }
-    let bytes = bootstrap_docx(work_folders)?;
+    let bytes = bootstrap_docx(work_folders, record_id)?;
     for n in 1..1000 {
         let name = if n == 1 {
             "Nouveau document HumanOrigin.docx".to_string()
@@ -289,9 +309,70 @@ mod tests {
     }
 
     #[test]
+    fn le_document_porte_l_identifiant_reserve() {
+        let folders = vec!["/tmp/x".to_string()];
+        let bytes = super::bootstrap_docx(&folders, "HO-RESERVE123456").unwrap();
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let mut xml = String::new();
+        {
+            use std::io::Read as _;
+            z.by_name("docProps/custom.xml").unwrap().read_to_string(&mut xml).unwrap();
+        }
+        assert!(xml.contains("HOReservedId"), "la propriété est présente");
+        assert!(xml.contains("<vt:lpwstr>HO-RESERVE123456</vt:lpwstr>"),
+            "l'identifiant semé est celui réservé");
+    }
+
+    #[test]
+    fn la_partie_custom_est_declaree_dans_le_paquet() {
+        let bytes = super::bootstrap_docx(&vec!["/tmp/x".to_string()], "HO-RESERVE123456").unwrap();
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        let lire = |z: &mut zip::ZipArchive<std::io::Cursor<Vec<u8>>>, n: &str| {
+            use std::io::Read as _;
+            let mut s = String::new();
+            z.by_name(n).unwrap().read_to_string(&mut s).unwrap();
+            s
+        };
+        assert!(lire(&mut z, "[Content_Types].xml").contains("/docProps/custom.xml"),
+            "la partie est déclarée : sans cela Word ignore la propriété");
+        assert!(lire(&mut z, "_rels/.rels").contains("custom-properties"),
+            "la relation racine existe");
+    }
+
+    #[test]
+    fn un_identifiant_invalide_ne_produit_aucun_document() {
+        let f = vec!["/tmp/x".to_string()];
+        for mauvais in ["", "court", "HO-avec espace", &"a".repeat(65), "HO-点"] {
+            assert!(super::bootstrap_docx(&f, mauvais).is_err(),
+                "refusé : {:?}", mauvais);
+        }
+    }
+
+    #[test]
+    fn la_capability_n_entre_jamais_dans_le_document() {
+        // Une capability plausible, jamais transmise à bootstrap_docx : elle ne peut donc
+        // pas s'y trouver. Le contrôle porte sur les OCTETS du paquet, pas sur une partie.
+        let cap = "eyJ2ZXJzaW9uIjoxLCJyZWNvcmRfaWQiOiJITy1SRVNFUlZFMTIzNDU2In0";
+        let bytes = super::bootstrap_docx(&vec!["/tmp/x".to_string()], "HO-RESERVE123456").unwrap();
+        let brut = String::from_utf8_lossy(&bytes).to_string();
+        assert!(!brut.contains(cap), "aucune trace compressée");
+        // Et dans chaque partie décompressée.
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
+        for i in 0..z.len() {
+            use std::io::Read as _;
+            let mut f = z.by_index(i).unwrap();
+            let nom = f.name().to_string();
+            let mut s = String::new();
+            let _ = f.read_to_string(&mut s);
+            assert!(!s.contains(cap), "aucune trace dans {}", nom);
+            assert!(!s.contains("capability"), "aucune mention de capability dans {}", nom);
+        }
+    }
+
+    #[test]
     fn bootstrap_references_humanorigin_and_is_scrubbable() {
         let folders = vec!["/Users/x/Desktop/human origin test ".to_string(), "/Users/x/Dossier é \"q\" & <b>".to_string()];
-        let bytes = bootstrap_docx(&folders).unwrap();
+        let bytes = bootstrap_docx(&folders, "HO-TESTRESERVED1").unwrap();
         let mut z = zip::ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap();
         let mut s = String::new();
         std::io::Read::read_to_string(&mut z.by_name("word/webextensions/webextension1.xml").unwrap(), &mut s).unwrap();

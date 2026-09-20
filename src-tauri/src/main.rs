@@ -59,6 +59,7 @@ mod work_period;
 mod work_publish;
 #[cfg(feature = "legacy")]
 mod work_store;
+mod ho_capability; // Capability d'écriture au registre : trousseau local uniquement.
 mod ho_finalizer; // Create V1 : finalisation native, dossiers autorisés uniquement.
 mod ho_docx_scrub; // First Run V1 : retrait de la seule référence au complément HumanOrigin.
 mod ho_word_setup; // First Run V1 : intégration Word, une fois, sur geste explicite.
@@ -2069,8 +2070,52 @@ fn ho_default_work_folder() -> Option<String> {
 
 /// Premier document : l'emplacement proposé (ou choisi) n'est enregistré qu'ici, quand
 /// l'utilisateur crée son document. Une configuration existante n'est jamais remplacée.
+///
+/// Le couple { record_id, capability } vient du frontend, qui l'a obtenu de
+/// `reserve-record-id` avec la session de l'utilisateur. Le jeton Supabase ne descend
+/// JAMAIS ici : seule la capability traverse, car c'est son consommateur final.
+///
+/// Ordre obligatoire : valider, écrire au trousseau, créer le document.
+/// Si le trousseau échoue, aucun document HumanOrigin n'est créé — un document portant un
+/// identifiant sans capability serait un document impubliable, et silencieusement.
+/// Si la création échoue ensuite, l'entrée créée par cette tentative est retirée, au mieux.
 #[tauri::command]
-async fn ho_new_document(folder: Option<String>) -> Result<serde_json::Value, String> {
+async fn ho_new_document(
+    folder: Option<String>,
+    record_id: String,
+    capability: String,
+) -> Result<serde_json::Value, String> {
+    // Validation structurelle d'abord : rien n'est écrit sur la foi d'une entrée douteuse.
+    if !ho_capability::record_id_valide(&record_id) {
+        return Err("Identifiant réservé invalide.".into());
+    }
+    if !ho_capability::capability_plausible(&capability) {
+        return Err("Capability invalide.".into());
+    }
+    // La capability doit porter l'identifiant qu'on nous demande de semer. Sans cela, on
+    // sèmerait un identifiant que la capability n'autorise pas.
+    if !capability_porte_le_record_id(&capability, &record_id) {
+        return Err("La capability ne correspond pas à l’identifiant réservé.".into());
+    }
+    ho_new_document_inner(folder, record_id, capability).await
+}
+
+/// Lit le `record_id` porté par le transport compact, sans vérifier la signature — cette
+/// vérification appartient au registre, qui seul détient la clé publique. Ici on empêche
+/// seulement une incohérence évidente entre l'argument et le jeton.
+fn capability_porte_le_record_id(capability: &str, record_id: &str) -> bool {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+    let Ok(octets) = URL_SAFE_NO_PAD.decode(capability) else { return false };
+    let Ok(txt) = String::from_utf8(octets) else { return false };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&txt) else { return false };
+    v.get("record_id").and_then(|x| x.as_str()) == Some(record_id)
+}
+
+async fn ho_new_document_inner(
+    folder: Option<String>,
+    record_id: String,
+    capability: String,
+) -> Result<serde_json::Value, String> {
     let f = ho_finalizer::Finalizer::new(ho_finalizer_dir());
     let mut cfg = f.config();
     if cfg.folders.is_empty() {
@@ -2082,7 +2127,16 @@ async fn ho_new_document(folder: Option<String>) -> Result<serde_json::Value, St
         cfg.folders = vec![chosen];
         f.set_config(&cfg)?;
     }
-    ho_word_setup::new_document(&cfg.folders)
+    // Trousseau AVANT création : sans capability conservée, aucun document n'est créé.
+    ho_capability::stocker(&record_id, &capability)?;
+    match ho_word_setup::new_document(&cfg.folders, &record_id) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            // Nettoyage au mieux de l'entrée créée par CETTE tentative.
+            ho_capability::oublier(&record_id);
+            Err(e)
+        }
+    }
 }
 
     tauri::Builder::default()
