@@ -5,6 +5,12 @@ verify_jwt = false
 import_map = "./functions/proof-registry/deno.json"
 entrypoint = "./functions/proof-registry/index.ts"
 
+[functions.reserve-record-id]
+enabled = true
+verify_jwt = true
+import_map = "./functions/reserve-record-id/deno.json"
+entrypoint = "./functions/reserve-record-id/index.ts"
+
 [functions.countersign-record]
 enabled = true
 verify_jwt = true
