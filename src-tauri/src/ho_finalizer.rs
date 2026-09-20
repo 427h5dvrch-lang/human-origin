@@ -153,13 +153,43 @@ fn split_facts(v: &serde_json::Value) -> (Vec<serde_json::Value>, Option<Vec<ser
 }
 
 // ---------------------------------------------------------------- dépôt au registre
-fn put_record(registry: &str, record_id: &str, body: &str) -> Result<(), String> {
+/// Écrit un fichier d'en-têtes lisible du seul propriétaire, dans un répertoire lui-même
+/// restreint. La capability ne doit apparaître NI dans argv — donc visible par `ps` —, ni
+/// dans un journal. `curl -H @fichier` est la seule voie qui évite la ligne de commande.
+fn fichier_entetes(capability: &str) -> Result<(PathBuf, PathBuf), String> {
+    use std::io::Write as _;
+    let mut dir = std::env::temp_dir();
+    let mut alea = [0u8; 12];
+    OsRng.fill_bytes(&mut alea);
+    dir.push(format!("ho-hdr-{}", hex(&alea)));
+    fs::create_dir(&dir).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700)).map_err(|e| e.to_string())?;
+    }
+    let f = dir.join("h");
+    let mut h = fs::File::create(&f).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        h.set_permissions(fs::Permissions::from_mode(0o600)).map_err(|e| e.to_string())?;
+    }
+    writeln!(h, "authorization: Bearer {}", capability).map_err(|e| e.to_string())?;
+    writeln!(h, "content-type: application/json").map_err(|e| e.to_string())?;
+    h.sync_all().map_err(|e| e.to_string())?;
+    Ok((dir, f))
+}
+
+fn put_record(registry: &str, record_id: &str, body: &str, capability: &str) -> Result<(), String> {
     // HTTPS sans ajouter de dépendance : on délègue au curl du système, présent sur macOS.
     let url = format!("{}/r/{}", registry.trim_end_matches('/'), record_id);
+    let (dir, entetes) = fichier_entetes(capability)?;
+    let arg_entetes = format!("@{}", entetes.to_string_lossy());
     let out = std::process::Command::new("/usr/bin/curl")
         .args([
             "-sS", "-m", "15", "-X", "POST",
-            "-H", "content-type: application/json",
+            "-H", &arg_entetes,
             "--data-binary", "@-",
             "-o", "/dev/null", "-w", "%{http_code}",
             &url,
@@ -172,11 +202,15 @@ fn put_record(registry: &str, record_id: &str, body: &str) -> Result<(), String>
             c.stdin.as_mut().unwrap().write_all(body.as_bytes())?;
             c.wait_with_output()
         })
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string());
+    // Le fichier d'en-têtes disparaît quel que soit l'issue de l'appel.
+    let _ = fs::remove_dir_all(&dir);
+    let out = out?;
     let code = String::from_utf8_lossy(&out.stdout).trim().to_string();
     match code.as_str() {
         "201" | "200" | "204" => Ok(()),
         "409" => Ok(()), // ce record existe déjà : rien à refaire, et jamais de remplacement
+        // Le code seul remonte : jamais la capability, jamais le corps de la réponse.
         other => Err(format!("registre : {}", other)),
     }
 }
@@ -399,6 +433,11 @@ impl Finalizer {
         if self.already(&sig) {
             return None;
         }
+        // Sans capability, aucune publication : le dépôt anonyme n'existe plus. On s'arrête
+        // avant tout travail coûteux, et le document sera repris au prochain passage si la
+        // capability réapparaît — par exemple après une ré-émission.
+        let capability = crate::ho_capability::lire(&m.record_id)?;
+
         let facts = decrypt_facts(&m.facts_blob, &m.key, &m.record_id)?;
         let (facts_arr, periods) = split_facts(&facts);
 
@@ -467,7 +506,7 @@ impl Finalizer {
         })
         .to_string();
 
-        match put_record(registry, &m.record_id, &record) {
+        match put_record(registry, &m.record_id, &record, &capability) {
             Ok(()) => {
                 // Deux clés : la signature exacte (octets engagés) et le record_id seul, qui
                 // garantit qu'un document revu — même modifié — ne redonne jamais de preuve.
@@ -672,6 +711,55 @@ mod tests {
         assert_eq!(r["final_state_commit"].as_str().unwrap(), "bb".repeat(32));
         assert!(r["session_id"].as_str().unwrap().starts_with("c6-"));
         assert_eq!(r["object_id"].as_str().unwrap(), "contrat.docx");
+    }
+
+    // ---------------------------------------------------------------- capability
+    #[test]
+    fn le_fichier_d_entetes_est_restreint_et_ephemere() {
+        let cap = "ZmFrZS1jYXBhYmlsaXR5LXBvdXItbGUtdGVzdA";
+        let (dir, f) = super::fichier_entetes(cap).unwrap();
+        let contenu = std::fs::read_to_string(&f).unwrap();
+        assert!(contenu.contains("authorization: Bearer "), "l'en-tête est posé");
+        assert!(contenu.contains("content-type: application/json"));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            assert_eq!(std::fs::metadata(&f).unwrap().permissions().mode() & 0o777, 0o600,
+                "lisible du seul propriétaire");
+            assert_eq!(std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777, 0o700,
+                "répertoire restreint lui aussi");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(!f.exists(), "le fichier disparaît avec son répertoire");
+    }
+
+    #[test]
+    fn la_capability_ne_passe_jamais_par_argv() {
+        // Invariant de source : l'appel à curl ne doit porter QUE la référence au fichier
+        // d'en-têtes. Un « Bearer » construit dans les arguments serait visible par `ps`.
+        let src = include_str!("ho_finalizer.rs");
+        let i = src.find("Command::new(\"/usr/bin/curl\")").expect("appel curl");
+        let bloc = &src[i..i + 400];
+        assert!(!bloc.contains("Bearer"), "aucun Bearer dans les arguments de curl");
+        assert!(bloc.contains("&arg_entetes"), "seule la référence au fichier est passée");
+    }
+
+    #[test]
+    fn la_capability_n_apparait_dans_aucun_message() {
+        // Le message d'erreur ne porte que le code HTTP : ni la capability, ni le corps de
+        // la réponse, ni l'URL. Contrôle de source, faute de pouvoir provoquer un refus ici.
+        let src = include_str!("ho_finalizer.rs");
+        let i = src.find("match code.as_str()").expect("aiguillage du code HTTP");
+        // Commentaires retirés : ils parlent de la capability, le CODE ne doit pas la porter.
+        let bloc: String = src[i..i + 400]
+            .lines()
+            .map(|l| l.split("//").next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(bloc.contains("format!(\"registre : {}\", other)"),
+            "le message ne joint que le code");
+        assert!(!bloc.contains("capability"), "la capability n'entre dans aucun message");
+        assert!(!bloc.contains("stdout"), "le corps de la réponse ne remonte pas");
     }
 
     #[test]
