@@ -175,7 +175,7 @@ preflight() {
   n="$(git -C "$APP" rev-parse HEAD 2>/dev/null)"; w="$(git -C "$WEB" rev-parse HEAD 2>/dev/null)"
   # Le SHA de référence du BUILD. La tête peut avancer sur de l'outillage RC sans rendre
   # l'artefact caduc : ce qui compte est qu'aucun fichier de produit n'ait bougé depuis.
-  local BASE="c5062cdbe62fc155c6f382b0046932534c313cd6" diff_produit
+  local BASE="f1096ab85d545fe75b986b257e7a828a1b667b8b" diff_produit
   if git -C "$APP" merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
     diff_produit="$(git -C "$APP" diff --name-only "$BASE" HEAD -- src src-tauri index.html package.json | head -5)"
     local sale; sale="$(git -C "$APP" status --porcelain -- src src-tauri index.html package.json | head -5)"
