@@ -71,6 +71,27 @@ Le code échoue **fermé** sans configuration supplémentaire.
 branch deploys sont donc impossibles par construction. Le scoping par contexte reste la bonne
 pratique, et redeviendrait indispensable si le site était un jour branché sur GitHub.*
 
+> ### Dette V1 — portée Netlify
+>
+> Configuration réellement appliquée le 2026-09-20 à
+> `HUMANORIGIN_REGISTRY_WRITE_PUBLIC_KEYS`, sur le site `humanorigin-registry` :
+>
+> - **contexte : Production uniquement** ;
+> - **scopes : `builds`, `functions`, `post_processing`, `runtime`** — les quatre.
+>
+> Le plan Netlify **Free ne permet pas** de limiter la variable au seul scope `Functions` :
+> l'API répond `403 Upgrade your Netlify account to set specific scopes`, et la capacité
+> `env_var_scopes` du compte est déclarée `included: false`. Seul le ciblage de **contexte**
+> a pu être appliqué, et il l'a été.
+>
+> La valeur étant une **clé publique**, cette extension de portée **n'introduit aucune fuite
+> de secret**.
+>
+> **Cette configuration ne serait pas acceptable pour un secret.**
+>
+> À réévaluer si le site Registry est un jour connecté à Git, si des Deploy Previews ou des
+> Branch deploys deviennent possibles, ou si l'architecture de déploiement change.
+
 ---
 
 ## 4. Déroulé
