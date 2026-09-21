@@ -9,6 +9,7 @@ import { open } from "@tauri-apps/api/dialog";
 import { readTextFile } from "@tauri-apps/api/fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { PAPER, INK, MUTED, put, mkButton } from "./ho_ui.js";
+import { reserveRecordId } from "./ho_reserve.js";
 
 const el = (tag, decls, text) => {
   const n = document.createElement(tag);
@@ -76,7 +77,7 @@ async function createDocument(button, msg, folder, proposalBox) {
   try {
     // Réservation AVANT la commande native : sans identifiant réservé ni capability,
     // aucun document HumanOrigin n'est créé. Le jeton de session reste côté frontend.
-    const { record_id, capability } = await window.__HO_RESERVE__();
+    const { record_id, capability } = await reserveRecordId();
     const r = await invoke("ho_new_document", { folder, recordId: record_id, capability });
     if (proposalBox) proposalBox.textContent = "";
     say(msg, r.opened_in_word

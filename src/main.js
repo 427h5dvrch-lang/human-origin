@@ -56,49 +56,10 @@ const supabaseAnonKey =
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-/**
- * Réserve un identifiant de Record auprès du service, avec la session en cours.
- *
- * L'identifiant est produit par le SERVEUR : il existe, lié à un compte, avant
- * d'apparaître dans un document. C'est ce qui interdit la préemption.
- *
- * Le jeton de session ne quitte PAS cette fonction : seul le couple
- * { record_id, capability } est rendu, et c'est tout ce qui descend en natif.
- *
- * En cas d'échec, aucun document HumanOrigin n'est créé. Un document portant un
- * identifiant non réservé serait impubliable, et il le serait en silence.
- */
-export async function reserveRecordId() {
-  const { data } = await supabase.auth.getSession();
-  const jeton = data?.session?.access_token;
-  if (!jeton) {
-    throw new Error("Connectez-vous pour créer un document HumanOrigin publiable.");
-  }
-  let r;
-  try {
-    r = await fetch(supabaseUrl + "/functions/v1/reserve-record-id", {
-      method: "POST",
-      headers: { authorization: "Bearer " + jeton, apikey: supabaseAnonKey,
-                 "content-type": "application/json" },
-      body: "{}",
-    });
-  } catch (e) {
-    throw new Error("Le service HumanOrigin est injoignable. Réessayez une fois connecté au réseau.");
-  }
-  if (r.status === 429) {
-    throw new Error("Trop de documents créés récemment. Réessayez plus tard.");
-  }
-  if (!r.ok) {
-    // Le détail du service ne remonte pas à l'interface : il peut porter des informations
-    // qui ne regardent pas cet écran.
-    throw new Error("La réservation n’a pas abouti. Aucun document n’a été créé.");
-  }
-  const b = await r.json();
-  if (!b?.record_id || !b?.capability) {
-    throw new Error("Réponse inattendue du service. Aucun document n’a été créé.");
-  }
-  return { record_id: b.record_id, capability: b.capability };
-}
+// La réservation vit dans ho_reserve.js : c'est le module que charge ho_desktop.js,
+// le point d'entrée réel de l'application. Une seule définition, importée ici.
+import { reserveRecordId } from "./ho_reserve.js";
+export { reserveRecordId };
 if (typeof window !== "undefined") window.__HO_RESERVE__ = reserveRecordId;
 
 // =========================================================
