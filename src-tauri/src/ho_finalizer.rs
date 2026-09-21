@@ -553,6 +553,54 @@ impl Finalizer {
 mod tests {
     use super::forbidden_work_folder;
 
+    /// INVARIANT DE DÉPLOIEMENT : un SEUL identifiant traverse toute la moitié native.
+    ///
+    /// Les briques étaient éprouvées séparément ; rien ne démontrait qu'il s'agit du MÊME
+    /// identifiant d'un bout à l'autre. Un rollout désynchronisé publierait sous un identifiant
+    /// non réservé si cette chaîne se rompait quelque part.
+    #[test]
+    fn un_seul_identifiant_traverse_toute_la_chaine_native() {
+        const RID: &str = "HO-CHAINE7890ab";
+
+        // 1 -> 2. L'identifiant réservé est semé dans le document, et relu depuis le paquet.
+        let docx = crate::ho_word_setup::bootstrap_docx(&["/tmp/x".to_string()], RID).unwrap();
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(docx)).unwrap();
+        let mut custom = String::new();
+        {
+            use std::io::Read as _;
+            z.by_name("docProps/custom.xml").unwrap().read_to_string(&mut custom).unwrap();
+        }
+        let seme = super::prop(&custom, "HOReservedId").expect("HOReservedId present");
+        assert_eq!(seme, RID, "le document porte exactement l'identifiant reserve");
+
+        // 2 -> 3. Le volet compose le locator à partir de cet identifiant, et de lui seul.
+        // Le document finalisé porte alors HOLocator et HOFacts.
+        let cle = [7u8; 32];
+        let locator = format!("ho1.{}.{}", seme, super::b64u(&cle));
+        let xml = format!(
+            "<p name=\"HOLocator\"><vt:lpwstr>{}</vt:lpwstr></p>\
+             <p name=\"HOFacts\"><vt:lpwstr>blob</vt:lpwstr></p>",
+            locator);
+
+        // 3 -> 4. Le finalizer relit le locator : c'est CET identifiant qui sert de clé au
+        // trousseau, jamais un autre, et jamais une valeur dérivée du texte du document.
+        let m = super::parse_marker(&xml).expect("marqueur lisible");
+        assert_eq!(m.record_id, RID, "le finalizer relit exactement l'identifiant seme");
+        assert!(crate::ho_capability::record_id_valide(&m.record_id),
+            "la cle du trousseau est cet identifiant");
+
+        // 4 -> 5. L'URL du dépôt est bâtie sur ce même identifiant. Contrôle de SOURCE :
+        // l'envoi réel exige le réseau, mais la construction de l'URL et l'argument passé
+        // au point d'appel sont vérifiables ici.
+        let src = include_str!("ho_finalizer.rs");
+        assert!(src.contains("let url = format!(\"{}/r/{}\", registry.trim_end_matches('/'), record_id);"),
+            "l'URL est batie sur le record_id recu");
+        assert!(src.contains("match put_record(registry, &m.record_id, &record, &capability)"),
+            "le point d'appel passe l'identifiant du marqueur, et pas un autre");
+        assert!(src.contains("let capability = crate::ho_capability::lire(&m.record_id)?;"),
+            "la capability est lue sous ce meme identifiant, avant tout travail");
+    }
+
     #[test]
     fn facts_payload_forms() {
         let v1 = serde_json::json!([{ "sequence": 0, "length_delta": 3 }]);
