@@ -24,37 +24,8 @@ const ck = (n, c, d = "") => { c ? ok++ : ko++; console.log(`  ${c ? "✓" : "�
 
 const git = (args) => execFileSync("git", ["-C", WEB, ...args], { encoding: "utf8", maxBuffer: 32 << 20 });
 
-// --- les deux volets, extraits de l'histoire
-const REF_NEUF = "registry-write-auth-v1";
-const REF_VIEUX = "registry-write-auth-v1~1";        // juste avant « employer l'identifiant réservé »
-const volet = (ref) => git(["show", `${ref}:create-record/word/taskpane.js`]);
-
-// Le volet COURANT est lu dans l'arbre de travail : c'est lui qui partira, pas une révision.
-const COURANT = fs.readFileSync(path.join(WEB, "create-record/word/taskpane.js"), "utf8");
-const NEUF = volet(REF_NEUF);
-const VIEUX = (() => {
-  // On remonte jusqu'à la version qui génère encore l'identifiant localement.
-  for (const r of [REF_VIEUX, "registry-write-auth-v1~2", "registry-write-auth-v1~3", "record-contract-multi-period"]) {
-    try { const s = volet(r); if (/PENDING\.recordId = "HO-" \+ b64u\(crypto\.getRandomValues/.test(s)) return s; }
-    catch (e) { /* révision absente */ }
-  }
-  return null;
-})();
-if (!VIEUX) { console.log("\n  IGNORE : ancien volet introuvable dans l'histoire"); process.exit(0); }
-
-// --- extraction exécutable de pendingRecord + reservedId, sans Office
-function charge(src) {
-  const reservedId = /async function reservedId\(\)/.test(src);
-  const corps = src.slice(src.indexOf("function pendingRecord"),
-                         src.indexOf("\n}", src.indexOf("function pendingRecord")) + 2);
-  return { genereLocalement: /getRandomValues\(new Uint8Array\(9\)\)/.test(corps),
-           exigeReserve: /throw new Error\(/.test(corps) && reservedId,
-           corps };
-}
-const V = charge(VIEUX), N = charge(NEUF), C = charge(COURANT);
-
-// Classe de comportement, déduite du code et non d'un numéro de révision : la matrice
-// reste juste quand les branches bougent.
+// --- les trois volets, retrouvés DANS L'HISTOIRE par leur comportement.
+// Aucune révision figée : les branches bougent, la classe de comportement, non.
 const classe = (src) => {
   const tire = /getRandomValues\(new Uint8Array\(9\)\)/.test(src);
   const transition = /LEGACY COMPATIBILITY — REMOVE AFTER REGISTRY WRITE V1 CUTOVER/.test(src);
@@ -62,11 +33,39 @@ const classe = (src) => {
   if (tire) return "historique";
   return "strict";
 };
+const volet = (ref) => git(["show", `${ref}:create-record/word/taskpane.js`]);
+
+// Le volet COURANT est lu dans l'arbre de travail : c'est lui qui partira.
+const COURANT = fs.readFileSync(path.join(WEB, "create-record/word/taskpane.js"), "utf8");
+
+const revs = git(["rev-list", "--max-count=60", "registry-write-auth-v1"]).trim().split("\n");
+const parClasse = {};
+for (const r of revs) {
+  let src; try { src = volet(r); } catch (e) { continue; }
+  const c = classe(src);
+  if (!parClasse[c]) parClasse[c] = { rev: r.slice(0, 7), src };
+}
+const VIEUX = parClasse.historique?.src;
+const NEUF = parClasse.strict?.src;
+if (!VIEUX || !NEUF) {
+  console.log(`\n  IGNORE : classes introuvables dans l'histoire (${Object.keys(parClasse).join(", ")})`);
+  process.exit(0);
+}
+
+// Extraction exécutable de pendingRecord, sans Office.
+function charge(src) {
+  const i = src.indexOf("function pendingRecord");
+  const corps = src.slice(i, src.indexOf("\n}", i) + 2);
+  return { genereLocalement: /getRandomValues\(new Uint8Array\(9\)\)/.test(corps),
+           exigeReserve: /throw new Error\(/.test(corps) && /async function reservedId\(\)/.test(src) };
+}
+
+const V = charge(VIEUX), N = charge(NEUF), C = charge(COURANT);
 
 console.log("\n── les trois volets sont bien ceux attendus ──");
-ck("ancien volet : classe historique", classe(VIEUX) === "historique", classe(VIEUX));
+ck("volet historique retrouvé dans l'histoire", classe(VIEUX) === "historique", parClasse.historique.rev);
 ck("ancien volet : n'exige aucune réservation", !V.exigeReserve);
-ck("volet strict (révision figée) : classe strict", classe(NEUF) === "strict", classe(NEUF));
+ck("volet strict retrouvé dans l'histoire", classe(NEUF) === "strict", parClasse.strict.rev);
 ck("volet courant : classe transition", classe(COURANT) === "transition", classe(COURANT));
 ck("volet courant : le tirage local est confiné au bloc étiqueté",
   (COURANT.match(/getRandomValues\(new Uint8Array\(9\)\)/g) || []).length === 1
