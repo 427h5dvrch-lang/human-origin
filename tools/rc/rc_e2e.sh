@@ -175,17 +175,23 @@ preflight() {
   n="$(git -C "$APP" rev-parse HEAD 2>/dev/null)"; w="$(git -C "$WEB" rev-parse HEAD 2>/dev/null)"
   # Le SHA de référence du BUILD. La tête peut avancer sur de l'outillage RC sans rendre
   # l'artefact caduc : ce qui compte est qu'aucun fichier de produit n'ait bougé depuis.
-  local BASE="c10bab33b815f4b8f2de717201d6bd601882f8cb" diff_produit
+  local BASE="c5062cdbe62fc155c6f382b0046932534c313cd6" diff_produit
   if git -C "$APP" merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
     diff_produit="$(git -C "$APP" diff --name-only "$BASE" HEAD -- src src-tauri index.html package.json | head -5)"
-    if [ -z "$diff_produit" ]; then
-      vert "native : produit identique à c10bab3 (tête ${n:0:7})"
+    local sale; sale="$(git -C "$APP" status --porcelain -- src src-tauri index.html package.json | head -5)"
+    if [ -n "$sale" ]; then
+      # L'artefact est construit depuis l'ARBRE DE TRAVAIL : des modifications non
+      # commitées le rendent irreproductible, et un garde qui ne les voit pas ment.
+      rouge "des fichiers de produit sont modifiés et non commités — l'artefact est irreproductible"
+      echo "$sale" | sed 's/^/      /'; ko=1
+    elif [ -z "$diff_produit" ]; then
+      vert "native : produit identique à ${BASE:0:7} (tête ${n:0:7})"
     else
-      rouge "des fichiers de produit ont changé depuis c10bab3 — l'artefact n'est plus représentatif"
+      rouge "des fichiers de produit ont changé depuis ${BASE:0:7} — l'artefact n'est plus représentatif"
       echo "$diff_produit" | sed 's/^/      /'; ko=1
     fi
   else
-    rouge "native : c10bab3 n'est pas un ancêtre de ${n:0:7}"; ko=1
+    rouge "native : ${BASE:0:7} n'est pas un ancêtre de ${n:0:7}"; ko=1
   fi
   [ "$w" = "a523cfd285fd9dd83d287bd6b6adc326c35b4721" ] && vert "web à a523cfd" || { rouge "web à ${w:0:7}"; ko=1; }
 
