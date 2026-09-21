@@ -49,7 +49,16 @@ ck("la capability n'est pas un paramètre de bootstrap_docx",
 console.log("\n── 3. le volet compose le locator ──");
 const pane = fs.readFileSync(path.join(REG, "../create-record/word/taskpane.js"), "utf8");
 ck("le volet lit HOReservedId", pane.includes('it.key === "HOReservedId"'));
-ck("le volet ne génère plus d'identifiant", !/getRandomValues\(new Uint8Array\(9\)\)/.test(pane));
+// MODE TRANSITION : le tirage local subsiste, mais UNIQUEMENT dans le bloc historique
+// étiqueté pour retrait. Le chemin de l'identifiant réservé, lui, n'en tire aucun.
+ck("le tirage local est confiné au bloc historique étiqueté",
+  (pane.match(/getRandomValues\(new Uint8Array\(9\)\)/g) || []).length === 1
+  && pane.indexOf("LEGACY COMPATIBILITY — REMOVE AFTER REGISTRY WRITE V1 CUTOVER")
+     < pane.indexOf("getRandomValues(new Uint8Array(9))"));
+ck("un identifiant réservé valide est employé tel quel, sans tirage",
+  /PENDING\.recordId = r\.id;/.test(pane));
+ck("un identifiant réservé illisible échoue fermé, sans repli historique",
+  /if \(r\.etat === "invalide"\)[\s\S]{0,400}?throw new Error\(/.test(pane));
 
 console.log("\n── 4. le finalizer relit le trousseau ──");
 const fin = fs.readFileSync(path.join(APP, "src-tauri/src/ho_finalizer.rs"), "utf8");
