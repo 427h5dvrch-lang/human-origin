@@ -265,6 +265,36 @@ curl -s -X POST "https://<DEPLOY_ID>--humanorigin-registry.netlify.app/r/HO-audi
 `401` ⇒ la défense filtre. `422` ⇒ l'hôte vu par la fonction n'est pas celui du permalink :
 la défense est illusoire et ne doit plus figurer dans aucun raisonnement de sécurité.
 
+### P1 BEFORE PUBLIC LAUNCH — Registry destination pinning
+
+**Statut : OPEN.** Aucun correctif appliqué. Constaté le 2026-09-21 pendant la préparation
+du RC Registry Write V1.
+
+**État actuel.** `src-tauri/src/ho_finalizer.rs` lit `cfg.registry` depuis
+`finalizer_config.json` sans validation stricte de destination : `scan_once` retient la
+valeur telle quelle et ne retombe sur `https://registry.humanorigin.io` qu'en son absence.
+
+**Risque.** Une modification locale de cette configuration peut rediriger un build de
+**production** vers un autre endpoint Registry. Les Records partiraient alors, chiffrés mais
+accompagnés d'une capability valide, vers un serveur choisi par qui a écrit ce fichier.
+
+**Invariant cible avant lancement public.**
+
+- Build de production : destination autorisée **uniquement** `https://registry.humanorigin.io`.
+- Aucune URL arbitraire provenant de la configuration d'exécution.
+- Une destination locale ou RC n'est permise que derrière un mécanisme **explicitement
+  réservé aux builds de développement ou RC, et désactivé par défaut** — par exemple un
+  `feature` Cargo qui n'est pas activé par `npm run build:mac-app`.
+- **Aucune réduction de la défense d'hôte côté registre.** Le pinning se fait côté client ;
+  le refus de tout `POST` dont l'hôte n'est pas `registry.humanorigin.io` reste entier.
+
+**Le RC actuel ne dépend pas de cette faiblesse.** La procédure de smoke RC conserve le
+**hostname canonique** de bout en bout — le volet, le finalizer et la capability visent tous
+`registry.humanorigin.io` — et détourne uniquement sa **résolution réseau**, par une entrée
+temporaire dans `/etc/hosts` pointant vers la machine locale. Aucune URL n'est surchargée,
+`cfg.registry` n'est pas modifié, et la défense d'hôte est exercée pour de bon plutôt que
+contournée. Corriger ce P1 ne remettra donc pas en cause le montage du RC.
+
 **Les écritures anonymes déjà effectuées sont indétectables.** Le schéma C2.1 ne porte aucune
 marque d'authentification, et `onlyIfNew` garantit qu'un Record existant n'est jamais remplacé :
 un identifiant préempté avant la fermeture **bloque définitivement** le Record légitime
