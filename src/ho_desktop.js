@@ -9,7 +9,8 @@ import { open } from "@tauri-apps/api/dialog";
 import { readTextFile } from "@tauri-apps/api/fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { PAPER, INK, MUTED, put, mkButton } from "./ho_ui.js";
-import { reserveRecordId } from "./ho_reserve.js";
+import { reserveRecordId, supabase } from "./ho_reserve.js";
+import { listen } from "@tauri-apps/api/event";
 
 const el = (tag, decls, text) => {
   const n = document.createElement(tag);
@@ -174,6 +175,137 @@ async function renderWord(box) {
   box.appendChild(confirmBox);
 }
 
+// ---------------------------------------------------------------- compte
+//
+// L'authentification EXISTE depuis toujours dans main.js ; le pivot vers ce shell a laissé
+// son interface derrière lui. On reprend ici le même flux Supabase, sans en inventer un
+// autre : signInWithOtp vers humanorigin://login, puis reprise du lien profond.
+//
+// Une seule instance de client dans toute l'application : celle de ho_reserve.js. Le shell
+// s'authentifie avec elle, et c'est elle qui réserve.
+
+const REDIRECTION = "humanorigin://login";
+
+async function sessionCourante() {
+  try { return (await supabase.auth.getSession())?.data?.session ?? null; }
+  catch (e) { return null; }
+}
+
+/**
+ * Extrait les jetons d'une URL de retour, exactement comme le faisait main.js : les
+ * paramètres se trouvent dans le fragment, à défaut dans la requête.
+ *
+ * Rien n'est accepté sans les DEUX jetons : un lien tronqué, expiré ou porteur d'une
+ * erreur ne doit jamais produire un faux état connecté.
+ */
+function jetonsDuLien(url) {
+  let d;
+  try { d = new URL(String(url).replace(/^humanorigin:\/\//, "https://humanorigin.invalid/")); }
+  catch (e) { return null; }
+  const p = new URLSearchParams((d.hash || "").replace(/^#/, "") || d.search.replace(/^\?/, ""));
+  if (p.get("error") || p.get("error_description")) return null;
+  const access_token = p.get("access_token"), refresh_token = p.get("refresh_token");
+  if (!access_token || !refresh_token) return null;
+  return { access_token, refresh_token };
+}
+
+async function ouvrirSession(url) {
+  const j = jetonsDuLien(url);
+  if (!j) return false;
+  try {
+    const { error } = await supabase.auth.setSession(j);
+    return !error;
+  } catch (e) { return false; }
+}
+
+// Les quatre canaux sont ceux que main.js écoutait : on ne change pas le contrat natif.
+const CANAUX = ["tauri://open-url", "scheme-request", "scheme-request-received", "deep-link://open-url"];
+
+function urlDuPayload(payload) {
+  if (Array.isArray(payload) && payload.length) return String(payload[0]);
+  if (typeof payload === "string") return payload;
+  if (payload && typeof payload === "object") {
+    const u = payload.url || (Array.isArray(payload.urls) ? payload.urls[0] : null);
+    if (u) return String(u);
+  }
+  return null;
+}
+
+let liensPrets = false;
+async function brancherLiens(onSession) {
+  if (liensPrets) return;
+  liensPrets = true;
+  const handler = async (ev) => {
+    const u = urlDuPayload(ev?.payload);
+    if (!u) return;
+    await onSession(await ouvrirSession(u));
+  };
+  for (const c of CANAUX) { try { await listen(c, handler); } catch (e) { /* canal absent */ } }
+  // Lien reçu avant que l'interface ne soit prête : le natif l'a mis de côté.
+  try {
+    const attente = await invoke("take_pending_deep_link");
+    if (attente) await handler({ payload: attente });
+  } catch (e) { /* aucun lien en attente */ }
+}
+
+async function renderAccount(box, session) {
+  box.textContent = "";
+  const msg = el("p", { margin: "10px 0 0", color: MUTED, font: "14px/1.5 inherit" });
+
+  if (session) {
+    const ligne = el("div", { display: "flex", "align-items": "center", gap: "12px",
+      "flex-wrap": "wrap" });
+    ligne.appendChild(el("span", { color: MUTED, font: "14px/1.5 inherit" },
+      t("account.signedInAs")));
+    ligne.appendChild(el("span", { color: INK, font: "500 15px/1.5 inherit" },
+      session?.user?.email || ""));
+    const out = secondaryButton(t("account.signOut"));
+    out.addEventListener("click", async () => {
+      out.disabled = true;
+      try { await supabase.auth.signOut(); } catch (e) { say(msg, t("account.signOutFailed"), true); }
+      out.disabled = false;
+      await renderAccount(box, await sessionCourante());
+    });
+    ligne.appendChild(out);
+    box.appendChild(ligne);
+    box.appendChild(msg);
+    return;
+  }
+
+  box.appendChild(el("p", { margin: "0 0 12px", color: MUTED }, t("account.signedOutHint")));
+  const ligne = el("div", { display: "flex", gap: "10px", "flex-wrap": "wrap" });
+  const champ = document.createElement("input");
+  champ.type = "email";
+  champ.placeholder = t("account.emailPlaceholder");
+  put(champ, { font: "15px/1 -apple-system, system-ui, sans-serif", padding: "10px 12px",
+    "border-radius": "7px", border: "1px solid #D9D5CC", background: "#FFFFFF", color: INK,
+    "min-width": "240px", flex: "1 1 240px" });
+  const envoyer = mkButton(t("account.sendLink"), true);
+
+  envoyer.addEventListener("click", async () => {
+    const email = String(champ.value || "").trim();
+    if (!email) { say(msg, t("account.emailRequired"), true); return; }
+    envoyer.disabled = true;
+    say(msg, t("account.sending"), false);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email, options: { emailRedirectTo: REDIRECTION },
+      });
+      if (error) { envoyer.disabled = false; say(msg, t("account.sendFailed"), true); return; }
+    } catch (e) {
+      envoyer.disabled = false; say(msg, t("account.sendFailed"), true); return;
+    }
+    // État « lien envoyé » : pas d'écran supplémentaire, et l'adresse disparaît.
+    box.textContent = "";
+    box.appendChild(el("p", { margin: "0", color: MUTED }, t("account.linkSent")));
+  });
+
+  ligne.appendChild(champ);
+  ligne.appendChild(envoyer);
+  box.appendChild(ligne);
+  box.appendChild(msg);
+}
+
 const frenchDate = (d) =>
   d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
   + " · " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -194,6 +326,15 @@ async function panel() {
     t("panel.title")));
   wrap.appendChild(el("p", { margin: "0 0 38px", color: MUTED },
     t("panel.subtitle")));
+
+  // --- compte, en tête : sans session, rien d'autre n'est réalisable
+  wrap.appendChild(el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",
+    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, t("account.section")));
+  const accountBox = el("div", { margin: "0 0 38px" });
+  wrap.appendChild(accountBox);
+  await renderAccount(accountBox, await sessionCourante());
+  // Un retour de lien profond recompose le panneau : l'état connecté apparaît sans relance.
+  await brancherLiens(async (ok) => { if (ok) await panel(); });
 
   // --- Microsoft Word
   wrap.appendChild(el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",

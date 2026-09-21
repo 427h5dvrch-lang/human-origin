@@ -19,6 +19,10 @@ const supabaseAnonKey =
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// UNE seule instance dans toute l'application : le shell s'authentifie avec ce client, et
+// c'est le même qui réserve. La session n'a donc pas à être partagée — elle est la même.
+export { supabase };
+
 /**
  * Réserve un identifiant de Record auprès du service, avec la session en cours.
  *

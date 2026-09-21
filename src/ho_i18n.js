@@ -13,6 +13,19 @@ const CHOIX = "ho.langue";                 // mémorisé localement, par surface
 
 export const CATALOGUE = {
   fr: {
+    "account.section": "COMPTE",
+    "account.signedOutHint": "Connectez-vous pour créer des documents HumanOrigin publiables.",
+    "account.emailPlaceholder": "vous@exemple.fr",
+    "account.sendLink": "Recevoir un lien de connexion",
+    "account.sending": "Envoi…",
+    "account.linkSent": "Lien envoyé. Ouvrez-le depuis cet ordinateur pour vous connecter.",
+    "account.sendFailed": "Le lien n’a pas pu être envoyé.",
+    "account.emailRequired": "Indiquez une adresse électronique.",
+    "account.signedInAs": "Connecté",
+    "account.signOut": "Se déconnecter",
+    "account.signOutFailed": "La déconnexion a échoué.",
+    "account.linkRefused": "Ce lien de connexion n’est pas valide.",
+
     "setup.word.explain": "HumanOrigin doit préparer Microsoft Word. macOS va vous demander l’autorisation d’accéder aux données de Word.",
     "setup.word.progress": "Préparation de Word… Répondez à la demande de macOS si elle s’affiche.",
     "setup.word.failed": "La préparation de Word a échoué.",
@@ -58,7 +71,22 @@ export const CATALOGUE = {
   },
   // Phase 2 : l'anglais est rédigé puis soumis à revue avant d'être figé. Les clés marquées
   // « revue doctrinale » dans le glossaire ne seront pas intégrées sans cette revue.
-  en: {},
+  en: {
+    // Le catalogue anglais est incomplet de longue date : seules les clés du compte y sont,
+    // parce qu'elles viennent d'être écrites. Les autres restent à traduire (phase 3).
+    "account.section": "ACCOUNT",
+    "account.signedOutHint": "Sign in to create publishable HumanOrigin documents.",
+    "account.emailPlaceholder": "you@example.com",
+    "account.sendLink": "Email me a sign-in link",
+    "account.sending": "Sending\u2026",
+    "account.linkSent": "Link sent. Open it on this computer to sign in.",
+    "account.sendFailed": "The link could not be sent.",
+    "account.emailRequired": "Enter an email address.",
+    "account.signedInAs": "Signed in",
+    "account.signOut": "Sign out",
+    "account.signOutFailed": "Sign-out failed.",
+    "account.linkRefused": "This sign-in link is not valid.",
+  },
 };
 
 let choisie = null;
