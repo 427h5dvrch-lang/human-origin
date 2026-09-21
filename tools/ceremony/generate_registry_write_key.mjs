@@ -154,8 +154,10 @@ const recu = [
   `fingerprint : ${empreinte}`,
   "",
   "# Variable d'environnement Netlify du site du registre, à recopier telle quelle.",
-  "#   scope   : Functions",
-  "#   contexte: Production",
+  "#   contexte attendu : Production uniquement",
+  "#   scope préféré    : Functions uniquement",
+  "#   Netlify Free peut imposer les 4 scopes (builds, functions, post_processing,",
+  "#   runtime) : le scoping y est indisponible. Voir CEREMONIE_ho-registry-write-v1.md.",
   "# Toute modification de cette variable exige un NOUVEAU DEPLOY pour prendre effet,",
   "# puis la suppression des deploys portant encore l'ancienne valeur.",
   ligneEnv,
@@ -202,7 +204,7 @@ err("\n── matériel PUBLIC — les seules valeurs à conserver et à montrer
 err(`  key_id      : ${keyId}`);
 err(`  public_key  : ${publiqueB64}`);
 err(`  fingerprint : ${empreinte}`);
-err("\n  ligne d'environnement Netlify — scope Functions, contexte Production :");
+err("\n  ligne d'environnement Netlify — contexte Production, scope Functions si le plan le permet :");
 err(`  ${ligneEnv}`);
 err("\n── suite ──");
 if (versFichier) {
