@@ -30,10 +30,14 @@ function faireDOM() {
 }
 
 // ---------------------------------------------------------------- extraction du vrai code
-const DEBUT = SRC.indexOf('const REDIRECTION = "humanorigin://login";');
+const DEBUT = SRC.indexOf("async function sessionCourante()");
 const FIN = SRC.indexOf("const frenchDate = (d) =>");
 if (DEBUT < 0 || FIN < 0) { console.error("  extraction impossible"); process.exit(1); }
 const BLOC = SRC.slice(DEBUT, FIN);
+ck("la redirection est fixée à la compilation, défaut production",
+  /const REDIRECTION = import\.meta\.env\.VITE_HO_REDIRECT \|\| "humanorigin:\/\/login";/.test(SRC));
+ck("aucune redirection lisible à l'exécution",
+  !/REDIRECTION\s*=\s*[^;]*(localStorage|config|JSON\.parse)/.test(SRC));
 ck("le bloc compte est extrait du fichier de production",
   /async function renderAccount/.test(BLOC) && /async function brancherLiens/.test(BLOC)
   && /function jetonsDuLien/.test(BLOC));
@@ -48,10 +52,10 @@ function charger(faux) {
   const say = (n, texte) => { n.textContent = texte || ""; };
   const t = (k) => CATALOGUE.fr[k] ?? k;
   const f = new Function("document", "el", "put", "mkButton", "secondaryButton", "say", "t",
-    "MUTED", "INK", "supabase", "listen", "invoke", "panel",
-    BLOC + "\nreturn { renderAccount, brancherLiens, jetonsDuLien, ouvrirSession, sessionCourante, REDIRECTION, CANAUX };");
+    "MUTED", "INK", "supabase", "listen", "invoke", "panel", "REDIRECTION",
+    BLOC + "\nreturn { renderAccount, brancherLiens, jetonsDuLien, ouvrirSession, sessionCourante, CANAUX };");
   return { m: f(document, el, put, mkButton, secondaryButton, say, t, "#565E69", "#1A1E24",
-                faux.supabase, faux.listen, faux.invoke, faux.panel), noeud };
+                faux.supabase, faux.listen, faux.invoke, faux.panel, "humanorigin://login"), noeud };
 }
 
 function fauxClient(session = null) {

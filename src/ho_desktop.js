@@ -184,7 +184,10 @@ async function renderWord(box) {
 // Une seule instance de client dans toute l'application : celle de ho_reserve.js. Le shell
 // s'authentifie avec elle, et c'est elle qui réserve.
 
-const REDIRECTION = "humanorigin://login";
+// Redirection d'authentification, fixée à la COMPILATION. Défaut production ; un build RC
+// pose VITE_HO_REDIRECT et déclare le schéma correspondant. Aucun choix à l'exécution, et
+// rien de lisible depuis un fichier de configuration.
+const REDIRECTION = import.meta.env.VITE_HO_REDIRECT || "humanorigin://login";
 
 async function sessionCourante() {
   try { return (await supabase.auth.getSession())?.data?.session ?? null; }

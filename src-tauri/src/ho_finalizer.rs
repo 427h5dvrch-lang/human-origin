@@ -28,6 +28,12 @@ use std::{
 const LOCATOR_PREFIX: &str = "ho1";
 const CUSTOM_PART: &str = "docProps/custom.xml";
 const MAX_DOC_BYTES: u64 = 128 * 1024 * 1024;
+// Seule destination possible pour ce build. Défaut production ; un build RC la remplace à la
+// COMPILATION. Aucune valeur d'exécution, aucun fichier de configuration, aucun hôte arbitraire.
+const REGISTRY_URL: &str = match option_env!("HO_REGISTRY_URL") {
+    Some(v) => v,
+    None => "https://registry.humanorigin.io",
+};
 // Débounce : on ne lit pas un fichier que Word vient d'écrire. Ce n'est PAS un délai
 // d'éligibilité — un document reste finalisable des heures ou des jours après sa sauvegarde.
 const SETTLE_MS: u64 = 1200;
@@ -37,6 +43,8 @@ const SETTLE_MS: u64 = 1200;
 pub struct FinalizerConfig {
     /// Dossiers explicitement autorisés par l'utilisateur. Vide = le finalizer ne lit rien.
     pub folders: Vec<String>,
+    /// Conservé pour que les configurations existantes se désérialisent. PLUS JAMAIS LU :
+    /// la destination est compilée. Voir REGISTRY_URL.
     pub registry: Option<String>,
 }
 #[derive(Serialize, Deserialize, Default)]
@@ -521,7 +529,11 @@ impl Finalizer {
     /// Un passage sur les dossiers autorisés. Ne descend pas dans les sous-dossiers.
     pub fn scan_once(&self) -> Vec<String> {
         let cfg = self.config();
-        let registry = cfg.registry.unwrap_or_else(|| "https://registry.humanorigin.io".to_string());
+        // Destination COMPILÉE. Un build de production ne peut viser que l'URL canonique, un
+        // build RC que son URL locale. `cfg.registry` n'est plus lu : une écriture dans
+        // finalizer_config.json ne peut plus rediriger les dépôts vers un hôte arbitraire.
+        // Ferme le P1 « Registry destination pinning ».
+        let registry = REGISTRY_URL;
         let mut done = vec![];
         for folder in cfg.folders.iter() {
             // Un dossier situé dans le conteneur d'une application n'est jamais lu : macOS
@@ -540,7 +552,7 @@ impl Finalizer {
                 if !name.ends_with(".docx") || name.starts_with("~$") {
                     continue;
                 }
-                if let Some(rid) = self.finalize_file(&p, &registry) {
+                if let Some(rid) = self.finalize_file(&p, registry) {
                     done.push(rid);
                 }
             }

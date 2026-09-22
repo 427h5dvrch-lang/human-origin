@@ -2006,7 +2006,13 @@ fn main() {
     let last_input_seen = Arc::new(AtomicU64::new(0));
     let pending_deep_link: Arc<Mutex<Option<serde_json::Value>>> = Arc::new(Mutex::new(None));
 
-    let _ = tauri_plugin_deep_link::prepare("com.humanorigin.app");
+    // Identité du build. Le défaut est la valeur de PRODUCTION : un build sans variable
+    // d'environnement conserve exactement l'identité actuelle. Aucun choix à l'exécution.
+    const BUNDLE_ID: &str = match option_env!("HO_BUNDLE_ID") {
+        Some(v) => v,
+        None => "com.humanorigin.app",
+    };
+    let _ = tauri_plugin_deep_link::prepare(BUNDLE_ID);
 
 // First Run V1 : plus aucune observation d'entrées. L'observation du travail vient du volet Word,
 // qui scelle ses faits dans le document ; l'application ne fait que surveiller des dossiers,
@@ -2162,7 +2168,14 @@ async fn ho_new_document_inner(
                 }
             });
 
-            let _ = tauri_plugin_deep_link::register("humanorigin", move |request| {
+            // Schéma de lien profond. Défaut production, surchargeable à la COMPILATION
+            // seulement : un build RC déclare humanorigin-rc et ne peut donc pas intercepter
+            // les liens de production.
+            const DEEP_LINK_SCHEME: &str = match option_env!("HO_DEEP_LINK_SCHEME") {
+                Some(v) => v,
+                None => "humanorigin",
+            };
+            let _ = tauri_plugin_deep_link::register(DEEP_LINK_SCHEME, move |request| {
                 let payload = serde_json::to_value(&request).unwrap_or(serde_json::Value::Null);
 
                 if let Ok(mut guard) = pending_for_deep_link.lock() {
