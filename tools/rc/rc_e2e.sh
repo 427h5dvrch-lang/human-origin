@@ -48,7 +48,9 @@ ca_encore_trustee() {
   local fp="$1"; [ -n "$fp" ] || return 1
   for k in /Library/Keychains/System.keychain "$HOME/Library/Keychains/login.keychain-db"; do
     [ -e "$k" ] || continue
-    security find-certificate -a -Z "$k" 2>/dev/null | tr -d ':' | grep -qi "SHA-1 hash $fp" && return 0
+    # Même précaution qu'ailleurs : on compte au lieu d'interrompre le tube.
+    [ "$(security find-certificate -a -Z "$k" 2>/dev/null | tr -d ':' \
+          | grep -ci "SHA-1 hash $fp" || true)" -gt 0 ] && return 0
   done
   return 1
 }
@@ -208,8 +210,13 @@ preflight() {
   fi
   [ "$dd_prod" != "$dd_rc" ] && vert "répertoires de données distincts" \
                              || { rouge "répertoires de données identiques"; ko=1; }
-  if [ -d "$APP_RC" ] && strings "$APP_RC/Contents/MacOS/HumanOrigin RC" 2>/dev/null \
-       | grep -qF "com.humanorigin.app.rc"; then
+  # `grep -q` ferme le tube dès qu'il trouve ; `strings` reçoit alors SIGPIPE et sort en 141,
+  # que `pipefail` propage — le contrôle échouerait alors même qu'il a trouvé. On compte donc,
+  # ce qui lit jusqu'au bout, au lieu d'interrompre.
+  local trouve_id
+  trouve_id="$(strings "$APP_RC/Contents/MacOS/HumanOrigin RC" 2>/dev/null \
+                | grep -cF "com.humanorigin.app.rc" || true)"
+  if [ -d "$APP_RC" ] && [ "${trouve_id:-0}" -gt 0 ]; then
     vert "l'identifiant RC est bien compilé dans le binaire"
   else
     info "identifiant RC non retrouvé dans le binaire — reconstruisez le RC"
