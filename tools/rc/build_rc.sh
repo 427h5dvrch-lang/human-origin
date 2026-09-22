@@ -21,12 +21,17 @@ export HO_BUNDLE_ID="com.humanorigin.app.rc"
 export HO_DEEP_LINK_SCHEME="humanorigin-rc"
 export HO_REGISTRY_URL="https://127.0.0.1:8443"
 export VITE_HO_REDIRECT="humanorigin-rc://login"
+# Répertoire de données. Sans cette variable, le RC partagerait finalizer_config.json,
+# finalizer_state.json et les dossiers surveillés avec la production — ce qui a été constaté
+# le 2026-09-22 : deux dépôts RC se sont inscrits dans l'état de production.
+export HO_DATA_DIR_ID="com.humanorigin.app.rc"
 
 echo "── identité RC ──"
 echo "  bundle      : $HO_BUNDLE_ID"
 echo "  schéma      : $HO_DEEP_LINK_SCHEME"
 echo "  redirection : $VITE_HO_REDIRECT"
 echo "  registre    : $HO_REGISTRY_URL"
+echo "  données     : $HO_DATA_DIR_ID"
 
 # option_env! est lu à la compilation et cargo ne surveille pas ces variables : sans cela, un
 # binaire construit auparavant avec d'autres valeurs serait réemployé tel quel.

@@ -197,6 +197,24 @@ preflight() {
     rouge "application RC absente — lancez tools/rc/build_rc.sh"; ko=1
   fi
 
+  # --- répertoires de données : le RC ne doit jamais toucher l'état de production
+  local dd_prod dd_rc
+  dd_prod="$HOME/Library/Application Support/com.humanorigin.app"
+  dd_rc="$HOME/Library/Application Support/com.humanorigin.app.rc"
+  if grep -q 'HO_DATA_DIR_ID="com.humanorigin.app.rc"' "$APP/tools/rc/build_rc.sh"; then
+    vert "le build RC isole son répertoire de données"
+  else
+    rouge "le build RC partagerait le répertoire de données de production"; ko=1
+  fi
+  [ "$dd_prod" != "$dd_rc" ] && vert "répertoires de données distincts" \
+                             || { rouge "répertoires de données identiques"; ko=1; }
+  if [ -d "$APP_RC" ] && strings "$APP_RC/Contents/MacOS/HumanOrigin RC" 2>/dev/null \
+       | grep -qF "com.humanorigin.app.rc"; then
+    vert "l'identifiant RC est bien compilé dans le binaire"
+  else
+    info "identifiant RC non retrouvé dans le binaire — reconstruisez le RC"
+  fi
+
   # --- les deux schémas, chacun chez soi
   local h_prod h_rc
   h_prod="$(handler_de humanorigin)"
