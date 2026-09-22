@@ -20,7 +20,7 @@
       <Set Name="WordApi" MinVersion="1.5"/>
     </Sets>
   </Requirements>
-  <DefaultSettings><SourceLocation DefaultValue="https://localhost:3000/word/taskpane.html"/></DefaultSettings>
+  <DefaultSettings><SourceLocation DefaultValue="https://localhost:3000/word/taskpane-rc.html"/></DefaultSettings>
   <Permissions>ReadWriteDocument</Permissions>
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
     <Requirements>
@@ -73,7 +73,7 @@
         <bt:Image id="Icon.80" DefaultValue="https://localhost:3000/word/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/word/taskpane.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3000/word/taskpane-rc.html"/>
         <bt:Url id="GetStarted.Url" DefaultValue="https://humanorigin.io"/>
       </bt:Urls>
       <bt:ShortStrings>

@@ -67,6 +67,45 @@ ck("build_rc.sh retouche le schéma du bundle PRODUIT, pas la source",
 ck("build_rc.sh force la recompilation (option_env! non suivi par cargo)",
   /touch src-tauri\/src\/main\.rs/.test(BUILD));
 
+console.log("\n── répertoire de données : le RC ne touche pas l'état de production ──");
+ck("le défaut du code est celui de production",
+  /option_env!\("HO_DATA_DIR_ID"\)\.unwrap_or\("com\.humanorigin\.app"\)/.test(RUST));
+ck("build_rc.sh isole le répertoire RC",
+  /HO_DATA_DIR_ID="com\.humanorigin\.app\.rc"/.test(BUILD));
+ck("les deux identifiants diffèrent",
+  "com.humanorigin.app" !== "com.humanorigin.app.rc");
+ck("aucun chemin de données codé en dur ailleurs",
+  !/Application Support\/com\.humanorigin/.test(RUST));
+
+console.log("\n── volet Word : chaque build vise son registre ──");
+const HTML_P = fs.readFileSync(path.join(WEB, "create-record/word/taskpane.html"), "utf8");
+const HTML_R = fs.readFileSync(path.join(WEB, "create-record/word/taskpane-rc.html"), "utf8");
+const PANE = fs.readFileSync(path.join(WEB, "create-record/word/taskpane.js"), "utf8");
+const PANEC = sansCom(PANE, "//");
+const MAN_P = R("src-tauri/word/humanorigin-word-manifest.xml");
+const MAN_R = R("tools/rc/humanorigin-word-manifest-rc.xml");
+
+ck("le volet a pour défaut le registre canonique",
+  /\|\| "https:\/\/registry\.humanorigin\.io"/.test(PANEC));
+ck("l'override n'existe que par window.__HO_REGISTRY__",
+  /window\.__HO_REGISTRY__/.test(PANEC)
+  && (PANEC.match(/__HO_REGISTRY__/g) || []).length === 2);
+ck("aucune dérivation par location.hostname", !/location\.hostname/.test(PANEC));
+ck("aucun drapeau d'URL", !/URLSearchParams|[?]rc=/.test(PANEC));
+ck("HTML de production : aucune URL locale injectée",
+  !/__HO_REGISTRY__|127\.0\.0\.1|localhost/.test(HTML_P));
+ck("HTML RC : injecte 127.0.0.1:8443",
+  /window\.__HO_REGISTRY__\s*=\s*"https:\/\/127\.0\.0\.1:8443"/.test(HTML_R));
+ck("HTML RC : injection AVANT le chargement du volet",
+  HTML_R.includes("__HO_REGISTRY__")
+  && HTML_R.indexOf("__HO_REGISTRY__") < HTML_R.indexOf('src="taskpane.js"'));
+ck("HTML RC : aucune destination de production",
+  !/registry\.humanorigin\.io/.test(HTML_R));
+ck("manifeste de production → taskpane.html",
+  /taskpane\.html/.test(MAN_P) && !/taskpane-rc\.html/.test(MAN_P));
+ck("manifeste RC → taskpane-rc.html",
+  /taskpane-rc\.html/.test(MAN_R) && !/word\/taskpane\.html/.test(MAN_R));
+
 console.log("\n── destination du registre : plus aucune valeur d'exécution ──");
 ck("cfg.registry n'est plus lu", !/cfg\.registry/.test(RUST));
 ck("la destination est la constante compilée", /let registry = REGISTRY_URL;/.test(RUST));
