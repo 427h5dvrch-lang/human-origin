@@ -56,6 +56,22 @@ charge_travail() {
   [ -n "$TRAVAIL" ] && return 0
   if [ -f "$POINTEUR" ]; then TRAVAIL="$(cat "$POINTEUR")"; CAROOT_RC="$TRAVAIL/ca"; fi
 }
+# Inventaire des processus par IDENTITÉ, jamais par chemin : un build posé ailleurs que
+# dans /Applications porte le même identifiant et se comporte comme la production. C'est
+# précisément ce qui a laissé tourner un faux RC pendant deux jours.
+# Écrit une ligne « <bundle_id> <chemin de l'exécutable> » par processus HumanOrigin trouvé.
+inventaire_processus() {
+  local exe id
+  for pid in $(pgrep -f "\.app/Contents/MacOS/HumanOrigin" 2>/dev/null); do
+    exe="$(ps -o comm= -p "$pid" 2>/dev/null)"
+    case "$exe" in
+      */Contents/MacOS/*) id="$(plutil -extract CFBundleIdentifier raw "${exe%/Contents/MacOS/*}/Contents/Info.plist" 2>/dev/null)" ;;
+      *) id="" ;;
+    esac
+    printf '%s\t%s\t%s\n' "${id:-<inconnu>}" "$pid" "$exe"
+  done
+}
+
 handler_de() {   # handler effectif d'un schéma, sans ouvrir d'URL ni lancer d'application
   swift - "$1" <<'SW' 2>/dev/null
 import AppKit
@@ -194,14 +210,31 @@ preflight() {
   [ "$h_prod" != "$h_rc" ] && vert "aucune collision entre les deux schémas" \
                            || { rouge "les deux schémas mènent à la même application"; ko=1; }
 
-  # --- une seule instance, et c'est le RC
-  local n_rc n_prod
-  n_rc="$(pgrep -f "HumanOrigin RC.app/Contents/MacOS" | wc -l | tr -d ' ')"
-  n_prod="$(pgrep -f "/Applications/HumanOrigin.app/Contents/MacOS" | wc -l | tr -d ' ')"
-  [ "$n_prod" = "0" ] && vert "application de production arrêtée" \
-                      || { rouge "$n_prod instance(s) de production en cours"; ko=1; }
-  [ "$n_rc" -le 1 ] && vert "au plus une instance RC ($n_rc)" \
+  # --- processus, par IDENTITÉ et non par chemin
+  local inv n_prod n_rc n_autre
+  inv="$(inventaire_processus)"
+  n_prod=$(printf '%s\n' "$inv" | grep -c "^com\.humanorigin\.app\b" || true)
+  n_rc=$(printf '%s\n'   "$inv" | grep -c "^com\.humanorigin\.app\.rc\b" || true)
+  n_prod=$((n_prod - n_rc))                 # le motif « .app » englobe « .app.rc »
+  n_autre=$(printf '%s\n' "$inv" | grep -vc "^com\.humanorigin\.app" || true)
+  [ -z "$inv" ] && { n_prod=0; n_rc=0; n_autre=0; }
+
+  info "processus com.humanorigin.app    : $n_prod"
+  info "processus com.humanorigin.app.rc : $n_rc"
+  if [ -n "$inv" ]; then
+    printf '%s\n' "$inv" | while IFS=$'\t' read -r id pid exe; do
+      info "  [$id] pid $pid  $exe"
+    done
+  else
+    info "  aucun processus HumanOrigin"
+  fi
+
+  [ "$n_prod" = "0" ] && vert "aucun processus com.humanorigin.app, quel que soit son chemin" \
+                      || { rouge "$n_prod processus com.humanorigin.app en cours"; ko=1; }
+  [ "$n_rc" -le 1 ] && vert "au plus une instance com.humanorigin.app.rc ($n_rc)" \
                     || { rouge "$n_rc instances RC"; ko=1; }
+  [ "$n_autre" = "0" ] && vert "aucun processus HumanOrigin ambigu" \
+                       || { rouge "$n_autre processus HumanOrigin d'identité inattendue"; ko=1; }
 
   [ -f "$PROD_MANIFEST" ] && vert "manifeste de production présent (empreinte relevée au montage)" \
                           || info "manifeste de production absent — rien à préserver"
