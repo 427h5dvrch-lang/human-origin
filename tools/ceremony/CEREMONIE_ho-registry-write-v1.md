@@ -265,6 +265,54 @@ curl -s -X POST "https://<DEPLOY_ID>--humanorigin-registry.netlify.app/r/HO-audi
 `401` ⇒ la défense filtre. `422` ⇒ l'hôte vu par la fonction n'est pas celui du permalink :
 la défense est illusoire et ne doit plus figurer dans aucun raisonnement de sécurité.
 
+### INCIDENT 2026-09-21/22 — contournement de l'isolation RC par IPv6
+
+**Un Record non réservé a été écrit dans le registre de production.**
+
+`HO-2rWr2ptGaV9P`, déposé le **2026-09-22 à 10:51:13** (08:51:13 UTC), horodatage relevé dans
+`finalizer_state.json`. Confirmé présent : `GET /r/<id>` en production répond `200`. Il
+provient du document n°5 du smoke RC n°1, dont l'identifiant avait été **tiré localement** par
+le volet Transition faute de `HOReservedId` — donc sans réservation ni capability.
+
+**Cause — deux défauts qui se combinent.**
+
+L'isolation du banc RC reposait sur une ligne `/etc/hosts` : `127.0.0.1
+registry.humanorigin.io`. Cette ligne ne déclare qu'une adresse **IPv4**. macOS continue de
+résoudre l'enregistrement **AAAA**, et `dscacheutil` rend les deux familles :
+
+    ipv6_address: 2a05:d014:58f:6200::259    <- production, joignable
+    ip_address:   127.0.0.1                  <- détournement, IPv4 seulement
+
+Tant que le registre RC local écoutait, il absorbait le trafic et refusait tout (`401`). Le
+second défaut a rouvert la porte : le finalizer **rejoue indéfiniment** un échec terminal —
+voir le P1 « terminal Registry failure retry control », 232 POST observés. Lorsque le démontage
+a arrêté le serveur local sans pouvoir retirer la ligne `/etc/hosts`, faute de `sudo`, la
+tentative suivante a basculé sur IPv6, atteint le vrai registre, et y a été **acceptée** : la
+production est encore en écriture ouverte.
+
+**Conséquences.**
+
+- `HO-2rWr2ptGaV9P` est **définitivement brûlé**. `onlyIfNew` interdit tout remplacement :
+  l'identifiant est pris, sous un Record non réservé, et rien ne peut le corriger.
+- Aucune réutilisation de cet identifiant n'est possible.
+- Périmètre établi : **un seul** Record sur la fenêtre RC. Les 51 autres entrées `HO-*` du
+  store sont antérieures, et les documents n°6 et 7 ne portent aucun locator.
+
+**Décisions.**
+
+- **`/etc/hosts` est interdit comme frontière d'isolation RC.** Une entrée IPv4 ne borne rien
+  tant qu'un AAAA subsiste, et ajouter `::1` ne ferait que déplacer la fragilité : une
+  frontière d'isolation ne doit pas dépendre de l'ordre de résolution du système.
+- Le futur banc RC vise une **URL locale littérale**, compilée dans le build RC. Aucun nom de
+  production n'est détourné, donc aucune résolution à contourner.
+- Un build de production ne doit pouvoir contacter **que** l'URL canonique, un build RC **que**
+  l'URL locale — ce qui ferme du même geste le P1 de destination ci-dessous.
+
+**Limite de l'audit.** L'API Netlify Blobs ne rend que `key` et `etag` : **aucun horodatage**.
+La datation des dépôts repose donc sur `finalizer_state.json`, local, et sur la corrélation
+entre les locators des documents et les clés du store. Les 35 entrées sans document local
+correspondant n'ont pas pu être datées.
+
 ### P1 BEFORE PUBLIC LAUNCH — Registry destination pinning
 
 **Statut : OPEN.** Aucun correctif appliqué. Constaté le 2026-09-21 pendant la préparation
