@@ -1,0 +1,4 @@
+{
+  "package": { "productName": "HumanOrigin RC" },
+  "tauri": { "bundle": { "identifier": "com.humanorigin.app.rc" } }
+}

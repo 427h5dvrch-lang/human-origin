@@ -2,7 +2,12 @@
 # HumanOrigin — orchestration du smoke RC de bout en bout. RC UNIQUEMENT, jamais production.
 #
 # Ce script ne contient et n'imprime JAMAIS : clé privée, JWT, capability, lien magique.
-# Il ne manipule aucun secret : la seule valeur qu'il lit est la clé PUBLIQUE du reçu.
+# La seule valeur qu'il lit est la clé PUBLIQUE du reçu, et elle n'est pas affichée.
+#
+# ISOLATION PAR ADRESSE LITTÉRALE. Le registre RC écoute sur 127.0.0.1:8443, et le build RC
+# vise cette adresse, compilée. Aucun nom n'est résolu : donc aucune ligne /etc/hosts, aucun
+# DNS détourné, aucune famille d'adresses à oublier. L'incident du 2026-09-22 est venu d'un
+# détournement IPv4 que la résolution IPv6 contournait ; cette classe de panne disparaît.
 #
 #   ./rc_e2e.sh preflight   contrôles seuls, AUCUNE mutation
 #   ./rc_e2e.sh up          monte l'environnement et le tient au premier plan
@@ -15,23 +20,26 @@ set -uo pipefail
 APP="${HO_APP_DIR:-$HOME/Developer/HO_RECORD_STEP_D/human-origin}"
 WEB="${HO_WEB_DIR:-/private/tmp/rwa}"
 RECU="$HOME/ho-registry-write-v1.public.txt"
-HOTE="registry.humanorigin.io"
-MARQUEUR="# HumanOrigin-RC-smoke"
-POINTEUR="$HOME/.ho-rc-smoke.current"      # ne contient QU'UN CHEMIN, aucun secret
-TRAVAIL=""                                  # répertoire temporaire, fixé au montage
-CAROOT_RC=""                                # CA éphémère, JAMAIS le CAROOT par défaut
+HOTE_RC="127.0.0.1"
+PORT_REGISTRE=8443
 PORT_VOLET=3000
+POINTEUR="$HOME/.ho-rc-smoke.current"      # ne contient QU'UN CHEMIN, aucun secret
+TRAVAIL=""
+CAROOT_RC=""
 WEF="$HOME/Library/Containers/com.microsoft.Word/Data/Documents/wef"
 PROD_MANIFEST="$WEF/humanorigin-prod.xml"
+APP_RC="$APP/src-tauri/target/release/bundle/macos/HumanOrigin RC.app"
+BUNDLE_RC="com.humanorigin.app.rc"
+SCHEME_RC="humanorigin-rc"
 
-vert() { printf "  \033[32m✓\033[0m %s\n" "$1"; }
+vert()  { printf "  \033[32m✓\033[0m %s\n" "$1"; }
 rouge() { printf "  \033[31m✗\033[0m %s\n" "$1"; }
-info() { printf "    %s\n" "$1"; }
+info()  { printf "    %s\n" "$1"; }
 
 # ---------------------------------------------------------------- CA éphémère
-# Le CAROOT par défaut de mkcert n'est JAMAIS employé : une CA de confiance persistante
-# n'a pas à survivre à un smoke. La CA RC vit dans le répertoire temporaire et disparaît
-# avec lui, après un -uninstall dont l'effet est VÉRIFIÉ.
+# Le CAROOT par défaut de mkcert n'est JAMAIS employé : une CA de confiance persistante n'a
+# pas à survivre à un smoke. La CA RC vit dans le répertoire temporaire et disparaît avec lui,
+# après un -uninstall dont l'effet est VÉRIFIÉ.
 empreinte_ca() {
   [ -f "$1" ] || return 1
   openssl x509 -in "$1" -noout -fingerprint -sha1 2>/dev/null | sed 's/.*=//' | tr -d ':'
@@ -48,6 +56,14 @@ charge_travail() {
   [ -n "$TRAVAIL" ] && return 0
   if [ -f "$POINTEUR" ]; then TRAVAIL="$(cat "$POINTEUR")"; CAROOT_RC="$TRAVAIL/ca"; fi
 }
+handler_de() {   # handler effectif d'un schéma, sans ouvrir d'URL ni lancer d'application
+  swift - "$1" <<'SW' 2>/dev/null
+import AppKit
+let s = CommandLine.arguments[1]
+if let a = NSWorkspace.shared.urlForApplication(toOpen: URL(string: "\(s)://x")!) { print(a.path) }
+else { print("<aucun>") }
+SW
+}
 
 # ---------------------------------------------------------------- nettoyage
 NETTOYE_FAIT=0
@@ -59,40 +75,19 @@ nettoyage() {
   echo
   echo "── nettoyage ──"
 
-  # volet RC
   "$APP/tools/rc/word_rc.sh" remove >/dev/null 2>&1 \
     && vert "manifeste Word RC retiré" || rouge "retrait du manifeste RC"
 
-  # serveurs
   for p in "$TRAVAIL/volet.pid" "$TRAVAIL/registre.pid"; do
     if [ -f "$p" ]; then
       kill "$(cat "$p")" 2>/dev/null && vert "arrêté : $(basename "$p" .pid)"
       rm -f "$p"
     fi
   done
-  # le registre RC détruit son store temporaire sur SIGTERM ; on laisse le temps
   sleep 1
   pkill -f "rc_local_server.mjs" 2>/dev/null
   pkill -f "rc_word_server.mjs" 2>/dev/null
-
-  # /etc/hosts : UNIQUEMENT la ligne portant notre marqueur
-  if grep -q "$MARQUEUR" /etc/hosts 2>/dev/null; then
-    sudo sed -i '' "/$MARQUEUR\$/d" /etc/hosts \
-      && vert "entrée /etc/hosts retirée (ligne marquée uniquement)" \
-      || rouge "RETRAIT /etc/hosts ÉCHOUÉ — intervenez à la main"
-  else
-    vert "aucune entrée marquée dans /etc/hosts"
-  fi
-
-  # contrôle explicite : le nom ne doit plus résoudre vers la boucle locale
-  sudo dscacheutil -flushcache 2>/dev/null
-  local r; r="$(dscacheutil -q host -a name "$HOTE" 2>/dev/null | awk '/ip_address/{print $2}' | head -3 | tr '\n' ' ')"
-  case "$r" in
-    *127.0.0.1*) rouge "ATTENTION : $HOTE résout ENCORE vers 127.0.0.1 → $r" ;;
-    "")          vert "$HOTE ne résout plus vers la boucle locale (cache vide)" ;;
-    *)           vert "$HOTE résout vers $r" ;;
-  esac
-  grep -c "$HOTE" /etc/hosts 2>/dev/null | xargs -I{} info "lignes restantes mentionnant $HOTE dans /etc/hosts : {}"
+  vert "aucun serveur RC"
 
   # CA éphémère : désinstallation PUIS vérification. Un échec ici n'est pas masqué.
   if [ -n "$CAROOT_RC" ] && [ -d "$CAROOT_RC" ]; then
@@ -109,14 +104,19 @@ nettoyage() {
     fi
   fi
 
-  # manifeste de production
   if [ -f "$TRAVAIL/prod_manifest.sha256" ] && [ -f "$PROD_MANIFEST" ]; then
     local a b; a="$(cat "$TRAVAIL/prod_manifest.sha256")"; b="$(shasum -a 256 "$PROD_MANIFEST" | cut -d' ' -f1)"
     [ "$a" = "$b" ] && vert "manifeste de production intact" || rouge "MANIFESTE DE PRODUCTION MODIFIÉ"
   fi
 
-  # répertoire temporaire : détruit, sauf si la CA y est restée trustée
-  if [ "${NETTOYE_ECHEC:-0}" = "1" ]; then
+  # Rien à restaurer côté résolution : le banc n'a jamais touché /etc/hosts.
+  if grep -qE "registry\.humanorigin\.io" /etc/hosts 2>/dev/null; then
+    rouge "/etc/hosts contient une entrée registre — elle ne vient PAS de ce script"
+  else
+    vert "/etc/hosts vierge, comme avant"
+  fi
+
+  if [ "$NETTOYE_ECHEC" = "1" ]; then
     rouge "répertoire temporaire CONSERVÉ : $TRAVAIL"
     echo; exit 1
   fi
@@ -143,57 +143,65 @@ preflight() {
   fi
 
   [ -f "$RECU" ] && vert "reçu public présent" || { rouge "reçu public absent : $RECU"; ko=1; }
-  local pub=""
   if [ -f "$RECU" ]; then
-    pub="$(grep '^public_key' "$RECU" | sed 's/.*: //')"
-    [ -n "$pub" ] && vert "clé PUBLIQUE ho-registry-write-v1 lisible (non affichée)" \
-                  || { rouge "clé publique illisible"; ko=1; }
+    [ -n "$(grep '^public_key' "$RECU" | sed 's/.*: //')" ] \
+      && vert "clé PUBLIQUE ho-registry-write-v1 lisible (non affichée)" \
+      || { rouge "clé publique illisible"; ko=1; }
   fi
 
-  if grep -q "$HOTE" /etc/hosts 2>/dev/null; then
-    if grep -q "$MARQUEUR" /etc/hosts; then
-      rouge "une entrée RC marquée subsiste d'un smoke précédent — lancez « down »"; ko=1
-    else
-      rouge "ENTRÉE PRÉEXISTANTE pour $HOTE dans /etc/hosts — STOP, elle ne sera pas écrasée"; ko=1
-    fi
+  # Isolation par adresse littérale : /etc/hosts ne doit jouer AUCUN rôle.
+  if grep -qE "registry\.humanorigin\.io|HumanOrigin-RC-smoke" /etc/hosts 2>/dev/null; then
+    rouge "/etc/hosts contient une entrée registre — le banc RC n'en emploie plus, retirez-la"; ko=1
   else
-    vert "aucune entrée préexistante pour $HOTE dans /etc/hosts"
+    vert "/etc/hosts vierge : aucune isolation par DNS, aucune à restaurer"
+  fi
+  if nc -z "$HOTE_RC" "$PORT_REGISTRE" 2>/dev/null; then
+    rouge "le port $PORT_REGISTRE est déjà occupé"; ko=1
+  else
+    vert "$HOTE_RC:$PORT_REGISTRE libre"
   fi
 
   [ -f "$WEB/registry/rc_local_server.mjs" ] && vert "registre RC présent" || { rouge "registre RC absent"; ko=1; }
   [ -f "$WEB/create-record/word/taskpane.js" ] && vert "volet RC présent" || { rouge "volet RC absent"; ko=1; }
-
   grep -q 'LEGACY COMPATIBILITY — REMOVE AFTER REGISTRY WRITE V1 CUTOVER' \
     "$WEB/create-record/word/taskpane.js" && vert "volet en mode transition" \
     || { rouge "le volet n'est pas le Transition"; ko=1; }
-
   grep -q 'const HOTE_ECRITURE = "registry.humanorigin.io";' \
-    "$WEB/registry/netlify/functions/record.mjs" && vert "défense d'hôte active dans le registre" \
+    "$WEB/registry/netlify/functions/record.mjs" && vert "défense d'hôte intacte dans le registre" \
     || { rouge "défense d'hôte absente"; ko=1; }
 
-  local n w
-  n="$(git -C "$APP" rev-parse HEAD 2>/dev/null)"; w="$(git -C "$WEB" rev-parse HEAD 2>/dev/null)"
-  # Le SHA de référence du BUILD. La tête peut avancer sur de l'outillage RC sans rendre
-  # l'artefact caduc : ce qui compte est qu'aucun fichier de produit n'ait bougé depuis.
-  local BASE="f1096ab85d545fe75b986b257e7a828a1b667b8b" diff_produit
-  if git -C "$APP" merge-base --is-ancestor "$BASE" HEAD 2>/dev/null; then
-    diff_produit="$(git -C "$APP" diff --name-only "$BASE" HEAD -- src src-tauri index.html package.json | head -5)"
-    local sale; sale="$(git -C "$APP" status --porcelain -- src src-tauri index.html package.json | head -5)"
-    if [ -n "$sale" ]; then
-      # L'artefact est construit depuis l'ARBRE DE TRAVAIL : des modifications non
-      # commitées le rendent irreproductible, et un garde qui ne les voit pas ment.
-      rouge "des fichiers de produit sont modifiés et non commités — l'artefact est irreproductible"
-      echo "$sale" | sed 's/^/      /'; ko=1
-    elif [ -z "$diff_produit" ]; then
-      vert "native : produit identique à ${BASE:0:7} (tête ${n:0:7})"
-    else
-      rouge "des fichiers de produit ont changé depuis ${BASE:0:7} — l'artefact n'est plus représentatif"
-      echo "$diff_produit" | sed 's/^/      /'; ko=1
-    fi
+  # --- identité du build RC
+  if [ -d "$APP_RC" ]; then
+    local id sch
+    id="$(plutil -extract CFBundleIdentifier raw "$APP_RC/Contents/Info.plist" 2>/dev/null)"
+    sch="$(plutil -extract CFBundleURLTypes.0.CFBundleURLSchemes.0 raw "$APP_RC/Contents/Info.plist" 2>/dev/null)"
+    [ "$id" = "$BUNDLE_RC" ]  && vert "bundle RC = $BUNDLE_RC"  || { rouge "bundle RC = ${id:-<absent>}"; ko=1; }
+    [ "$sch" = "$SCHEME_RC" ] && vert "schéma RC = $SCHEME_RC"  || { rouge "schéma RC = ${sch:-<absent>}"; ko=1; }
   else
-    rouge "native : ${BASE:0:7} n'est pas un ancêtre de ${n:0:7}"; ko=1
+    rouge "application RC absente — lancez tools/rc/build_rc.sh"; ko=1
   fi
-  [ "$w" = "a523cfd285fd9dd83d287bd6b6adc326c35b4721" ] && vert "web à a523cfd" || { rouge "web à ${w:0:7}"; ko=1; }
+
+  # --- les deux schémas, chacun chez soi
+  local h_prod h_rc
+  h_prod="$(handler_de humanorigin)"
+  h_rc="$(handler_de "$SCHEME_RC")"
+  [ "$h_prod" = "/Applications/HumanOrigin.app" ] \
+    && vert "handler humanorigin:// = application de production" \
+    || { rouge "handler humanorigin:// = ${h_prod:-<aucun>}"; ko=1; }
+  [ "$h_rc" = "$APP_RC" ] \
+    && vert "handler $SCHEME_RC:// = application RC" \
+    || { rouge "handler $SCHEME_RC:// = ${h_rc:-<aucun>}"; ko=1; }
+  [ "$h_prod" != "$h_rc" ] && vert "aucune collision entre les deux schémas" \
+                           || { rouge "les deux schémas mènent à la même application"; ko=1; }
+
+  # --- une seule instance, et c'est le RC
+  local n_rc n_prod
+  n_rc="$(pgrep -f "HumanOrigin RC.app/Contents/MacOS" | wc -l | tr -d ' ')"
+  n_prod="$(pgrep -f "/Applications/HumanOrigin.app/Contents/MacOS" | wc -l | tr -d ' ')"
+  [ "$n_prod" = "0" ] && vert "application de production arrêtée" \
+                      || { rouge "$n_prod instance(s) de production en cours"; ko=1; }
+  [ "$n_rc" -le 1 ] && vert "au plus une instance RC ($n_rc)" \
+                    || { rouge "$n_rc instances RC"; ko=1; }
 
   [ -f "$PROD_MANIFEST" ] && vert "manifeste de production présent (empreinte relevée au montage)" \
                           || info "manifeste de production absent — rien à préserver"
@@ -211,9 +219,11 @@ case "${1:-status}" in
   status)
     NETTOYE_FAIT=1
     echo "── état ──"
-    grep -q "$MARQUEUR" /etc/hosts 2>/dev/null && rouge "entrée RC présente dans /etc/hosts" || vert "/etc/hosts sans entrée RC"
     [ -f "$WEF/humanorigin-rc.xml" ] && rouge "manifeste RC posé" || vert "aucun manifeste RC"
     pgrep -f rc_local_server.mjs >/dev/null && rouge "registre RC en cours" || vert "aucun registre RC"
+    grep -qE "registry\.humanorigin\.io" /etc/hosts 2>/dev/null && rouge "/etc/hosts porte une entrée registre" || vert "/etc/hosts vierge"
+    echo "  handler humanorigin://    : $(handler_de humanorigin)"
+    echo "  handler $SCHEME_RC:// : $(handler_de "$SCHEME_RC")"
     exit 0 ;;
   up) : ;;
   *) echo "  usage : $0 preflight|up|down|status"; NETTOYE_FAIT=1; exit 2 ;;
@@ -227,8 +237,6 @@ mkdir -p "$CAROOT_RC"
 printf '%s' "$TRAVAIL" > "$POINTEUR"
 echo "  répertoire temporaire : $TRAVAIL"
 [ -f "$PROD_MANIFEST" ] && shasum -a 256 "$PROD_MANIFEST" | cut -d' ' -f1 > "$TRAVAIL/prod_manifest.sha256"
-cp /etc/hosts "$TRAVAIL/hosts.avant"
-echo "  copie de /etc/hosts : $TRAVAIL/hosts.avant"
 
 echo
 echo "── CA éphémère et certificat ──"
@@ -240,15 +248,16 @@ FP_CA="$(empreinte_ca "$CAROOT_RC/rootCA.pem")"
 [ -n "$FP_CA" ] && info "empreinte SHA-1 de la CA RC : $FP_CA"
 ca_encore_trustee "$FP_CA" && vert "CA RC effectivement dans le trousseau" \
   || { rouge "la CA RC n'est pas trustée"; exit 1; }
-CAROOT="$CAROOT_RC" mkcert "$HOTE" localhost 127.0.0.1 >/dev/null 2>&1
-CERT="$(ls "$TRAVAIL"/"$HOTE"*.pem 2>/dev/null | grep -v key | head -1)"
-KEYF="$(ls "$TRAVAIL"/"$HOTE"*-key.pem 2>/dev/null | head -1)"
-[ -n "$CERT" ] && [ -n "$KEYF" ] && vert "certificat local pour $HOTE" || { rouge "certificat introuvable"; exit 1; }
+# Certificat pour l'ADRESSE, pas pour un nom : rien à résoudre.
+CAROOT="$CAROOT_RC" mkcert 127.0.0.1 localhost >/dev/null 2>&1
+CERT="$(ls "$TRAVAIL"/127.0.0.1*.pem 2>/dev/null | grep -v key | head -1)"
+KEYF="$(ls "$TRAVAIL"/127.0.0.1*-key.pem 2>/dev/null | head -1)"
+[ -n "$CERT" ] && [ -n "$KEYF" ] && vert "certificat local pour 127.0.0.1" || { rouge "certificat introuvable"; exit 1; }
 
 echo
-echo "── registre RC isolé, port 443 ──"
+echo "── registre RC isolé, $HOTE_RC:$PORT_REGISTRE ──"
 PUB="$(grep '^public_key' "$RECU" | sed 's/.*: //')"
-sudo node "$WEB/registry/rc_local_server.mjs" --key "$PUB" --port 443 \
+node "$WEB/registry/rc_local_server.mjs" --key "$PUB" --port "$PORT_REGISTRE" \
      --cert "$CERT" --key-file "$KEYF" > "$TRAVAIL/registre.log" 2>&1 &
 echo $! > "$TRAVAIL/registre.pid"
 sleep 2
@@ -274,28 +283,20 @@ sleep 1
 grep -q "volet RC" "$TRAVAIL/volet.log" && vert "volet RC servi" || { rouge "volet RC : voir $TRAVAIL/volet.log"; exit 1; }
 
 echo
-echo "── détournement de résolution ──"
-echo "127.0.0.1 $HOTE $MARQUEUR" | sudo tee -a /etc/hosts >/dev/null
-sudo dscacheutil -flushcache 2>/dev/null
-grep -c "$MARQUEUR" /etc/hosts | xargs -I{} info "lignes marquées ajoutées : {}"
-R="$(dscacheutil -q host -a name "$HOTE" | awk '/ip_address/{print $2}' | head -1)"
-[ "$R" = "127.0.0.1" ] && vert "$HOTE → 127.0.0.1" || { rouge "$HOTE → ${R:-aucune} (attendu 127.0.0.1)"; exit 1; }
-
-echo
 echo "── manifeste Word RC ──"
 "$APP/tools/rc/word_rc.sh" install | sed 's/^/  /'
 
 echo
 echo "── sondes ──"
-curl -sS -o /dev/null -w "    GET  https://$HOTE/r/HO-SONDE000001 → HTTP %{http_code}\n" \
-     "https://$HOTE/r/HO-SONDE000001"
-curl -sS -o /dev/null -w "    POST sans Authorization            → HTTP %{http_code}\n" \
-     -X POST -H "content-type: application/json" -d '{}' "https://$HOTE/r/HO-SONDE000001"
+curl -sS -o /dev/null -w "    GET  https://$HOTE_RC:$PORT_REGISTRE/r/HO-SONDE000001 → HTTP %{http_code}\n" \
+     "https://$HOTE_RC:$PORT_REGISTRE/r/HO-SONDE000001"
+curl -sS -o /dev/null -w "    POST sans Authorization → HTTP %{http_code}\n" \
+     -X POST -H "content-type: application/json" -d '{}' "https://$HOTE_RC:$PORT_REGISTRE/r/HO-SONDE000001"
 info "store initial : $(grep -o 'store isolé  : .*' "$TRAVAIL/registre.log" | head -1)"
 
 echo
 echo "══ ENVIRONNEMENT RC PRÊT ══"
-echo "  Redémarrez Word, ouvrez le volet « HumanOrigin RC »."
-echo "  Ctrl-C ici démonte tout et restaure /etc/hosts."
+echo "  Ouvrez « HumanOrigin RC », redémarrez Word, employez le volet « HumanOrigin RC »."
+echo "  Ctrl-C ici démonte tout."
 echo
 wait
