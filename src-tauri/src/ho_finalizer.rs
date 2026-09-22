@@ -831,3 +831,119 @@ mod tests {
         assert!(forbidden_work_folder("/Users/x/Documents/Library/Notes").is_none());
     }
 }
+
+// ---------------------------------------------------------------- E2E d'écriture authentifiée
+/// Banc de bout en bout : capability -> trousseau -> finalizer réel -> handler Registry
+/// sécurisé -> 201, puis rejeu -> 409.
+///
+/// Il n'est pas joué par `cargo test` ordinaire : il exige node, le dépôt du registre et
+/// une écriture réelle dans le trousseau. On le lance explicitement :
+///
+///   HO_REGISTRY_DIR=/chemin/vers/registry cargo test --ignored e2e_ecriture_authentifiee
+///
+/// CE QU'IL DISCRIMINE. L'ancien `put_record` n'émettait aucun en-tête d'autorisation :
+/// le handler sécurisé répond 401, `put_record` rend Err, le banc échoue. Aucune assertion
+/// sur la source ne le remplace — c'est la requête réellement émise qui est jugée.
+#[cfg(test)]
+mod e2e_registre {
+    use super::*;
+    use std::io::{BufRead as _, BufReader};
+
+    const RECORD_ID: &str = "HO-E2EAUTH000001";
+    const PORT: u16 = 18444;
+
+    fn depot_registre() -> PathBuf {
+        if let Ok(d) = std::env::var("HO_REGISTRY_DIR") {
+            let p = PathBuf::from(d);
+            assert!(p.join("netlify/functions/capability.mjs").exists(),
+                "HO_REGISTRY_DIR ne désigne pas le dépôt du registre : {}", p.display());
+            return p;
+        }
+        for c in ["/private/tmp/rwa/registry", "/tmp/rwa/registry"] {
+            let p = PathBuf::from(c);
+            if p.join("netlify/functions/capability.mjs").exists() { return p; }
+        }
+        panic!("dépôt du registre introuvable : renseigner HO_REGISTRY_DIR");
+    }
+
+    fn corps_conforme() -> String {
+        // alg, iv(16), tag(22), ciphertext — la forme qu'exige le schéma du registre.
+        serde_json::json!({ "alg": "aes-256-gcm", "iv": "A".repeat(16),
+                            "tag": "B".repeat(22), "ciphertext": "Q2hpZmZyZS1FMkU" }).to_string()
+    }
+
+    #[test]
+    #[ignore]
+    fn e2e_ecriture_authentifiee_vers_registre_securise() {
+        let reg = depot_registre();
+        let racine = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+
+        // 1. Capability émise par le même énoncé canonique que le registre. Le porteur
+        //    arrive par un pipe : ni argv, ni disque, ni journal.
+        let out = std::process::Command::new("node")
+            .arg(racine.join("tools/rc/e2e_capability.mjs"))
+            .arg(&reg).arg(RECORD_ID)
+            .output().expect("émetteur de capability");
+        assert!(out.status.success(), "émetteur en échec");
+        let v: serde_json::Value = serde_json::from_slice(&out.stdout).expect("JSON de l'émetteur");
+        let pub_b64 = v["pub"].as_str().unwrap().to_string();
+        let capability = v["capability"].as_str().unwrap().to_string();
+
+        // 2. Registre RC : le handler de PRODUCTION, qui ne reçoit que la clé publique.
+        let mut srv = std::process::Command::new("node")
+            .current_dir(&reg)
+            .args(["rc_local_server.mjs", "--key", &pub_b64, "--port", &PORT.to_string()])
+            .stdout(std::process::Stdio::piped())
+            .spawn().expect("registre RC");
+        {
+            let mut lignes = BufReader::new(srv.stdout.as_mut().unwrap()).lines();
+            let mut pret = false;
+            for _ in 0..40 {
+                match lignes.next() {
+                    Some(Ok(l)) if l.contains("registre RC") => { pret = true; break; }
+                    Some(Ok(_)) => continue,
+                    _ => break,
+                }
+            }
+            assert!(pret, "le registre RC n'a pas démarré");
+        }
+        let url = format!("http://127.0.0.1:{}", PORT);
+        let fin = |mut s: std::process::Child| { let _ = s.kill(); let _ = s.wait();
+                                                 crate::ho_capability::oublier(RECORD_ID); };
+
+        // 3. Trousseau : le contrat canonique, service humanorigin.registry-write.v1.
+        crate::ho_capability::oublier(RECORD_ID);
+        if let Err(e) = crate::ho_capability::stocker(RECORD_ID, &capability) {
+            fin(srv); panic!("trousseau indisponible : {}", e);
+        }
+
+        // 4. Sans capability, AUCUNE requête : c'est la lecture du trousseau qui décide.
+        let relu = crate::ho_capability::lire(RECORD_ID);
+        if relu.as_deref() != Some(capability.as_str()) { fin(srv); panic!("relecture du trousseau"); }
+        if crate::ho_capability::lire("HO-JAMAISRESERVE").is_some() {
+            fin(srv); panic!("un identifiant jamais réservé ne doit rien rendre");
+        }
+
+        // 5. Le chemin réel : put_record, avec la capability relue du trousseau.
+        let corps = corps_conforme();
+        let premier = put_record(&url, RECORD_ID, &corps, relu.as_ref().unwrap());
+        let rejeu = put_record(&url, RECORD_ID, &corps, relu.as_ref().unwrap());
+
+        // 6. Le record est bien là, et son contenu n'a pas bougé.
+        let lecture = std::process::Command::new("/usr/bin/curl")
+            .args(["-sS", "-m", "10", &format!("{}/r/{}", url, RECORD_ID)])
+            .output().expect("lecture");
+        let lu = String::from_utf8_lossy(&lecture.stdout).to_string();
+
+        // 7. Une capability légitime mais émise pour un AUTRE identifiant est refusée.
+        let croise = put_record(&url, "HO-E2EAUTH000002", &corps, relu.as_ref().unwrap());
+
+        fin(srv);
+
+        assert!(premier.is_ok(), "écriture authentifiée refusée : {:?} \
+            (l'ancien client, sans en-tête d'autorisation, échoue ici)", premier);
+        assert!(rejeu.is_ok(), "le rejeu doit valoir 409, donc succès sans remplacement : {:?}", rejeu);
+        assert!(lu.contains("Q2hpZmZyZS1FMkU"), "contenu absent ou altéré : {}", lu);
+        assert!(croise.is_err(), "une capability d'un autre identifiant doit être refusée");
+    }
+}
