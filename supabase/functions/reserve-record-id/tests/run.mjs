@@ -165,5 +165,66 @@ console.log("\n-- aucun matériel privé dans les sources --");
   ck("aucune constante pouvant porter une clé", b64.length === 0, b64.join(", "));
 }
 
+console.log("\n-- CORS : le prefligth du webview, et rien de plus --");
+{
+  const ORIG = "tauri://localhost";
+  const { deps, base } = fabrique();
+  const avant = base.size;
+
+  const pre = async (origine, entetes) => {
+    const h = {};
+    if (origine) h.origin = origine;
+    if (entetes) h["access-control-request-headers"] = entetes;
+    h["access-control-request-method"] = "POST";
+    return traiter(new Request("https://x/functions/v1/reserve-record-id", { method: "OPTIONS", headers: h }), deps);
+  };
+
+  const r = await pre(ORIG, "apikey,authorization,content-type");
+  ck("OPTIONS depuis tauri://localhost -> 204", r.status === 204, String(r.status));
+  ck("Access-Control-Allow-Origin = tauri://localhost",
+    r.headers.get("access-control-allow-origin") === ORIG, String(r.headers.get("access-control-allow-origin")));
+  ck("jamais d'autorisation generique", r.headers.get("access-control-allow-origin") !== "*");
+  ck("Methods = POST, OPTIONS",
+    r.headers.get("access-control-allow-methods") === "POST, OPTIONS", String(r.headers.get("access-control-allow-methods")));
+  const hh = (r.headers.get("access-control-allow-headers") || "").toLowerCase();
+  for (const e of ["apikey", "authorization", "content-type"])
+    ck(`Allow-Headers couvre ${e}`, hh.includes(e), hh);
+  ck("Vary: Origin present", (r.headers.get("vary") || "").toLowerCase().includes("origin"));
+  ck("pas de Allow-Credentials", !r.headers.get("access-control-allow-credentials"));
+  ck("le preflight ne cree AUCUNE reservation", base.size === avant, `${base.size} vs ${avant}`);
+
+  for (const mauvaise of ["https://exemple.test", "http://localhost:1420", "tauri://autre", "null"]) {
+    const x = await pre(mauvaise, "authorization");
+    ck(`origine ${mauvaise} -> aucune ouverture CORS`,
+      x.status !== 204 && !x.headers.get("access-control-allow-origin"), String(x.status));
+  }
+
+  console.log("\n-- CORS sur les reponses POST --");
+  const post = async (origine, jeton) => {
+    const h = { "content-type": "application/json" };
+    if (origine) h.origin = origine;
+    if (jeton) h.authorization = "Bearer " + jeton;
+    return traiter(new Request("https://x/functions/v1/reserve-record-id",
+      { method: "POST", headers: h, body: "{}" }), deps);
+  };
+  const okp = await post(ORIG, "jeton-a");
+  ck("POST autorise -> 201 avec ACAO",
+    okp.status === 201 && okp.headers.get("access-control-allow-origin") === ORIG, String(okp.status));
+  const ko401 = await post(ORIG, null);
+  ck("401 reste LISIBLE par le navigateur : ACAO present",
+    ko401.status === 401 && ko401.headers.get("access-control-allow-origin") === ORIG, String(ko401.status));
+  const etranger = await post("https://exemple.test", "jeton-a");
+  ck("POST d'une origine etrangere : aucune ouverture CORS",
+    !etranger.headers.get("access-control-allow-origin"));
+  ck("mais l'authentification serveur n'est PAS allegee",
+    (await post("https://exemple.test", null)).status === 401);
+
+  console.log("\n-- client non navigateur : comportement historique --");
+  const sans = await post(null, "jeton-a");
+  ck("POST sans Origin -> 201 comme avant", sans.status === 201, String(sans.status));
+  ck("aucune ouverture CORS sans Origin", !sans.headers.get("access-control-allow-origin"));
+  ck("Vary: Origin quand meme pose", (sans.headers.get("vary") || "").toLowerCase().includes("origin"));
+}
+
 console.log("\n  " + ok + " reussis - " + ko + " echoues  =>  RESERVE_RECORD_ID = " + (ko === 0 ? "PASS" : "FAIL") + "\n");
 process.exit(ko === 0 ? 0 : 1);
