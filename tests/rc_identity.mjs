@@ -67,6 +67,24 @@ ck("build_rc.sh retouche le schéma du bundle PRODUIT, pas la source",
 ck("build_rc.sh force la recompilation (option_env! non suivi par cargo)",
   /touch src-tauri\/src\/main\.rs/.test(BUILD));
 
+console.log("\n── Word n'expose qu'un module pendant le smoke ──");
+ck("le montage écarte le manifeste de production",
+  /mv "\$PROD_MANIFEST" "\$TRAVAIL\/humanorigin-prod\.xml"/.test(ORCH));
+ck("il ne le supprime jamais", !/rm -f "\$PROD_MANIFEST"|rm "\$PROD_MANIFEST"/.test(ORCH));
+ck("l'empreinte est relevée AVANT le déplacement",
+  ORCH.indexOf('> "$TRAVAIL/prod_manifest.sha256"') < ORCH.indexOf('mv "$PROD_MANIFEST"'));
+ck("le montage exige un seul manifeste exposé",
+  /Word n'expose qu'un seul module/.test(ORCH) && /n_wef/.test(ORCH));
+ck("le nettoyage restaure le manifeste de production",
+  /mv "\$TRAVAIL\/humanorigin-prod\.xml" "\$PROD_MANIFEST"/.test(ORCH));
+ck("il vérifie l'empreinte restaurée", /empreinte du manifeste de production identique/.test(ORCH));
+ck("une restauration imparfaite fait ÉCHOUER le nettoyage",
+  /n'est pas revenu à l'identique[\s\S]{0,200}NETTOYE_ECHEC=1/.test(ORCH));
+ck("une restauration impossible fait aussi échouer",
+  /restauration du manifeste de production impossible[\s\S]{0,160}NETTOYE_ECHEC=1/.test(ORCH));
+ck("le préflight détecte un manifeste resté écarté",
+  /ÉCARTÉ par un smoke précédent/.test(ORCH));
+
 console.log("\n── le build RC prouve qu'il embarque le shell Compte ──");
 for (const m of ["account.section", "account.sendLink", "account.signedInAs", "account.signOut",
                  "signInWithOtp", "/functions/v1/reserve-record-id", "take_pending_deep_link"])

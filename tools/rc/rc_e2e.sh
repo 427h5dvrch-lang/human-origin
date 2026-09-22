@@ -122,9 +122,31 @@ nettoyage() {
     fi
   fi
 
-  if [ -f "$TRAVAIL/prod_manifest.sha256" ] && [ -f "$PROD_MANIFEST" ]; then
-    local a b; a="$(cat "$TRAVAIL/prod_manifest.sha256")"; b="$(shasum -a 256 "$PROD_MANIFEST" | cut -d' ' -f1)"
-    [ "$a" = "$b" ] && vert "manifeste de production intact" || rouge "MANIFESTE DE PRODUCTION MODIFIÉ"
+  # Manifeste de production : remis en place, puis VÉRIFIÉ. Le montage l'avait écarté pour que
+  # Word n'expose que « HumanOrigin RC ». Une restauration imparfaite fait ÉCHOUER le nettoyage.
+  if [ -f "$TRAVAIL/humanorigin-prod.xml" ]; then
+    mkdir -p "$WEF"
+    if mv "$TRAVAIL/humanorigin-prod.xml" "$PROD_MANIFEST"; then
+      vert "manifeste de production restauré"
+    else
+      rouge "CLEANUP = FAIL — restauration du manifeste de production impossible"
+      info "il reste dans $TRAVAIL/humanorigin-prod.xml"
+      NETTOYE_ECHEC=1
+    fi
+  fi
+  if [ -f "$TRAVAIL/prod_manifest.sha256" ]; then
+    local attendu obtenu
+    attendu="$(cat "$TRAVAIL/prod_manifest.sha256")"
+    if [ -f "$PROD_MANIFEST" ]; then obtenu="$(shasum -a 256 "$PROD_MANIFEST" | cut -d" " -f1)"
+    else obtenu="ABSENT"; fi
+    if [ "$attendu" = "$obtenu" ]; then
+      vert "empreinte du manifeste de production identique à l'origine"
+    else
+      rouge "CLEANUP = FAIL — le manifeste de production n'est pas revenu à l'identique"
+      info "attendu $attendu"
+      info "obtenu  $obtenu"
+      NETTOYE_ECHEC=1
+    fi
   fi
 
   # Rien à restaurer côté résolution : le banc n'a jamais touché /etc/hosts.
@@ -261,8 +283,13 @@ preflight() {
   [ "$n_autre" = "0" ] && vert "aucun processus HumanOrigin ambigu" \
                        || { rouge "$n_autre processus HumanOrigin d'identité inattendue"; ko=1; }
 
-  [ -f "$PROD_MANIFEST" ] && vert "manifeste de production présent (empreinte relevée au montage)" \
-                          || info "manifeste de production absent — rien à préserver"
+  if [ -f "$PROD_MANIFEST" ]; then
+    vert "manifeste de production présent (il sera écarté puis restauré)"
+  elif [ -f "$POINTEUR" ] && [ -f "$(cat "$POINTEUR")/humanorigin-prod.xml" ]; then
+    rouge "le manifeste de production est ÉCARTÉ par un smoke précédent — lancez « down »"; ko=1
+  else
+    info "manifeste de production absent — rien à préserver"
+  fi
   [ -f "$WEF/humanorigin-rc.xml" ] && { rouge "un manifeste RC est déjà posé — lancez « down »"; ko=1; } \
                                    || vert "aucun manifeste RC posé"
 
@@ -341,8 +368,23 @@ sleep 1
 grep -q "volet RC" "$TRAVAIL/volet.log" && vert "volet RC servi" || { rouge "volet RC : voir $TRAVAIL/volet.log"; exit 1; }
 
 echo
-echo "── manifeste Word RC ──"
+echo "── manifeste Word ──"
+# Word ne doit exposer QUE « HumanOrigin RC » pendant le smoke. Laisser les deux modules
+# visibles, c'est laisser ouvrir le mauvais : le 2026-09-22, le volet de production a
+# interrogé le registre de production pendant que le RC déposait en local.
+#
+# Le manifeste de production est ÉCARTÉ, jamais supprimé. Son empreinte a été relevée plus
+# haut ; le fichier part dans le répertoire temporaire et le nettoyage le remet en place,
+# puis VÉRIFIE l'empreinte — une restauration imparfaite fait échouer le nettoyage.
+if [ -f "$PROD_MANIFEST" ]; then
+  mv "$PROD_MANIFEST" "$TRAVAIL/humanorigin-prod.xml" \
+    && vert "manifeste de production écarté, conservé dans le répertoire temporaire" \
+    || { rouge "impossible d'écarter le manifeste de production"; exit 1; }
+fi
 "$APP/tools/rc/word_rc.sh" install | sed 's/^/  /'
+n_wef=$(ls "$WEF"/*.xml 2>/dev/null | wc -l | tr -d " ")
+[ "$n_wef" = "1" ] && vert "Word n'expose qu'un seul module : HumanOrigin RC" \
+                   || { rouge "$n_wef manifeste(s) dans wef — Word en exposerait plusieurs"; exit 1; }
 
 echo
 echo "── sondes ──"
