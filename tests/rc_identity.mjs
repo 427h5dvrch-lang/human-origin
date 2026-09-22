@@ -67,6 +67,16 @@ ck("build_rc.sh retouche le schéma du bundle PRODUIT, pas la source",
 ck("build_rc.sh force la recompilation (option_env! non suivi par cargo)",
   /touch src-tauri\/src\/main\.rs/.test(BUILD));
 
+console.log("\n── le build RC prouve qu'il embarque le shell Compte ──");
+for (const m of ["account.section", "account.sendLink", "account.signedInAs", "account.signOut",
+                 "signInWithOtp", "/functions/v1/reserve-record-id", "take_pending_deep_link"])
+  ck(`build_rc.sh exige « ${m} » dans le frontend construit`, BUILD.includes(`"${m}"`));
+ck("build_rc.sh refuse le build si un marqueur manque", /BUILD REFUSÉ/.test(BUILD));
+ck("il exige la redirection RC et refuse celle de production",
+  /humanorigin-rc:\/\/login/.test(BUILD) && /redirection de PRODUCTION présente/.test(BUILD));
+ck("le contrôle porte sur dist\/, ce que Tauri embarque",
+  /BUNDLE_JS="\$\(ls dist\/assets\/\*\.js/.test(BUILD));
+
 console.log("\n── répertoire de données : le RC ne touche pas l'état de production ──");
 ck("le défaut du code est celui de production",
   /option_env!\("HO_DATA_DIR_ID"\)\.unwrap_or\("com\.humanorigin\.app"\)/.test(RUST));

@@ -39,6 +39,33 @@ touch src-tauri/src/main.rs src-tauri/src/ho_finalizer.rs
 
 echo "── frontend ──"
 npm run build >/dev/null
+# Ce que Tauri embarquera, c'est dist/. Le vérifier ICI est la seule façon de garantir que
+# l'application produite contient vraiment le shell Compte : une fois embarqué, le frontend
+# est compressé et n'est plus inspectable. Avoir le bon code dans src/ ne prouve rien.
+echo "── le frontend construit contient-il le shell Compte ? ──"
+MARQUEURS=(
+  "account.section"            # titre de la section
+  "account.sendLink"           # bouton du lien de connexion
+  "account.signedInAs"         # état connecté
+  "account.signOut"            # déconnexion
+  "signInWithOtp"              # flux d'authentification
+  "/functions/v1/reserve-record-id"   # réservation
+  "take_pending_deep_link"     # reprise du lien profond
+)
+BUNDLE_JS="$(ls dist/assets/*.js 2>/dev/null | head -1)"
+[ -n "$BUNDLE_JS" ] || { echo "  aucun bundle dans dist/ — build frontend échoué"; exit 1; }
+MANQUE=0
+for m in "${MARQUEURS[@]}"; do
+  if grep -qF "$m" "$BUNDLE_JS"; then printf "  ✓ %s\n" "$m"
+  else printf "  ✗ %s ABSENT\n" "$m"; MANQUE=1; fi
+done
+# La redirection RC doit y être, celle de production ne doit PAS y être.
+if grep -qF "humanorigin-rc://login" "$BUNDLE_JS"; then echo "  ✓ redirection RC"
+else echo "  ✗ redirection RC ABSENTE"; MANQUE=1; fi
+if grep -qF '"humanorigin://login"' "$BUNDLE_JS"; then echo "  ✗ redirection de PRODUCTION présente"; MANQUE=1
+else echo "  ✓ aucune redirection de production"; fi
+[ "$MANQUE" = "0" ] || { echo; echo "  BUILD REFUSÉ : le frontend n'embarque pas le shell attendu."; exit 1; }
+
 echo "── bundle ──"
 npx tauri build --config tools/rc/tauri.rc.conf.json --bundles app
 
