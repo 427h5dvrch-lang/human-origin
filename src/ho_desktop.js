@@ -162,11 +162,25 @@ function ligneVersionnable(doc, plusieurs) {
   return bloc;
 }
 
-/** Rend la section, ou rien du tout s'il n'y a aucun document éligible. */
+/**
+ * Rend la section, ou rien du tout s'il n'y a aucun document éligible.
+ *
+ * « Aucun document » et « la commande a échoué » ne doivent JAMAIS se ressembler. Une
+ * application dont le binaire a été remplacé mais qui n'a pas été relancée ne connaît pas
+ * encore cette commande : l'échec se lisait alors comme « rien à proposer », et rien à
+ * l'écran ne le disait. Observé le 2026-09-25, au prix d'un diagnostic complet.
+ */
 async function renderVersioning(box) {
   box.textContent = "";
-  let docs = [];
-  try { docs = (await invoke("ho_versionable_documents")) || []; } catch (e) { docs = []; }
+  let docs = null;
+  try {
+    docs = (await invoke("ho_versionable_documents")) || [];
+  } catch (e) {
+    box.appendChild(el("p", { margin: "0", color: MUTED, font: "13px/1.5 inherit" },
+      "Les documents finalisés n’ont pas pu être consultés. "
+      + "Si HumanOrigin vient d’être mis à jour, quittez l’application et rouvrez-la."));
+    return true;
+  }
   if (!docs.length) return false;
   if (docs.length > 1) {
     box.appendChild(el("p", { margin: "0 0 14px", color: MUTED, font: "13px/1.5 inherit" },

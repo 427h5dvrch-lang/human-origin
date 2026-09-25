@@ -1204,3 +1204,40 @@ mod e2e_registre {
         assert!(croise.is_err(), "une capability d'un autre identifiant doit être refusée");
     }
 }
+
+/// Banc sur l'installation RÉELLE, hors `cargo test` ordinaire. La détection dépend de
+/// choses qu'aucun paquet synthétique ne reproduit : le nom exact du dossier surveillé —
+/// qui peut comporter une espace finale —, le nom que Word donne à son fichier de verrou,
+/// et l'état local du finalizer. Ce banc les éprouve là où elles vivent.
+///
+///   HO_DATA_DIR=<répertoire de données> HO_ATTENDU=<record_id> \
+///     cargo test detection_sur_installation_reelle -- --ignored --nocapture
+#[cfg(test)]
+mod detection_reelle {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn detection_sur_installation_reelle() {
+        let dir = PathBuf::from(std::env::var("HO_DATA_DIR").expect("HO_DATA_DIR"));
+        let f = Finalizer::new(dir);
+        let cfg = f.config();
+        println!("  dossiers surveillés :");
+        for d in cfg.folders.iter() {
+            println!("    [{}] existe={}", d, PathBuf::from(d).is_dir());
+        }
+        let docs = f.documents_versionnables();
+        println!("  documents finalisés ET ouverts : {}", docs.len());
+        for d in &docs {
+            println!("    {} — {}", d["record_id"].as_str().unwrap_or("?"),
+                     d["name"].as_str().unwrap_or("?"));
+        }
+        if let Ok(attendu) = std::env::var("HO_ATTENDU") {
+            let trouve = docs.iter().any(|d| d["record_id"].as_str() == Some(attendu.as_str()));
+            assert!(trouve, "le document attendu n'est pas détecté : {}", attendu);
+            let chemin = f.chemin_versionnable(&attendu);
+            assert!(chemin.is_some(), "le document attendu n'est pas résolu sans ambiguïté");
+            println!("  résolution : {}", chemin.unwrap().display());
+        }
+    }
+}
