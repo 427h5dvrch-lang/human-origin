@@ -81,6 +81,13 @@ fn commit_bytes(bytes: &[u8]) -> String {
     sha256_hex(general_purpose::STANDARD.encode(bytes).as_bytes())
 }
 
+/// Accès de banc : ho_version doit prouver qu'il emploie LA MÊME primitive. Deux
+/// engagements calculés différemment rendraient la relation V1→V2 invérifiable.
+#[cfg(test)]
+pub(crate) fn commit_bytes_pour_test(bytes: &[u8]) -> String {
+    commit_bytes(bytes)
+}
+
 // ---------------------------------------------------------------- lecture ciblée du paquet
 /// Lit UNIQUEMENT `docProps/custom.xml`. Un document sans cette partie est écarté sans que son
 /// contenu soit lu : c'est le filtre le moins intrusif possible.
@@ -270,6 +277,7 @@ fn build_record_v1(
     commitment: &str,
     facts_arr: Vec<serde_json::Value>,
     periods: Option<&[serde_json::Value]>,
+    lineage: Option<&serde_json::Value>,
 ) -> serde_json::Value {
     let undetermined = facts_arr
         .iter()
@@ -363,6 +371,61 @@ fn build_record_v1(
             if let Some(l) = evidence["limitation_ids"].as_array_mut() {
                 l.push(serde_json::json!("process.limitation.observationNotContinuous"));
             }
+        }
+    }
+
+    // Versioning V1. Le lineage est OPTIONNEL : sans lui, ce Record est exactement celui
+    // qu'il aurait été avant l'existence du versioning. Avec lui, la preuve dit d'où vient
+    // ce qu'elle n'a pas observé — et le dit comme une déclaration, pas comme un constat.
+    if let Some(vl) = lineage {
+        evidence["version_lineage"] = vl.clone();
+
+        let mut blind = vec![serde_json::json!({
+            "fact_id": "process.blindSpot.inheritedBaselineNotObserved",
+            "fact": "le contenu hérité de la version précédente n'a pas été observé dans cette version ; son origine n'est pas déterminée ici"
+        })];
+
+        // Écart temporel entre la création de cette version et le début de la première
+        // période observée. On ne prétend RIEN sur ce qui s'y est passé.
+        let cree_a = vl["initial_state"]["measured_at"].as_str().unwrap_or_default().to_string();
+        let debut = periods
+            .and_then(|p| p.first())
+            .and_then(|p| p.get("started_at").and_then(|x| x.as_str()))
+            .map(|s| s.to_string())
+            .or_else(|| evidence["events"].as_array()
+                .and_then(|e| e.first())
+                .and_then(|e| e.get("at").and_then(|x| x.as_str()))
+                .map(|s| s.to_string()));
+        if !cree_a.is_empty() {
+            if let Some(d) = debut {
+                blind.push(serde_json::json!({
+                    "fact_id": "process.blindSpot.betweenVersionCreationAndObservation",
+                    "fact": "entre la création de cette version et le début de l'observation, le document n'a pas été observé ; ce qui s'y est passé n'est pas établi",
+                    "from": cree_a,
+                    "to": d
+                }));
+            }
+        }
+
+        // L'état source ne correspondait pas à ce que la version précédente avait engagé.
+        // `null` n'est PAS `false` : une correspondance indéterminée n'ajoute rien.
+        if vl["source_matches_predecessor_final_state"] == serde_json::Value::Bool(false) {
+            blind.push(serde_json::json!({
+                "fact_id": "process.blindSpot.sourceDivergedFromPredecessorFinalState",
+                "fact": "l'état source ne correspondait pas à l'état final engagé par la version précédente ; ce qui a changé entre les deux n'a pas été observé"
+            }));
+        }
+
+        if let Some(b) = evidence["process_evidence"]["blind_spots"].as_array_mut() {
+            b.extend(blind);
+        }
+        // Prose et identifiant poussés ENSEMBLE : les deux tableaux ne doivent jamais se
+        // désaligner, sous peine de rendre un sens à un autre texte.
+        if let Some(l) = evidence["limitations"].as_array_mut() {
+            l.push(serde_json::json!("la relation avec la version précédente est déclarée par cette preuve ; elle n'est établie que si la version précédente est fournie au vérificateur"));
+        }
+        if let Some(l) = evidence["limitation_ids"].as_array_mut() {
+            l.push(serde_json::json!("process.limitation.versionRelationDeclaredNotEstablished"));
         }
     }
 
@@ -475,6 +538,7 @@ impl Finalizer {
             &commitment,
             facts_arr,
             periods.as_deref(),
+            crate::ho_version::lire_sidecar(&self.dir, &m.record_id).as_ref(),
         );
 
         // signature Ed25519 sur les champs de cœur
@@ -520,10 +584,100 @@ impl Finalizer {
                 // garantit qu'un document revu — même modifié — ne redonne jamais de preuve.
                 self.remember(sig);
                 self.remember(m.record_id.clone());
+                // Le lineage a rempli son office : il est DANS la preuve, définitivement.
+                // Le garder sur disque n'ajouterait rien et laisserait traîner un état.
+                crate::ho_version::oublier_sidecar(&self.dir, &m.record_id);
                 Some(m.record_id)
             }
             Err(_) => None, // registre indisponible : on retentera au prochain passage
         }
+    }
+
+    /// Documents HumanOrigin FINALISÉS et actuellement ouverts dans Word, parmi les seuls
+    /// dossiers autorisés.
+    ///
+    /// « Ouvert » est déduit du fichier de verrou que Word pose à côté du document :
+    /// `~$` suivi du nom privé de ses deux premiers caractères. C'est un indice, pas une
+    /// certitude — Word peut laisser un verrou après un arrêt brutal. Il n'a donc aucune
+    /// conséquence : il ne fait que proposer, l'utilisateur décide.
+    ///
+    /// « Finalisé » n'est PAS déduit de la présence d'un marqueur : il faut que la preuve
+    /// ait réellement été déposée, ce que l'état local sait. Proposer de versionner un
+    /// document dont rien n'est publié n'aurait aucun sens.
+    ///
+    /// Le chemin n'est jamais rendu à l'interface : seul un identifiant opaque l'est.
+    pub fn documents_versionnables(&self) -> Vec<serde_json::Value> {
+        let cfg = self.config();
+        let mut out = vec![];
+        for folder in cfg.folders.iter() {
+            let dir = PathBuf::from(folder);
+            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            for e in entries.flatten() {
+                let p = e.path();
+                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if !name.ends_with(".docx") || name.starts_with("~$") {
+                    continue;
+                }
+                let Some(xml) = read_custom_part(&p) else { continue };
+                let Some(m) = parse_marker(&xml) else { continue };
+                if !self.already(&m.record_id) {
+                    continue; // aucune preuve déposée : rien à versionner
+                }
+                if name.chars().count() < 2 {
+                    continue;
+                }
+                let verrou: String = format!("~${}", name.chars().skip(2).collect::<String>());
+                if !dir.join(&verrou).exists() {
+                    continue; // pas ouvert dans Word
+                }
+                out.push(serde_json::json!({
+                    "record_id": m.record_id,
+                    "name": name.trim_end_matches(".docx"),
+                }));
+            }
+        }
+        out
+    }
+
+    /// Le document versionnable désigné par son `record_id`, dans les dossiers autorisés.
+    /// Rend `None` si aucun, ou si plusieurs fichiers portent le même identifiant — une
+    /// ambiguïté ne se tranche pas au hasard.
+    pub fn chemin_versionnable(&self, record_id: &str) -> Option<PathBuf> {
+        let cfg = self.config();
+        let mut trouve: Option<PathBuf> = None;
+        for folder in cfg.folders.iter() {
+            let Ok(entries) = fs::read_dir(PathBuf::from(folder)) else { continue };
+            for e in entries.flatten() {
+                let p = e.path();
+                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if !name.ends_with(".docx") || name.starts_with("~$") {
+                    continue;
+                }
+                let Some(xml) = read_custom_part(&p) else { continue };
+                let Some(m) = parse_marker(&xml) else { continue };
+                if m.record_id != record_id {
+                    continue;
+                }
+                if trouve.is_some() {
+                    return None; // deux fichiers, même identifiant : on refuse
+                }
+                trouve = Some(p);
+            }
+        }
+        trouve
+    }
+
+    /// L'état local se souvient de `record_id:sha256(octets)` au moment du dépôt. Comparer
+    /// à cette empreinte dit si la source est encore ce qui avait été scellé.
+    /// `None` quand l'état local ne connaît pas ce Record : indéterminé n'est pas « modifié ».
+    pub fn correspond_a_l_etat_depose(&self, record_id: &str, bytes: &[u8]) -> Option<bool> {
+        let etat = self.state.lock().ok()?;
+        let prefixe = format!("{}:", record_id);
+        let connue = etat.done.keys().any(|k| k.starts_with(&prefixe));
+        if !connue {
+            return None;
+        }
+        Some(etat.done.contains_key(&format!("{}:{}", record_id, sha256_hex(bytes))))
     }
 
     /// Un passage sur les dossiers autorisés. Ne descend pas dans les sous-dossiers.
@@ -633,9 +787,20 @@ mod tests {
     // accompagnent une prose inchangée. Aucun identifiant dérivé du texte.
 
     fn rec(periods: Option<Vec<serde_json::Value>>) -> serde_json::Value {
+        rec_avec(periods, None)
+    }
+
+    /// Le même Record, éventuellement accompagné d'un lineage de version. Sans lineage,
+    /// le Record doit rester EXACTEMENT celui d'avant l'existence du versioning.
+    fn rec_avec(
+        periods: Option<Vec<serde_json::Value>>,
+        lineage: Option<serde_json::Value>,
+    ) -> serde_json::Value {
         let faits = vec![
-            serde_json::json!({ "sequence": 0, "source": "local_editing", "length_delta": 8 }),
-            serde_json::json!({ "sequence": 1, "source": "unknown", "length_delta": 0 }),
+            serde_json::json!({ "sequence": 0, "source": "local_editing", "length_delta": 8,
+                                "at": "2026-09-25T10:00:00.000Z" }),
+            serde_json::json!({ "sequence": 1, "source": "unknown", "length_delta": 0,
+                                "at": "2026-09-25T10:00:05.000Z" }),
         ];
         super::build_record_v1(
             "HO-CONTRAT000001",
@@ -645,7 +810,99 @@ mod tests {
             "bb".repeat(32).as_str(),
             faits,
             periods.as_deref(),
+            lineage.as_ref(),
         )
+    }
+
+    fn lineage_de_test(correspondance: Option<bool>) -> serde_json::Value {
+        crate::ho_version::lineage(
+            "HO-PREDECESSEUR1", "aa".repeat(32).as_str(), "2026-09-25T09:00:00.000Z",
+            "cc".repeat(32).as_str(), "2026-09-25T09:00:02.000Z", correspondance)
+    }
+    fn ids(v: &serde_json::Value, chemin: &str, champ: &str) -> Vec<String> {
+        v[chemin].as_array().map(|a| a.iter()
+            .filter_map(|x| x.get(champ).and_then(|y| y.as_str()).map(String::from))
+            .collect()).unwrap_or_default()
+    }
+
+    /// NON-RÉGRESSION. Sans sidecar, le Record doit être EXACTEMENT celui d'avant le
+    /// versioning : ni champ nouveau, ni blind spot nouveau, ni limitation nouvelle.
+    #[test]
+    fn sans_lineage_le_record_est_inchange() {
+        let r = rec(None);
+        assert!(r.get("version_lineage").is_none(), "version_lineage apparaît sans sidecar");
+        let bs = ids(&r["process_evidence"], "blind_spots", "fact_id");
+        assert_eq!(bs.len(), 2, "le nombre de blind spots a changé : {:?}", bs);
+        assert!(!bs.iter().any(|x| x.contains("Version") || x.contains("inheritedBaseline")));
+        assert_eq!(r["limitations"].as_array().unwrap().len(), 3);
+        assert_eq!(r["limitation_ids"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn avec_lineage_la_preuve_dit_ce_qu_elle_n_a_pas_observe() {
+        let r = rec_avec(None, Some(lineage_de_test(Some(true))));
+        assert_eq!(r["version_lineage"]["schema"], "ho-version-lineage/1");
+        assert_eq!(r["version_lineage"]["baseline"]["observed"], serde_json::json!(false));
+        assert_eq!(r["version_lineage"]["predecessor_record_id"], "HO-PREDECESSEUR1");
+
+        let bs = ids(&r["process_evidence"], "blind_spots", "fact_id");
+        assert!(bs.contains(&"process.blindSpot.inheritedBaselineNotObserved".to_string()),
+            "la baseline héritée n'est pas déclarée non observée : {:?}", bs);
+        assert!(r["limitation_ids"].as_array().unwrap().iter()
+            .any(|x| x == "process.limitation.versionRelationDeclaredNotEstablished"),
+            "la relation n'est pas déclarée non établie");
+        assert_eq!(r["limitations"].as_array().unwrap().len(),
+                   r["limitation_ids"].as_array().unwrap().len(),
+                   "prose et identifiants désalignés");
+    }
+
+    /// L'intervalle entre la création de la version et le début de l'observation est
+    /// déclaré non observé, avec ses deux bornes — sans rien affirmer de son contenu.
+    #[test]
+    fn l_intervalle_avant_observation_est_declare() {
+        let r = rec_avec(None, Some(lineage_de_test(Some(true))));
+        let bs = r["process_evidence"]["blind_spots"].as_array().unwrap().clone();
+        let t = bs.iter().find(|b| b["fact_id"] == "process.blindSpot.betweenVersionCreationAndObservation")
+            .expect("blind spot temporel absent");
+        assert_eq!(t["from"], "2026-09-25T09:00:02.000Z");
+        assert_eq!(t["to"], "2026-09-25T10:00:00.000Z", "la borne haute n'est pas le premier événement");
+        let prose = t["fact"].as_str().unwrap();
+        assert!(!prose.contains("aucune modification") && !prose.contains("rien n'a changé"),
+            "l'intervalle prétend quelque chose : {}", prose);
+    }
+
+    /// CONTRÔLE NÉGATIF DÉCISIF. `false` ajoute le blind spot de divergence ; `null`, qui
+    /// signifie « indéterminé », ne doit RIEN ajouter — sans quoi une comparaison
+    /// impossible se lirait comme une divergence constatée.
+    #[test]
+    fn indetermine_n_ajoute_aucune_divergence() {
+        let divergent = "process.blindSpot.sourceDivergedFromPredecessorFinalState".to_string();
+
+        let faux = rec_avec(None, Some(lineage_de_test(Some(false))));
+        assert!(ids(&faux["process_evidence"], "blind_spots", "fact_id").contains(&divergent),
+            "une source divergente n'est pas signalée");
+
+        let nul = rec_avec(None, Some(lineage_de_test(None)));
+        assert!(!ids(&nul["process_evidence"], "blind_spots", "fact_id").contains(&divergent),
+            "indéterminé a été rendu comme une divergence");
+        assert_eq!(nul["version_lineage"]["source_matches_predecessor_final_state"],
+                   serde_json::Value::Null);
+
+        let vrai = rec_avec(None, Some(lineage_de_test(Some(true))));
+        assert!(!ids(&vrai["process_evidence"], "blind_spots", "fact_id").contains(&divergent));
+    }
+
+    /// Le versioning ne doit pas déplacer les faits du Record : cœur signé et champs
+    /// historiques restent identiques, lineage ou non.
+    #[test]
+    fn le_lineage_ne_touche_a_rien_d_autre() {
+        let sans = rec(None);
+        let avec = rec_avec(None, Some(lineage_de_test(Some(true))));
+        for champ in ["schema", "session_id", "object_id", "event_count",
+                      "chain_head_hash", "final_state_commit", "record_id", "events",
+                      "artifact", "causal_reconstruction", "final_object_binding"] {
+            assert_eq!(sans[champ], avec[champ], "le champ « {} » a changé", champ);
+        }
     }
 
     fn textes(v: &serde_json::Value, champ: &str) -> Vec<String> {

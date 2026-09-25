@@ -63,6 +63,7 @@ mod ho_capability; // Capability d'écriture au registre : trousseau local uniqu
 mod ho_finalizer; // Create V1 : finalisation native, dossiers autorisés uniquement.
 mod ho_docx_scrub; // First Run V1 : retrait de la seule référence au complément HumanOrigin.
 mod ho_word_setup; // First Run V1 : intégration Word, une fois, sur geste explicite.
+mod ho_version; // Versioning V1 : transformation de la copie et sidecar de lineage.
 
 const EXTRA_CARRE_DRAIN: bool = true;
 const EXTRA_CARRE_DRAIN_MS: u64 = 40;
@@ -2085,6 +2086,130 @@ fn ho_default_work_folder() -> Option<String> {
 /// Si le trousseau échoue, aucun document HumanOrigin n'est créé — un document portant un
 /// identifiant sans capability serait un document impubliable, et silencieusement.
 /// Si la création échoue ensuite, l'entrée créée par cette tentative est retirée, au mieux.
+/// Documents HumanOrigin finalisés et ouverts dans Word, parmi les dossiers autorisés.
+/// L'interface n'obtient jamais de chemin : un identifiant et un nom, rien de plus.
+#[tauri::command]
+fn ho_versionable_documents() -> Vec<serde_json::Value> {
+    ho_finalizer::Finalizer::new(ho_finalizer_dir()).documents_versionnables()
+}
+
+/// Mesure l'état source d'un document versionnable, sans rien créer.
+/// Sert à décider, AVANT toute réservation, s'il faut avertir que la source a changé.
+#[tauri::command]
+fn ho_version_source_state(from_record_id: String) -> Result<serde_json::Value, String> {
+    if !ho_capability::record_id_valide(&from_record_id) {
+        return Err("Identifiant invalide.".into());
+    }
+    let f = ho_finalizer::Finalizer::new(ho_finalizer_dir());
+    let chemin = f
+        .chemin_versionnable(&from_record_id)
+        .ok_or("Ce document n’a pas été retrouvé parmi vos dossiers HumanOrigin.")?;
+    let (octets, _) = lire_stable(&chemin)?;
+    Ok(serde_json::json!({
+        "source_matches_predecessor_final_state": f.correspond_a_l_etat_depose(&from_record_id, &octets),
+    }))
+}
+
+/// Lit un fichier en s'assurant qu'il ne bouge pas pendant la lecture. Mêmes garde-fous que
+/// le finalizer : un engagement calculé sur des octets instables n'engagerait rien.
+fn lire_stable(chemin: &std::path::Path) -> Result<(Vec<u8>, std::fs::Metadata), String> {
+    let avant = std::fs::metadata(chemin).map_err(|e| e.to_string())?;
+    let octets = std::fs::read(chemin).map_err(|e| e.to_string())?;
+    let apres = std::fs::metadata(chemin).map_err(|e| e.to_string())?;
+    if avant.len() != apres.len()
+        || avant.len() != octets.len() as u64
+        || avant.modified().map_err(|e| e.to_string())? != apres.modified().map_err(|e| e.to_string())?
+    {
+        return Err("Le document est en cours d’écriture. Réessayez dans un instant.".into());
+    }
+    Ok((octets, apres))
+}
+
+/// Crée une nouvelle version à partir d'un document finalisé.
+///
+/// ORDRE FAIL-CLOSED, et il compte. La capability est écrite au trousseau AVANT que le
+/// fichier existe : une V2 portant un identifiant sans capability serait impubliable, et
+/// elle le serait en silence. Si l'une des étapes suivantes échoue, tout ce que cette
+/// tentative a créé est retiré — capability, fichier, sidecar.
+#[tauri::command]
+async fn ho_new_version(
+    from_record_id: String,
+    record_id: String,
+    capability: String,
+) -> Result<serde_json::Value, String> {
+    if !ho_capability::record_id_valide(&from_record_id) || !ho_capability::record_id_valide(&record_id) {
+        return Err("Identifiant réservé invalide.".into());
+    }
+    if from_record_id == record_id {
+        return Err("Une nouvelle version ne peut pas reprendre l’identifiant de la précédente.".into());
+    }
+    if !ho_capability::capability_plausible(&capability) {
+        return Err("Capability invalide.".into());
+    }
+    if !capability_porte_le_record_id(&capability, &record_id) {
+        return Err("La capability ne correspond pas à l’identifiant réservé.".into());
+    }
+
+    let base = ho_finalizer_dir();
+    let f = ho_finalizer::Finalizer::new(base.clone());
+    let source = f
+        .chemin_versionnable(&from_record_id)
+        .ok_or("Ce document n’a pas été retrouvé parmi vos dossiers HumanOrigin.")?;
+
+    // 1-4 : mesurer la source AVANT toute écriture.
+    let (octets, _) = lire_stable(&source)?;
+    let source_commit = ho_version::commit_bytes(&octets);
+    let source_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let correspondance = f.correspond_a_l_etat_depose(&from_record_id, &octets);
+
+    // 5-6 : trousseau d'abord, puis création. L'ordre vit dans ho_capability, testé par
+    // injection ; ici on ne fait que lui fournir les opérations réelles.
+    let dossier = source
+        .parent()
+        .map(|d| d.to_path_buf())
+        .ok_or("Dossier du document introuvable.")?;
+    let base_pour_creation = base.clone();
+    let rid = record_id.clone();
+    let pred = from_record_id.clone();
+    ho_capability::creer_document_avec_capability(
+        &record_id,
+        &capability,
+        ho_capability::stocker,
+        move |id| {
+            // 7-9 : copier, retirer les marqueurs de V1, semer le nouvel identifiant.
+            let neuf = ho_version::transformer(&octets, id)?;
+            // 10 : écrire atomiquement, à côté du document source.
+            let ecrit = ho_word_setup::ecrire_nouveau_document(&dossier, &neuf)?;
+            // 11-12 : mesurer l'état initial, puis conserver ce qui a été mesuré.
+            let initial_commit = ho_version::commit_bytes(&neuf);
+            let initial_at = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let lineage = ho_version::lineage(
+                &pred, &source_commit, &source_at, &initial_commit, &initial_at, correspondance,
+            );
+            if let Err(e) = ho_version::ecrire(&base_pour_creation, id, &lineage) {
+                // Sans sidecar, V2 serait finalisée SANS relation : une preuve muette sur
+                // son origine vaut mieux qu'un document laissé là. On retire donc le fichier.
+                let _ = std::fs::remove_file(ecrit.get("path").and_then(|p| p.as_str()).unwrap_or(""));
+                return Err(format!("La nouvelle version n’a pas pu être enregistrée : {}", e));
+            }
+            // 13 : ouvrir dans Word.
+            let ouvert = ho_word_setup::ouvrir_dans_word(ecrit.get("path").and_then(|p| p.as_str()).unwrap_or(""));
+            let mut v = ecrit;
+            v["opened_in_word"] = serde_json::Value::Bool(ouvert);
+            v["source_matches_predecessor_final_state"] = match correspondance {
+                Some(b) => serde_json::Value::Bool(b),
+                None => serde_json::Value::Null,
+            };
+            Ok(v)
+        },
+        move |id| {
+            ho_capability::oublier(id);
+            ho_version::oublier_sidecar(&base, id);
+            let _ = rid;
+        },
+    )
+}
+
 #[tauri::command]
 async fn ho_new_document(
     folder: Option<String>,
@@ -2194,6 +2319,9 @@ async fn ho_new_document_inner(
             // peut les atteindre, et aucune ne s'exécute au démarrage.
             ho_finalizer_get_folders,
             ho_finalizer_set_folders,
+            ho_versionable_documents,
+            ho_version_source_state,
+            ho_new_version,
             ho_finalizer_status,
             ho_check_work_folder,
             ho_word_setup_status,

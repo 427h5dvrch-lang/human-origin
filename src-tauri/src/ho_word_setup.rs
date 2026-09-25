@@ -227,6 +227,53 @@ pub fn prepare_work_folder(folder: &str) -> Result<(), String> {
 
 /// Crée « Nouveau document HumanOrigin.docx » (ou « … 2 », « … 3 ») dans le premier dossier de
 /// travail, sans jamais écraser un fichier, puis l'ouvre dans Word.
+/// Écrit un document neuf dans `dir`, sans jamais écraser un fichier existant.
+/// Extrait de `new_document` pour que le Versioning emprunte EXACTEMENT le même chemin
+/// d'écriture : nommage, `create_new`, `sync_all`, retrait en cas d'échec.
+pub fn ecrire_nouveau_document(dir: &Path, bytes: &[u8]) -> Result<serde_json::Value, String> {
+    if !dir.is_dir() {
+        return Err(format!("Le dossier de travail est introuvable : {}", dir.display()));
+    }
+    for n in 1..1000 {
+        let name = if n == 1 {
+            "Nouveau document HumanOrigin.docx".to_string()
+        } else {
+            format!("Nouveau document HumanOrigin {}.docx", n)
+        };
+        let path = dir.join(&name);
+        match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+            Ok(mut f) => {
+                f.write_all(bytes).and_then(|_| f.sync_all()).map_err(|e| {
+                    let _ = fs::remove_file(&path);
+                    format!("Le document n'a pas pu être créé : {}", e)
+                })?;
+                return Ok(serde_json::json!({
+                    "path": path.to_string_lossy(),
+                    "name": name,
+                    "folder": dir.to_string_lossy()
+                }));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("Le document n'a pas pu être créé : {}", e)),
+        }
+    }
+    Err("Trop de documents portent déjà ce nom.".into())
+}
+
+/// Ouvre un document dans Word. Un échec n'invalide rien : le fichier existe et la preuve
+/// suivra quand l'utilisateur l'ouvrira.
+pub fn ouvrir_dans_word(path: &str) -> bool {
+    if path.is_empty() {
+        return false;
+    }
+    std::process::Command::new("/usr/bin/open")
+        .args(["-b", WORD_BUNDLE])
+        .arg(path)
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 pub fn new_document(work_folders: &[String], record_id: &str) -> Result<serde_json::Value, String> {
     let folder = work_folders.first().ok_or("Choisissez d'abord votre dossier de travail HumanOrigin.")?;
     let dir = PathBuf::from(folder);
