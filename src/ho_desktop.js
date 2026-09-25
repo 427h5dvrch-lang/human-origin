@@ -90,6 +90,92 @@ async function createDocument(button, msg, folder, proposalBox) {
   } finally { button.disabled = false; }
 }
 
+/**
+ * Versioning V1 — créer une nouvelle version d'un document déjà finalisé.
+ *
+ * Le déclenchement est ICI, et non dans Word : le volet Office ne peut pas réveiller
+ * l'application (mesuré). L'application, elle, sait quels documents finalisés sont ouverts.
+ *
+ * Le chemin du fichier n'est jamais un concept d'interface : on n'affiche qu'un nom.
+ */
+async function creerNouvelleVersion(bouton, msg, fromRecordId) {
+  bouton.disabled = true;
+  say(msg, "Préparation de la nouvelle version…");
+  try {
+    // Réservation APRÈS l'avertissement éventuel, jamais avant : une réservation
+    // consommée pour une création abandonnée serait un identifiant perdu.
+    const { record_id, capability } = await reserveRecordId();
+    const r = await invoke("ho_new_version", {
+      fromRecordId, recordId: record_id, capability,
+    });
+    say(msg, r.opened_in_word
+      ? `« ${r.name} » a été créé et s’ouvre dans Word.`
+      : `« ${r.name} » a été créé. Ouvrez-le dans Word.`);
+  } catch (e) {
+    say(msg, errorText(e, "La nouvelle version n’a pas pu être créée."), true);
+  } finally { bouton.disabled = false; }
+}
+
+/** Un document éligible : son nom, et l'action. L'avertissement précède la réservation. */
+function ligneVersionnable(doc, plusieurs) {
+  const bloc = el("div", { margin: plusieurs ? "0 0 16px" : "0" });
+  if (plusieurs) {
+    bloc.appendChild(el("p", { margin: "0 0 6px", color: INK }, doc.name));
+  } else {
+    bloc.appendChild(el("p", { margin: "0 0 2px", color: MUTED, font: "500 13px/1.4 inherit" },
+      "Document finalisé"));
+    bloc.appendChild(el("h4", { font: "600 17px/1.35 inherit", margin: "0 0 10px", color: INK },
+      doc.name));
+  }
+  const msg = el("p", { margin: "8px 0 0", font: "13px/1.5 inherit", color: MUTED }, "");
+  const bouton = secondaryButton("Créer une nouvelle version");
+  bouton.onclick = async () => {
+    bouton.disabled = true;
+    let etat = null;
+    try {
+      const r = await invoke("ho_version_source_state", { fromRecordId: doc.record_id });
+      etat = r.source_matches_predecessor_final_state;
+    } catch (e) {
+      say(msg, errorText(e, "L’état de ce document n’a pas pu être vérifié."), true);
+      bouton.disabled = false;
+      return;
+    }
+    // `null` — indéterminé — n'est PAS `false`. On n'avertit que d'une divergence constatée.
+    if (etat === false) {
+      bouton.remove();
+      const avert = el("div", { margin: "10px 0 0" });
+      avert.appendChild(el("p", { margin: "0 0 6px", color: INK },
+        "Ce document a été modifié depuis sa finalisation."));
+      avert.appendChild(el("p", { margin: "0 0 10px", color: MUTED, font: "13px/1.5 inherit" },
+        "La preuve précédente reste valable pour l’état qui avait été scellé. "
+        + "Les modifications intervenues depuis ne seront pas considérées comme observées."));
+      const confirmer = secondaryButton("Créer la nouvelle version");
+      confirmer.onclick = () => creerNouvelleVersion(confirmer, msg, doc.record_id);
+      avert.appendChild(confirmer);
+      bloc.insertBefore(avert, msg);
+      return;
+    }
+    await creerNouvelleVersion(bouton, msg, doc.record_id);
+  };
+  bloc.appendChild(bouton);
+  bloc.appendChild(msg);
+  return bloc;
+}
+
+/** Rend la section, ou rien du tout s'il n'y a aucun document éligible. */
+async function renderVersioning(box) {
+  box.textContent = "";
+  let docs = [];
+  try { docs = (await invoke("ho_versionable_documents")) || []; } catch (e) { docs = []; }
+  if (!docs.length) return false;
+  if (docs.length > 1) {
+    box.appendChild(el("p", { margin: "0 0 14px", color: MUTED, font: "13px/1.5 inherit" },
+      "Plusieurs documents finalisés sont ouverts."));
+  }
+  docs.forEach((d) => box.appendChild(ligneVersionnable(d, docs.length > 1)));
+  return true;
+}
+
 /** Premier document : l'emplacement dédié est proposé, visible et modifiable, avant toute création. */
 async function proposeLocation(box, msg) {
   let proposed = "";
@@ -345,6 +431,17 @@ async function panel() {
   const wordBox = el("div", { margin: "0 0 38px" });
   wrap.appendChild(wordBox);
   await renderWord(wordBox);
+
+  // --- nouvelle version : la section n'existe que s'il y a de quoi la proposer.
+  const titreVersions = el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",
+    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, "NOUVELLE VERSION");
+  const versionsBox = el("div", { margin: "0 0 38px" });
+  wrap.appendChild(titreVersions);
+  wrap.appendChild(versionsBox);
+  if (!(await renderVersioning(versionsBox))) {
+    titreVersions.remove();
+    versionsBox.remove();
+  }
 
   // --- dossiers surveillés
   wrap.appendChild(el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",
