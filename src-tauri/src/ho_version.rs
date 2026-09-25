@@ -56,16 +56,23 @@ fn retirer_badge(doc: &str) -> (String, bool) {
         return (doc.to_string(), false);
     };
     let Some(debut) = doc[..pos_tag].rfind("<w:sdt>") else { return (doc.to_string(), false) };
+    // Parcours sur les OCTETS. Un document réel contient des caractères accentués : avancer
+    // d'un octet puis découper la chaîne tomberait au milieu d'un caractère et paniquerait.
+    let o = doc.as_bytes();
+    const OUVRE: &[u8] = b"<w:sdt>";
+    const FERME: &[u8] = b"</w:sdt>";
     let mut profondeur = 0usize;
     let mut i = debut;
-    let reste = doc.as_bytes();
-    while i < reste.len() {
-        if doc[i..].starts_with("<w:sdt>") {
+    while i < o.len() {
+        if o[i..].starts_with(OUVRE) {
             profondeur += 1;
-            i += 7;
-        } else if doc[i..].starts_with("</w:sdt>") {
-            profondeur -= 1;
-            i += 8;
+            i += OUVRE.len();
+        } else if o[i..].starts_with(FERME) {
+            i += FERME.len();
+            profondeur = match profondeur.checked_sub(1) {
+                Some(p) => p,
+                None => return (doc.to_string(), false), // structure inattendue : on s'abstient
+            };
             if profondeur == 0 {
                 let mut out = String::with_capacity(doc.len());
                 out.push_str(&doc[..debut]);
@@ -489,5 +496,72 @@ mod tests {
         assert_eq!(a["predecessor_record_id"], b["predecessor_record_id"]);
         assert_ne!(a["initial_state"]["commit"], b["initial_state"]["commit"]);
         let _ = fs::remove_dir_all(&d);
+    }
+}
+
+/// Banc sur un document Word RÉEL, hors `cargo test` ordinaire. Un paquet synthétique ne
+/// reproduit pas tout ce que Word écrit : contrôles imbriqués, relations, médias, parties
+/// annexes. Ce banc éprouve la transformation là où elle sera réellement employée.
+///
+///   HO_DOCX_REEL=/chemin/document.docx cargo test transformation_sur_un_docx_reel -- --ignored
+#[cfg(test)]
+mod reel {
+    use super::*;
+
+    #[test]
+    #[ignore]
+    fn transformation_sur_un_docx_reel() {
+        let chemin = std::env::var("HO_DOCX_REEL").expect("HO_DOCX_REEL");
+        let source = fs::read(&chemin).expect("lecture du document");
+        let avant = String::from_utf8_lossy(
+            &{ let mut v = Vec::new();
+               zip::ZipArchive::new(Cursor::new(&source[..])).unwrap()
+                   .by_name(CUSTOM_PART).unwrap().read_to_end(&mut v).unwrap(); v }).to_string();
+        assert!(avant.contains("HOLocator"), "ce document n'est pas finalisé");
+
+        let v2 = transformer(&source, "HO-REELNOUVELLE").expect("transformation");
+
+        let lire = |o: &[u8], n: &str| -> String {
+            let mut z = zip::ZipArchive::new(Cursor::new(o.to_vec())).unwrap();
+            let mut s = String::new();
+            z.by_name(n).unwrap().read_to_string(&mut s).unwrap();
+            s
+        };
+        let custom = lire(&v2, CUSTOM_PART);
+        assert!(!custom.contains("HOLocator") && !custom.contains("HOFacts"));
+        assert!(custom.contains("HO-REELNOUVELLE"));
+        let doc = lire(&v2, DOCUMENT_PART);
+        assert!(!doc.contains(MARK_TAG), "le badge survit dans un vrai document");
+        let rels = lire(&v2, RELS_PART);
+        assert!(!rels.contains("verify.humanorigin.io"),
+            "un lien de vérification de la version précédente subsiste :\n{}", rels);
+
+        // Le contenu rédigé doit survivre INTÉGRALEMENT. Compter les passages de texte ne
+        // dirait rien : le badge en porte lui-même plusieurs, et les perdre est voulu.
+        // Le volet pose le badge en FIN de document — il refuse tout autre placement. Donc
+        // tout texte situé avant lui appartient à l'utilisateur et doit se retrouver.
+        let avant_doc = lire(&source, DOCUMENT_PART);
+        let pos_badge = avant_doc.find(MARK_TAG).expect("badge absent de la source");
+        let debut_badge = avant_doc[..pos_badge].rfind("<w:sdt>").expect("ouverture du badge");
+        let textes: Vec<String> = avant_doc[..debut_badge]
+            .match_indices("<w:t")
+            .filter_map(|(i, _)| {
+                let r = &avant_doc[i..];
+                let a = r.find('>')? + 1;
+                let b = r.find("</w:t>")?;
+                if b <= a { return None; }
+                let t = r[a..b].trim().to_string();
+                if t.is_empty() { None } else { Some(t) }
+            })
+            .collect();
+        assert!(!textes.is_empty(), "la source ne contient aucun texte utilisateur");
+        for t in &textes {
+            assert!(doc.contains(t.as_str()), "texte utilisateur perdu : « {} »", t);
+        }
+        println!("  {} passages de texte utilisateur conservés", textes.len());
+
+        // L'engagement de l'état initial est celui des octets réellement produits.
+        assert_eq!(commit_bytes(&v2).len(), 64);
+        println!("  source {} octets -> V2 {} octets", source.len(), v2.len());
     }
 }
