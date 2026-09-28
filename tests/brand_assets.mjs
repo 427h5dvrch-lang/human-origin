@@ -39,11 +39,17 @@ const importeurs = modules.filter((f) =>
   /from\s+["'][^"']*brand\/[^"']+["']/.test(fs.readFileSync(path.join(SRC, f), "utf8")));
 ck("un seul module importe la marque", importeurs.length === 1, importeurs.join(", "));
 
-const shell = fs.readFileSync(path.join(SRC, "ho_desktop.js"), "utf8");
+// La marque vit dans le module de composants : c'est lui, et lui seul, qui l'importe et
+// la pose. Les écrans passent par HumanOriginBrandMark, jamais par l'asset.
+const shell = fs.readFileSync(path.join(SRC, "ho_shell.js"), "utf8");
 ck("elle passe par HumanOriginBrandMark", /function HumanOriginBrandMark\(/.test(shell));
-ck("un seul endroit la pose", (shell.match(/HumanOriginBrandMark\(/g) || []).length === 2,
-  String((shell.match(/HumanOriginBrandMark\(/g) || []).length));
-ck("MARQUE_SRC vient de l'asset importé", /const MARQUE_SRC = EMPREINTE_MARINE;/.test(shell));
+ck("l'asset n'est lu qu'à cet endroit",
+  (shell.match(/EMPREINTE_MARINE/g) || []).length === 2,
+  String((shell.match(/EMPREINTE_MARINE/g) || []).length));
+// Les écrans n'ont AUCUN accès direct à l'asset : ils passent par le composant.
+const ecrans = fs.readFileSync(path.join(SRC, "ho_desktop.js"), "utf8");
+ck("les écrans ne touchent pas l'asset", !/EMPREINTE_MARINE|brand\//.test(ecrans));
+ck("les écrans passent par le composant", /HumanOriginBrandMark\(/.test(ecrans));
 
 console.log("\n-- aucune marque redessinée --");
 // Le contrôle porte sur le CODE : un commentaire qui PARLE de la marque ne la dessine pas,

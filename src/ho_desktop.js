@@ -11,8 +11,12 @@ import { appDataDir, join } from "@tauri-apps/api/path";
 import { PAPER, INK, MUTED, BLUE, put, mkButton } from "./ho_ui.js";
 import { reserveRecordId, supabase } from "./ho_reserve.js";
 import { listen } from "@tauri-apps/api/event";
-// Marque : copie versionnée du paquet d'identité gelé, jamais redessinée.
-import EMPREINTE_MARINE from "./brand/HumanOrigin_fingerprint_navy.png";
+import {
+  PAPIER, CARTE, MARINE, ENCRE, ATONE, LIGNE, SERIF, SANS, COLONNE, ICONES,
+  HumanOriginBrandMark, entete, colonne, medaillon, titre, sousTitre, corps,
+  ctaPrincipal, ctaSecondaire, ctaWord, pilule, carteEtat, mention, page, pastilleWord,
+  el as sh,
+} from "./ho_shell.js";
 
 const el = (tag, decls, text) => {
   const n = document.createElement(tag);
@@ -540,243 +544,44 @@ async function panel() {
 }
 
 /** Une initialisation qui échoue doit se voir. Elle ne dit rien du document de l'utilisateur. */
-// ---------------------------------------------------------------- Creator Shell V1
-// L'accueil n'est pas un tableau de bord : une page calme, alignée à gauche, dont une seule
-// action est visible. Ce qui relève du réglage — dossiers, installation, compte — quitte
-// l'accueil et vit derrière l'engrenage.
+// ---------------------------------------------------------------- Creator Shell V1 — états
+// La planche validée est le contrat visuel. UN ÉCRAN = UN ÉTAT : aucun de ces écrans n'en
+// compose deux, et aucun n'affiche de chemin de fichier ni d'information technique.
 //
-// Aucune logique métier ici : l'état vient des mêmes sources qu'avant, et le bouton appelle
-// exactement l'action existante.
-const SERIF = 'ui-serif, Georgia, "Times New Roman", serif';
-const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
-const LIGNE = "#E6E2D8";   // bordure très fine, à peine plus sombre que le papier
-const CARTE = "#FFFFFF";
-const VERT = "#3E8E5A";
-const NS_SVG = "http://www.w3.org/2000/svg";
+// Les composants et les jetons vivent dans ho_shell.js. Ici, seulement le branchement des
+// états métier existants : aucune donnée n'est simulée, aucune commande n'est ajoutée.
 
-const svg = (viewBox, taille, decls) => {
-  const n = document.createElementNS(NS_SVG, "svg");
-  n.setAttribute("viewBox", viewBox);
-  n.setAttribute("width", String(taille));
-  n.setAttribute("height", String(taille));
-  n.setAttribute("aria-hidden", "true");
-  n.setAttribute("fill", "none");
-  for (const [k, v] of Object.entries(decls || {})) n.setAttribute(k, v);
-  return n;
-};
-const trace = (parent, d, decls) => {
-  const p = document.createElementNS(NS_SVG, "path");
-  p.setAttribute("d", d);
-  for (const [k, v] of Object.entries(decls || {})) p.setAttribute(k, v);
-  parent.appendChild(p);
-  return p;
-};
+/** Mémoire d'écran : ce que l'utilisateur vient de faire, pour l'état suivant. */
+const VUE = { ecran: null, doc: null, message: "" };
 
-/**
- * MARQUE HUMANORIGIN — POINT UNIQUE.
- *
- * Aucun écran ne doit redessiner la marque. Le paquet d'identité est gelé et le dit
- * lui-même : `STATUS = FROZEN · DO NOT REDRAW · DO NOT RECREATE FROM FONT ·
- * DO NOT SUBSTITUTE FINGERPRINT` (HUMANORIGIN_BRAND_MASTER_V1/BRAND_SPEC.md).
- *
- * Une version précédente de cet écran traçait une empreinte en SVG, entourée d'un cercle.
- * C'était une substitution, et le cercle était un ajout : la spec précise « Aucun cercle
- * n'a été ajouté ». Ce faux symbole est retiré.
- *
- * L'asset est l'empreinte marine du paquet officiel, copiée octet pour octet dans
- * `src/brand/` et vérifiée par `tests/brand_assets.mjs`. Elle n'est ni entourée, ni
- * recadrée, ni recolorée : seule sa hauteur varie selon le contexte.
- */
-const MARQUE_SRC = EMPREINTE_MARINE;
-
-function HumanOriginBrandMark(taille) {
-  if (!MARQUE_SRC) return null;
-  const i = document.createElement("img");
-  i.src = MARQUE_SRC;
-  i.alt = "";
-  i.setAttribute("aria-hidden", "true");
-  // Seule la TAILLE varie : géométrie, proportions, épaisseurs et couleurs viennent de
-  // l'asset et ne sont jamais retouchées en CSS.
-  put(i, { height: taille + "px", width: "auto", display: "block", "flex-shrink": "0" });
-  return i;
-}
-
-function engrenage() {
-  const s = svg("0 0 24 24", 17, { stroke: MUTED, "stroke-width": "1.6",
-    "stroke-linecap": "round", "stroke-linejoin": "round" });
-  const c = document.createElementNS(NS_SVG, "circle");
-  c.setAttribute("cx", "12"); c.setAttribute("cy", "12"); c.setAttribute("r", "3");
-  c.setAttribute("stroke", MUTED); c.setAttribute("stroke-width", "1.6");
-  s.appendChild(c);
-  trace(s, "M12 2.6v2.1M12 19.3v2.1M4.3 4.3l1.5 1.5M18.2 18.2l1.5 1.5"
-         + "M2.6 12h2.1M19.3 12h2.1M4.3 19.7l1.5-1.5M18.2 5.8l1.5-1.5");
-  return s;
-}
-
-/** Feuille : celle du bouton principal et de la carte Documents. */
-function feuille(taille, couleur) {
-  const s = svg("0 0 24 24", taille, { stroke: couleur, "stroke-width": "1.5",
-    "stroke-linecap": "round", "stroke-linejoin": "round" });
-  trace(s, "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z");
-  trace(s, "M14 3v5h5");
-  return s;
-}
-
-/** Silhouette de personne : carte Compte. */
-function personne(taille, couleur) {
-  const s = svg("0 0 24 24", taille, { stroke: couleur, "stroke-width": "1.5",
-    "stroke-linecap": "round", "stroke-linejoin": "round" });
-  const c = document.createElementNS(NS_SVG, "circle");
-  c.setAttribute("cx", "12"); c.setAttribute("cy", "8"); c.setAttribute("r", "3.4");
-  c.setAttribute("stroke", couleur); c.setAttribute("stroke-width", "1.5");
-  s.appendChild(c);
-  trace(s, "M5.2 19.4a6.8 6.8 0 0 1 13.6 0");
-  return s;
-}
-
-/** Pastille Word : la marque de Microsoft n'est pas embarquée, seule sa couleur l'évoque. */
-function pastilleWord(taille) {
-  const b = el("span", {
-    width: taille + "px", height: taille + "px", "border-radius": "4px",
-    background: "#2B579A", color: "#FFFFFF", display: "inline-flex",
-    "align-items": "center", "justify-content": "center", "flex-shrink": "0",
-    font: "700 " + Math.round(taille * 0.58) + "px/1 " + SANS,
-  }, "W");
-  return b;
-}
-
-/**
- * Fond : un paysage à l'aquarelle, très pâle, ancré en bas. Une présence, jamais un décor —
- * il ne doit rien disputer au titre ni au bouton.
- */
-function paysage() {
-  const s = document.createElementNS(NS_SVG, "svg");
-  s.setAttribute("viewBox", "0 0 400 260");
-  s.setAttribute("preserveAspectRatio", "xMidYMax slice");
-  s.setAttribute("aria-hidden", "true");
-  put(s, { position: "fixed", left: "0", right: "0", bottom: "0", width: "100%",
-    height: "62%", "pointer-events": "none", "z-index": "0" });
-  const couches = [
-    ["M0 190 L58 138 L96 166 L150 116 L206 168 L252 140 L312 186 L400 142 L400 260 L0 260 Z", ".07"],
-    ["M0 212 L70 170 L124 200 L182 158 L236 198 L298 168 L358 204 L400 182 L400 260 L0 260 Z", ".055"],
-    ["M0 236 L86 206 L158 230 L240 202 L322 232 L400 212 L400 260 L0 260 Z", ".045"],
-  ];
-  for (const [d, o] of couches) trace(s, d, { fill: BLUE, "fill-opacity": o });
-  return s;
-}
-
-/** Carte d'indicateur : une icône, un libellé, un état. Jamais une métrique. */
-function carteEtat(icone, libelle, valeur) {
-  const c = el("div", {
-    display: "flex", "align-items": "center", gap: "10px",
-    padding: "11px 13px", background: CARTE, border: "1px solid " + LIGNE,
-    "border-radius": "10px", "box-shadow": "0 1px 1px rgba(26,30,36,.03)",
-  });
-  c.appendChild(icone);
-  const t = el("div", { display: "flex", "flex-direction": "column", gap: "1px",
-    "min-width": "0" });
-  t.appendChild(el("span", { font: "12.5px/1.3 " + SANS, color: MUTED }, libelle));
-  t.appendChild(el("span", { font: "500 13.5px/1.3 " + SANS, color: INK }, valeur));
-  c.appendChild(t);
-  return c;
-}
-
-const jourMois = (d) => d.toLocaleDateString("fr-FR",
-  { day: "numeric", month: "long", year: "numeric" });
-const heure = (d) => d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-
-function quand(d) {
+const quandDate = (d) => {
   const a = new Date();
-  const memeJour = d.toDateString() === a.toDateString();
-  return (memeJour ? "Aujourd’hui" : jourMois(d)) + " à " + heure(d);
+  const meme = d.toDateString() === a.toDateString();
+  const jour = meme ? "Aujourd’hui"
+    : d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  return jour + " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+};
+
+/** Zone de message d'un écran : un seul endroit, discret, sous les actions. */
+function zoneMessage() {
+  return sh("p", { margin: "14px 0 0", font: "13px/1.5 " + SANS, color: ATONE,
+    "text-align": "center" }, VUE.message || "");
 }
 
-/**
- * État PRÊT. Il n'est rendu que si Word est installé ET une session est ouverte : les
- * autres états ne sont pas encore repris par ce shell et gardent le panneau existant.
- */
-async function accueil() {
-  let st = null;
-  try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
-  const session = await sessionCourante();
-  const pret = st && st.state === "installed" && !!session;
-  if (!pret) return panel();
+// ---------------------------------------------------------------- 1 · PRÊT
+async function ecranPret(ctx) {
+  const p = page("accueil");
+  p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
 
-  document.body.textContent = "";
-  put(document.body, {
-    margin: "0", background: PAPER, color: INK, "min-height": "100vh",
-    font: "15px/1.6 " + SANS, overflow: "hidden auto",
-  });
-  document.body.appendChild(paysage());
+  const c = colonne({ padding: "38px 24px 0", "flex-grow": "1" });
+  c.appendChild(sh("h1", { font: "400 31px/1.22 " + SERIF, color: MARINE, margin: "0 0 14px",
+    "letter-spacing": "-.012em" }, "Créez votre prochain document HumanOrigin"));
+  c.appendChild(corps(["Travaillez normalement dans Word.",
+                       "HumanOrigin se charge de la preuve."], "left"));
 
-  const page = el("div", { position: "relative", "z-index": "1", display: "flex",
-    "flex-direction": "column", "min-height": "100vh" });
-
-  // --- en-tête très léger
-  const header = el("header", {
-    display: "flex", "align-items": "center", "justify-content": "space-between",
-    padding: "13px 18px", "border-bottom": "1px solid " + LIGNE,
-    background: "rgba(251,250,247,.82)", "backdrop-filter": "saturate(140%) blur(6px)",
-  });
-  const gauche = el("div", { display: "flex", "align-items": "center", gap: "9px" });
-  const m = HumanOriginBrandMark(21);
-  if (m) gauche.appendChild(m);
-  gauche.appendChild(el("span", { font: "600 15px/1 " + SANS, color: INK,
-    "letter-spacing": "-.005em" }, "HumanOrigin"));
-  header.appendChild(gauche);
-
-  const droite = el("div", { display: "flex", "align-items": "center", gap: "13px" });
-  const etatCompte = el("span", { display: "inline-flex", "align-items": "center", gap: "6px",
-    font: "12.5px/1 " + SANS, color: MUTED });
-  etatCompte.appendChild(el("span", { width: "7px", height: "7px", "border-radius": "50%",
-    background: VERT, display: "inline-block", "flex-shrink": "0" }));
-  etatCompte.appendChild(el("span", null, "Connecté"));
-  droite.appendChild(etatCompte);
-
-  const reglages = el("button", {
-    background: "transparent", border: "0", padding: "4px", cursor: "pointer",
-    display: "inline-flex", "align-items": "center", "border-radius": "6px",
-    appearance: "none", "pointer-events": "auto",
-  });
-  reglages.type = "button";
-  reglages.title = "Réglages";
-  reglages.setAttribute("aria-label", "Réglages");
-  reglages.appendChild(engrenage());
-  // Cette phase ne redessine pas les réglages : elle les retire seulement de l'accueil.
-  reglages.onclick = () => { panel().catch(fatal); };
-  droite.appendChild(reglages);
-  header.appendChild(droite);
-  page.appendChild(header);
-
-  // --- corps, aligné à gauche
-  const wrap = el("main", { padding: "38px 24px 0", "flex-grow": "1",
-    width: "100%", "max-width": "436px", "margin": "0 auto", "box-sizing": "border-box" });
-
-  wrap.appendChild(el("h1", {
-    font: "400 31px/1.22 " + SERIF, color: BLUE, margin: "0 0 14px",
-    "letter-spacing": "-.012em",
-  }, "Créez votre prochain document HumanOrigin"));
-
-  const lede = el("p", { margin: "0 0 26px", color: MUTED, font: "14.5px/1.55 " + SANS });
-  lede.appendChild(el("span", null, "Travaillez normalement dans Word."));
-  lede.appendChild(el("br"));
-  lede.appendChild(el("span", null, "HumanOrigin se charge de la preuve."));
-  wrap.appendChild(lede);
-
-  // --- une seule action dominante
-  const msg = el("p", { margin: "14px 0 0", font: "13px/1.5 " + SANS, color: MUTED });
-  const proposition = el("div", { margin: "14px 0 0" });
-  const cta = el("button", {
-    display: "flex", "align-items": "center", "justify-content": "center", gap: "9px",
-    width: "100%", font: "600 15.5px/1 " + SANS, color: PAPER, background: BLUE,
-    border: "1px solid " + BLUE, "border-radius": "10px", padding: "15px 18px",
-    cursor: "pointer", appearance: "none", "pointer-events": "auto",
-    "box-shadow": "0 1px 2px rgba(26,30,36,.10)",
-  });
-  cta.type = "button";
-  cta.appendChild(feuille(17, PAPER));
-  cta.appendChild(el("span", null, "Nouveau document"));
-  // EXACTEMENT l'action existante : dossiers connus -> création, sinon proposition du lieu.
+  const cta = ctaPrincipal("Nouveau document", "feuille");
+  const msg = zoneMessage();
+  const proposition = sh("div", { margin: "14px 0 0" });
   cta.onclick = async () => {
     say(msg, "");
     let folders = [];
@@ -784,47 +589,449 @@ async function accueil() {
     if (folders.length) return createDocument(cta, msg, null, proposition);
     await proposeLocation(proposition, msg);
   };
-  wrap.appendChild(cta);
-  wrap.appendChild(proposition);
-  wrap.appendChild(msg);
+  c.appendChild(cta);
+  c.appendChild(proposition);
+  c.appendChild(msg);
 
-  // --- deux cartes discrètes
-  const cartes = el("div", {
-    display: "grid", "grid-template-columns": "1fr 1fr", gap: "9px", margin: "11px 0 0",
-  });
+  const cartes = sh("div", { display: "grid", "grid-template-columns": "1fr 1fr",
+    gap: "9px", margin: "11px 0 0" });
   cartes.appendChild(carteEtat(pastilleWord(19), "Microsoft Word", "Prêt"));
-  cartes.appendChild(carteEtat(personne(19, MUTED), "Compte", "Connecté"));
-  wrap.appendChild(cartes);
+  cartes.appendChild(carteEtat(ICONES.personne(19, ATONE), "Compte", "Connecté"));
+  c.appendChild(cartes);
+  p.appendChild(c);
 
-  // --- Versioning V1 : la section n'apparaît que si un document finalisé est ouvert.
-  // Elle reste branchée telle quelle — ce chantier est clos et ne doit pas régresser.
-  const versions = el("div", { margin: "26px 0 0" });
-  wrap.appendChild(versions);
-  if (!(await renderVersioning(versions))) versions.remove();
-
-  page.appendChild(wrap);
-
-  // --- dernière preuve, tout en bas
   const d = await lastProofAt();
-  const pied = el("footer", { padding: "22px 24px 22px", "margin-top": "26px",
-    width: "100%", "max-width": "436px", "margin-left": "auto", "margin-right": "auto",
-    "box-sizing": "border-box" });
-  pied.appendChild(el("div", { height: "1px", background: LIGNE, margin: "0 0 15px" }));
-  const ligne = el("div", { display: "flex", "align-items": "center",
-    "justify-content": "space-between", gap: "12px" });
-  const txt = el("div", { "min-width": "0" });
-  txt.appendChild(el("p", { margin: "0 0 2px", font: "500 13px/1.4 " + SANS, color: INK },
+  const pied = colonne({ padding: "22px 24px", "margin-top": "26px" });
+  pied.appendChild(sh("div", { height: "1px", background: LIGNE, margin: "0 0 15px" }));
+  pied.appendChild(sh("p", { margin: "0 0 2px", font: "500 13px/1.4 " + SANS, color: ENCRE },
     "Dernière preuve créée"));
-  txt.appendChild(el("p", { margin: "0", font: "12.5px/1.4 " + SANS, color: MUTED },
-    d ? quand(d) : "Aucune pour l’instant"));
-  ligne.appendChild(txt);
-  pied.appendChild(ligne);
-  page.appendChild(pied);
+  pied.appendChild(sh("p", { margin: "0", font: "12.5px/1.4 " + SANS, color: ATONE },
+    d ? quandDate(d) : "Aucune pour l’instant"));
+  p.appendChild(pied);
+}
 
-  document.body.appendChild(page);
+// ---------------------------------------------------------------- 4 · CONTINUER CE DOCUMENT ?
+async function ecranContinuer(ctx) {
+  const doc = ctx.doc;
+  const p = page();
+  p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
+  const c = colonne({ padding: "46px 24px 0", "flex-grow": "1" });
+  c.appendChild(medaillon("copie", "bleu"));
+  c.appendChild(titre("Continuer ce document ?"));
+  c.appendChild(sousTitre(doc.name));
+  c.appendChild(corps([
+    "Ce document a déjà une preuve.",
+    "Sa preuve actuelle restera inchangée.",
+    "HumanOrigin peut créer une nouvelle version pour poursuivre votre travail."]));
 
-  // Un retour de lien profond recompose l'accueil : l'état connecté apparaît sans relance.
-  await brancherLiens(async (ok) => { if (ok) await accueil(); });
+  const msg = zoneMessage();
+  const creer = ctaPrincipal("Créer une nouvelle version", "feuille");
+  creer.onclick = async () => {
+    creer.disabled = true;
+    say(msg, "Vérification du document…");
+    let etat = null;
+    try {
+      const r = await invoke("ho_version_source_state", { fromRecordId: doc.record_id });
+      etat = r.source_matches_predecessor_final_state;
+    } catch (e) {
+      say(msg, errorText(e, "L’état de ce document n’a pas pu être vérifié."), true);
+      creer.disabled = false;
+      return;
+    }
+    // `null` — indéterminé — n'est PAS `false`. On n'avertit que d'une divergence constatée.
+    if (etat === false) return router({ ecran: "source-modifiee", doc });
+    await lancerNouvelleVersion(doc, msg, creer);
+  };
+  c.appendChild(creer);
+  const annuler = ctaSecondaire("Annuler");
+  put(annuler, { margin: "9px 0 0" });
+  annuler.onclick = () => router({ ecran: "pret" });
+  c.appendChild(annuler);
+  c.appendChild(msg);
+  p.appendChild(c);
+}
+
+// ---------------------------------------------------------------- 6 · SOURCE MODIFIÉE
+async function ecranSourceModifiee(ctx) {
+  const doc = ctx.doc;
+  const p = page();
+  p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
+  const c = colonne({ padding: "42px 24px 0", "flex-grow": "1" });
+
+  const tete = sh("div", { display: "flex", "align-items": "flex-start", gap: "14px",
+    margin: "0 0 16px" });
+  const rondAmbre = sh("div", { width: "48px", height: "48px", "border-radius": "50%",
+    background: "#FBF0DB", display: "flex", "align-items": "center",
+    "justify-content": "center", "flex-shrink": "0" });
+  rondAmbre.appendChild(ICONES.alerte(22, "#A9762B"));
+  tete.appendChild(rondAmbre);
+  tete.appendChild(sh("h1", { font: "400 24px/1.25 " + SERIF, color: MARINE, margin: "4px 0 0",
+    "letter-spacing": "-.012em" }, "Ce document a changé depuis sa finalisation"));
+  c.appendChild(tete);
+
+  c.appendChild(corps([
+    "La preuve précédente reste valable",
+    "pour l’état qui avait été scellé.",
+    "Les modifications réalisées depuis n’ont",
+    "pas été observées par HumanOrigin."], "left"));
+  c.appendChild(pilule("Vous pouvez continuer à partir de l’état actuel dans une nouvelle version.",
+    "ambre"));
+
+  const msg = zoneMessage();
+  const creer = ctaPrincipal("Créer une nouvelle version", "feuille");
+  creer.onclick = () => lancerNouvelleVersion(doc, msg, creer);
+  c.appendChild(creer);
+  const annuler = ctaSecondaire("Annuler");
+  put(annuler, { margin: "9px 0 0" });
+  annuler.onclick = () => router({ ecran: "pret" });
+  c.appendChild(annuler);
+  c.appendChild(msg);
+  p.appendChild(c);
+}
+
+/** Action commune aux écrans 4 et 6 : réserver, puis créer. Aucune logique nouvelle. */
+async function lancerNouvelleVersion(doc, msg, bouton) {
+  bouton.disabled = true;
+  say(msg, "Préparation de la nouvelle version…");
+  try {
+    // Réservation APRÈS l'avertissement éventuel : une réservation consommée pour une
+    // création abandonnée serait un identifiant perdu.
+    const { record_id, capability } = await reserveRecordId();
+    const r = await invoke("ho_new_version", {
+      fromRecordId: doc.record_id, recordId: record_id, capability,
+    });
+    router({ ecran: "version-prete", doc: { name: r.name, path: r.path } });
+  } catch (e) {
+    say(msg, errorText(e, "La nouvelle version n’a pas pu être créée."), true);
+    bouton.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------- 5 · NOUVELLE VERSION PRÊTE
+async function ecranVersionPrete(ctx) {
+  const doc = ctx.doc;
+  const p = page();
+  p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
+  const c = colonne({ padding: "46px 24px 0", "flex-grow": "1" });
+  c.appendChild(medaillon("etincelle", "bleu"));
+  c.appendChild(titre("Nouvelle version prête"));
+  c.appendChild(corps(["Votre contenu a été conservé.",
+                       "HumanOrigin observe les modifications",
+                       "à partir de maintenant."]));
+  c.appendChild(pilule("Le contenu déjà présent dans ce document n’a pas été observé dans cette version.",
+    "bleu"));
+
+  const msg = zoneMessage();
+  const ouvrir = ctaWord("Ouvrir dans Word");
+  ouvrir.onclick = async () => {
+    try { await invoke("open_file", { path: doc.path }); }
+    catch (e) { say(msg, errorText(e, "Le document n’a pas pu être ouvert."), true); }
+  };
+  c.appendChild(ouvrir);
+  const retour = ctaSecondaire("Retour");
+  put(retour, { margin: "9px 0 0" });
+  retour.onclick = () => router({ ecran: "pret" });
+  c.appendChild(retour);
+  c.appendChild(msg);
+  p.appendChild(c);
+}
+
+// ---------------------------------------------------------------- 9 · CONNEXION NÉCESSAIRE
+async function ecranConnexion(ctx) {
+  const p = page();
+  p.appendChild(entete({ connecte: false }));
+  const c = colonne({ padding: "56px 24px 0", "flex-grow": "1" });
+  c.appendChild(medaillon("exclamation", "rouge"));
+  c.appendChild(titre("Connexion nécessaire"));
+  c.appendChild(corps(["Vous devez être connecté pour créer,",
+                       "finaliser ou consulter une preuve."]));
+  const msg = zoneMessage();
+  const b = ctaPrincipal("Se connecter");
+  b.onclick = () => router({ ecran: "premiere" });
+  c.appendChild(b);
+  c.appendChild(msg);
+  c.appendChild(sh("p", { margin: "22px 0 0", "text-align": "center",
+    font: "12.5px/1.5 " + SANS, color: ATONE }, "Un problème ?"));
+  const aide = sh("p", { margin: "2px 0 0", "text-align": "center",
+    font: "12.5px/1.5 " + SANS });
+  const lien = sh("a", { color: MARINE, "text-decoration": "underline", cursor: "pointer" },
+    "Besoin d’aide ?");
+  lien.onclick = () => router({ ecran: "premiere" });
+  aide.appendChild(lien);
+  c.appendChild(aide);
+  p.appendChild(c);
+}
+
+// ---------------------------------------------------------------- 8 · PREMIÈRE UTILISATION
+async function ecranPremiere(ctx) {
+  const p = page("accueil");
+  const h = entete({ connecte: false });
+  p.appendChild(h);
+  const c = colonne({ padding: "44px 24px 0", "flex-grow": "1" });
+  c.appendChild(sh("h1", { font: "400 27px/1.26 " + SERIF, color: MARINE, margin: "0 0 12px",
+    "letter-spacing": "-.012em", "text-align": "center" }, "Bienvenue dans HumanOrigin"));
+  c.appendChild(corps(["Produisez des documents accompagnés",
+                       "d’une preuve vérifiable de leur processus observé."]));
+
+  const liste = sh("div", { display: "flex", "flex-direction": "column", gap: "11px",
+    margin: "0 0 24px" });
+  const rang = (icone, texte) => {
+    const r = sh("div", { display: "flex", "align-items": "center", gap: "11px" });
+    const i = sh("span", { "flex-shrink": "0", display: "inline-flex" });
+    i.appendChild(icone);
+    r.appendChild(i);
+    r.appendChild(sh("span", { font: "14px/1.45 " + SANS, color: ENCRE }, texte));
+    return r;
+  };
+  liste.appendChild(rang(ICONES.feuilleLignes(19, ATONE), "Créez un document HumanOrigin"));
+  liste.appendChild(rang(pastilleWord(19), "Travaillez normalement dans Word"));
+  liste.appendChild(rang(ICONES.bouclier(19, ATONE), "HumanOrigin se charge de la preuve"));
+  c.appendChild(liste);
+
+  const msg = zoneMessage();
+  const champ = document.createElement("input");
+  champ.type = "email";
+  champ.placeholder = "vous@exemple.com";
+  put(champ, { width: "100%", "box-sizing": "border-box", padding: "13px 14px",
+    "border-radius": "10px", border: "1px solid " + LIGNE, background: CARTE,
+    font: "15px/1.2 " + SANS, color: ENCRE, margin: "0 0 9px", appearance: "none" });
+  c.appendChild(champ);
+
+  const b = ctaPrincipal("Continuer avec mon email");
+  b.onclick = async () => {
+    const email = String(champ.value || "").trim();
+    if (!email) { say(msg, "Indiquez votre adresse email.", true); return; }
+    b.disabled = true;
+    say(msg, "Envoi du lien…");
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email, options: { emailRedirectTo: REDIRECTION },
+      });
+      if (error) throw error;
+      say(msg, "Lien envoyé. Ouvrez-le depuis cet appareil.");
+    } catch (e) {
+      say(msg, errorText(e, "Le lien n’a pas pu être envoyé."), true);
+    } finally { b.disabled = false; }
+  };
+  c.appendChild(b);
+  c.appendChild(msg);
+  c.appendChild(sh("p", { margin: "12px 0 0", "text-align": "center",
+    font: "12.5px/1.5 " + SANS, color: ATONE }, "Vous recevrez un lien de connexion sécurisé."));
+  p.appendChild(c);
+}
+
+// ---------------------------------------------------------------- 7 · RÉGLAGES
+async function ecranReglages(ctx) {
+  document.body.textContent = "";
+  put(document.body, { margin: "0", background: PAPIER, color: ENCRE, "min-height": "100vh",
+    font: "15px/1.6 " + SANS, overflow: "hidden auto" });
+
+  const cadre = sh("div", { display: "flex", "flex-direction": "column", "min-height": "100vh" });
+  const h = sh("header", { display: "flex", "align-items": "center",
+    "justify-content": "space-between", padding: "13px 18px",
+    "border-bottom": "1px solid " + LIGNE, background: CARTE });
+  const g = sh("div", { display: "flex", "align-items": "center", gap: "9px" });
+  g.appendChild(HumanOriginBrandMark(21));
+  g.appendChild(sh("span", { font: "600 15px/1 " + SANS, color: ENCRE }, "HumanOrigin"));
+  h.appendChild(g);
+  const fermer = sh("button", { background: "transparent", border: "0", padding: "4px",
+    cursor: "pointer", display: "inline-flex", appearance: "none" });
+  fermer.type = "button";
+  fermer.setAttribute("aria-label", "Fermer");
+  fermer.appendChild(ICONES.croix(17, ATONE));
+  fermer.onclick = () => router({ ecran: null });
+  h.appendChild(fermer);
+  cadre.appendChild(h);
+
+  const corpsReglages = sh("div", { display: "flex", "flex-grow": "1", "align-items": "stretch" });
+  const rubriques = ["Compte", "Microsoft Word", "Documents", "Langue", "À propos"];
+  const icones = { "Compte": "personne", "Microsoft Word": "feuille", "Documents": "dossier",
+    "Langue": "globe", "À propos": "info" };
+  const cote = sh("nav", { width: "172px", "flex-shrink": "0", padding: "14px 10px",
+    "border-right": "1px solid " + LIGNE, background: "#F6F4EF" });
+  const pane = sh("div", { "flex-grow": "1", padding: "22px 24px", "min-width": "0" });
+
+  const montrer = (nom) => {
+    [...cote.children].forEach((b) => put(b, {
+      background: b.dataset.nom === nom ? CARTE : "transparent",
+      "box-shadow": b.dataset.nom === nom ? "0 1px 1px rgba(26,30,36,.05)" : "none",
+    }));
+    pane.textContent = "";
+    rubrique(nom, pane);
+  };
+  for (const nom of rubriques) {
+    const b = sh("button", { display: "flex", "align-items": "center", gap: "9px",
+      width: "100%", padding: "9px 10px", "border-radius": "8px", border: "1px solid transparent",
+      background: "transparent", cursor: "pointer", appearance: "none",
+      font: "13.5px/1.2 " + SANS, color: ENCRE, "text-align": "left", margin: "0 0 2px" });
+    b.type = "button";
+    b.dataset.nom = nom;
+    b.appendChild(ICONES[icones[nom]](16, ATONE));
+    b.appendChild(sh("span", null, nom));
+    b.onclick = () => montrer(nom);
+    cote.appendChild(b);
+  }
+  corpsReglages.appendChild(cote);
+  corpsReglages.appendChild(pane);
+  cadre.appendChild(corpsReglages);
+  document.body.appendChild(cadre);
+  montrer("Compte");
+}
+
+const sousSection = (parent, titreTexte) => {
+  parent.appendChild(sh("h2", { font: "600 13px/1.3 " + SANS, color: ENCRE,
+    margin: "0 0 10px" }, titreTexte));
+};
+
+async function rubrique(nom, pane) {
+  const msg = sh("p", { margin: "12px 0 0", font: "13px/1.5 " + SANS, color: ATONE });
+
+  if (nom === "Compte") {
+    sousSection(pane, "Compte");
+    const session = await sessionCourante();
+    const ligne = sh("div", { display: "flex", "align-items": "center", gap: "10px",
+      "justify-content": "space-between", padding: "12px 13px", background: CARTE,
+      border: "1px solid " + LIGNE, "border-radius": "10px" });
+    const gauche = sh("div", { display: "flex", "align-items": "center", gap: "9px",
+      "min-width": "0" });
+    gauche.appendChild(ICONES.personne(17, ATONE));
+    gauche.appendChild(sh("span", { font: "13.5px/1.3 " + SANS, color: ENCRE,
+      overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" },
+      (session && session.user && session.user.email) || "Non connecté"));
+    ligne.appendChild(gauche);
+    if (session) {
+      const out = ctaSecondaire("Se déconnecter");
+      put(out, { width: "auto", padding: "8px 12px", font: "500 13px/1 " + SANS });
+      out.onclick = async () => {
+        out.disabled = true;
+        try { await supabase.auth.signOut(); router({ ecran: null }); }
+        catch (e) { say(msg, errorText(e, "La déconnexion a échoué."), true); out.disabled = false; }
+      };
+      ligne.appendChild(out);
+    }
+    pane.appendChild(ligne);
+    pane.appendChild(msg);
+    return;
+  }
+
+  if (nom === "Microsoft Word") {
+    sousSection(pane, "Microsoft Word");
+    let st = null;
+    try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
+    const installe = st && st.state === "installed";
+    const ligne = sh("div", { display: "flex", "align-items": "center",
+      "justify-content": "space-between", gap: "10px", padding: "12px 13px", background: CARTE,
+      border: "1px solid " + LIGNE, "border-radius": "10px" });
+    const g2 = sh("div", { display: "flex", "align-items": "center", gap: "9px" });
+    g2.appendChild(sh("span", { width: "7px", height: "7px", "border-radius": "50%",
+      background: installe ? "#3E8E5A" : "#A9762B", display: "inline-block" }));
+    g2.appendChild(sh("span", { font: "13.5px/1.3 " + SANS, color: ENCRE },
+      installe ? "Intégration opérationnelle" : "Intégration à installer"));
+    ligne.appendChild(g2);
+    const rep = ctaSecondaire(installe ? "Réparer l’intégration" : "Installer");
+    put(rep, { width: "auto", padding: "8px 12px", font: "500 13px/1 " + SANS });
+    rep.onclick = () => runSetup(pane, rep, msg);
+    ligne.appendChild(rep);
+    pane.appendChild(ligne);
+    pane.appendChild(msg);
+    return;
+  }
+
+  if (nom === "Documents") {
+    sousSection(pane, "Documents HumanOrigin");
+    let folders = [];
+    try { folders = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { folders = []; }
+    const ligne = sh("div", { display: "flex", "align-items": "center",
+      "justify-content": "space-between", gap: "10px", padding: "12px 13px", background: CARTE,
+      border: "1px solid " + LIGNE, "border-radius": "10px" });
+    const g3 = sh("div", { display: "flex", "align-items": "center", gap: "9px",
+      "min-width": "0" });
+    g3.appendChild(ICONES.dossier(17, ATONE));
+    const txt = sh("div", { "min-width": "0" });
+    txt.appendChild(sh("p", { margin: "0", font: "13px/1.3 " + SANS, color: ATONE },
+      "Dossier par défaut"));
+    // Les Réglages sont le SEUL endroit où un chemin est montré : ailleurs, jamais.
+    txt.appendChild(sh("p", { margin: "1px 0 0", font: "12.5px/1.3 " + SANS, color: ENCRE,
+      overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" },
+      folders[0] || "Aucun dossier choisi"));
+    g3.appendChild(txt);
+    ligne.appendChild(g3);
+    const mod = ctaSecondaire("Modifier");
+    put(mod, { width: "auto", padding: "8px 12px", font: "500 13px/1 " + SANS });
+    mod.onclick = async () => {
+      const picked = await open({ directory: true, multiple: false });
+      if (!picked) return;
+      const refus = await invoke("ho_check_work_folder", { folder: picked });
+      if (refus) { say(msg, refus, true); return; }
+      await invoke("ho_finalizer_set_folders", { folders: [picked], registry: null });
+      pane.textContent = ""; rubrique("Documents", pane);
+    };
+    ligne.appendChild(mod);
+    pane.appendChild(ligne);
+    pane.appendChild(msg);
+    return;
+  }
+
+  if (nom === "Langue") {
+    sousSection(pane, "Langue");
+    const ligne = sh("div", { display: "flex", "align-items": "center", gap: "9px",
+      padding: "12px 13px", background: CARTE, border: "1px solid " + LIGNE,
+      "border-radius": "10px" });
+    ligne.appendChild(ICONES.globe(17, ATONE));
+    ligne.appendChild(sh("span", { font: "13.5px/1.3 " + SANS, color: ENCRE }, "Français"));
+    pane.appendChild(ligne);
+    return;
+  }
+
+  sousSection(pane, "À propos");
+  const bloc = sh("div", { padding: "12px 13px", background: CARTE,
+    border: "1px solid " + LIGNE, "border-radius": "10px" });
+  bloc.appendChild(sh("p", { margin: "0", font: "13.5px/1.5 " + SANS, color: ENCRE },
+    "HumanOrigin"));
+  bloc.appendChild(sh("p", { margin: "2px 0 0", font: "12.5px/1.5 " + SANS, color: ATONE },
+    "Une preuve vérifiable du processus observé, jamais une affirmation sur son auteur."));
+  pane.appendChild(bloc);
+}
+
+// ---------------------------------------------------------------- routage
+// UN ÉCRAN = UN ÉTAT. Le routeur choisit à partir des seules données réelles.
+async function router(cible) {
+  if (cible && cible.ecran) {
+    VUE.ecran = cible.ecran; VUE.doc = cible.doc || null; VUE.message = "";
+    const table = {
+      "pret": ecranPret, "continuer": ecranContinuer, "source-modifiee": ecranSourceModifiee,
+      "version-prete": ecranVersionPrete, "connexion": ecranConnexion,
+      "premiere": ecranPremiere, "reglages": ecranReglages,
+    };
+    if (cible.ecran === "pret") return etatCourant();
+    return table[cible.ecran]({ doc: VUE.doc });
+  }
+  return etatCourant();
+}
+
+/** L'état réel, déduit des seules données dont l'application dispose. */
+async function etatCourant() {
+  const session = await sessionCourante();
+  if (!session) {
+    let folders = [];
+    try { folders = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { folders = []; }
+    let st = null;
+    try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
+    // Rien n'est encore configuré : c'est une première utilisation, pas une déconnexion.
+    const vierge = !folders.length && !(st && st.state === "installed");
+    return vierge ? ecranPremiere({}) : ecranConnexion({});
+  }
+  let st = null;
+  try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
+  if (!st || st.state !== "installed") return ecranPremiere({});
+
+  // Un document finalisé ouvert dans Word appelle son propre écran.
+  let docs = [];
+  try { docs = (await invoke("ho_versionable_documents")) || []; } catch (e) { docs = []; }
+  if (docs.length === 1) return ecranContinuer({ doc: docs[0] });
+  if (docs.length > 1) return ecranContinuer({ doc: docs[0] });
+
+  return ecranPret({});
 }
 
 function fatal(e) {
@@ -845,7 +1052,7 @@ function fatal(e) {
 (async () => {
   try {
     // Aucun choix de dossier au démarrage : l'emplacement est proposé au premier document.
-    await accueil();
+    await router();
   } catch (e) {
     fatal(e);
   }
