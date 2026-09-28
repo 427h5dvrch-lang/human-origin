@@ -539,56 +539,140 @@ async function panel() {
 
 /** Une initialisation qui échoue doit se voir. Elle ne dit rien du document de l'utilisateur. */
 // ---------------------------------------------------------------- Creator Shell V1
-// L'écran d'accueil n'est pas un tableau de bord : c'est une page calme dont une seule
-// action est visible. Tout ce qui relève du réglage — dossiers, installation, compte —
-// quitte l'accueil et vit derrière l'engrenage.
+// L'accueil n'est pas un tableau de bord : une page calme, alignée à gauche, dont une seule
+// action est visible. Ce qui relève du réglage — dossiers, installation, compte — quitte
+// l'accueil et vit derrière l'engrenage.
 //
 // Aucune logique métier ici : l'état vient des mêmes sources qu'avant, et le bouton appelle
 // exactement l'action existante.
 const SERIF = 'ui-serif, Georgia, "Times New Roman", serif';
 const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
-const LIGNE = "#E8E4DA";   // bordure très fine, à peine plus sombre que le papier
+const LIGNE = "#E6E2D8";   // bordure très fine, à peine plus sombre que le papier
+const CARTE = "#FFFFFF";
+const VERT = "#3E8E5A";
+const NS_SVG = "http://www.w3.org/2000/svg";
+
+const svg = (viewBox, taille, decls) => {
+  const n = document.createElementNS(NS_SVG, "svg");
+  n.setAttribute("viewBox", viewBox);
+  n.setAttribute("width", String(taille));
+  n.setAttribute("height", String(taille));
+  n.setAttribute("aria-hidden", "true");
+  n.setAttribute("fill", "none");
+  for (const [k, v] of Object.entries(decls || {})) n.setAttribute(k, v);
+  return n;
+};
+const trace = (parent, d, decls) => {
+  const p = document.createElementNS(NS_SVG, "path");
+  p.setAttribute("d", d);
+  for (const [k, v] of Object.entries(decls || {})) p.setAttribute(k, v);
+  parent.appendChild(p);
+  return p;
+};
+
+/** Marque HumanOrigin : empreinte, tracée en arcs concentriques. */
+function marque(taille) {
+  const s = svg("0 0 24 24", taille, { stroke: BLUE, "stroke-width": "1.5",
+    "stroke-linecap": "round" });
+  const c = document.createElementNS(NS_SVG, "circle");
+  c.setAttribute("cx", "12"); c.setAttribute("cy", "12"); c.setAttribute("r", "10.2");
+  c.setAttribute("stroke", BLUE); c.setAttribute("stroke-width", "1.5");
+  s.appendChild(c);
+  trace(s, "M7.6 14.6a4.6 4.6 0 0 1 8.8-2.2");
+  trace(s, "M9.9 16.4a2.3 2.3 0 0 1 4.3-1.6");
+  trace(s, "M5.6 10.6a7 7 0 0 1 12.2-1.1");
+  return s;
+}
 
 function engrenage() {
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("viewBox", "0 0 24 24");
-  svg.setAttribute("width", "17");
-  svg.setAttribute("height", "17");
-  svg.setAttribute("fill", "none");
-  svg.setAttribute("stroke", MUTED);
-  svg.setAttribute("stroke-width", "1.6");
-  svg.setAttribute("stroke-linecap", "round");
-  svg.setAttribute("stroke-linejoin", "round");
-  svg.setAttribute("aria-hidden", "true");
-  const cercle = document.createElementNS(NS, "circle");
-  cercle.setAttribute("cx", "12"); cercle.setAttribute("cy", "12"); cercle.setAttribute("r", "3");
-  const dents = document.createElementNS(NS, "path");
-  dents.setAttribute("d",
-    "M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2"
-    + "M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6");
-  svg.appendChild(cercle); svg.appendChild(dents);
-  return svg;
+  const s = svg("0 0 24 24", 17, { stroke: MUTED, "stroke-width": "1.6",
+    "stroke-linecap": "round", "stroke-linejoin": "round" });
+  const c = document.createElementNS(NS_SVG, "circle");
+  c.setAttribute("cx", "12"); c.setAttribute("cy", "12"); c.setAttribute("r", "3");
+  c.setAttribute("stroke", MUTED); c.setAttribute("stroke-width", "1.6");
+  s.appendChild(c);
+  trace(s, "M12 2.6v2.1M12 19.3v2.1M4.3 4.3l1.5 1.5M18.2 18.2l1.5 1.5"
+         + "M2.6 12h2.1M19.3 12h2.1M4.3 19.7l1.5-1.5M18.2 5.8l1.5-1.5");
+  return s;
 }
 
-/** Pastille + libellé, en très discret. */
-function indicateur(libelle, valeur) {
-  const l = el("span", { display: "inline-flex", "align-items": "baseline", gap: "6px" });
-  l.appendChild(el("span", { color: MUTED }, libelle));
-  l.appendChild(el("span", { color: MUTED, opacity: ".55" }, "—"));
-  l.appendChild(el("span", { color: INK, "font-weight": "500" }, valeur));
-  return l;
+/** Feuille : celle du bouton principal et de la carte Documents. */
+function feuille(taille, couleur) {
+  const s = svg("0 0 24 24", taille, { stroke: couleur, "stroke-width": "1.5",
+    "stroke-linecap": "round", "stroke-linejoin": "round" });
+  trace(s, "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z");
+  trace(s, "M14 3v5h5");
+  return s;
 }
 
-function pastille(couleur) {
-  return el("span", {
-    width: "7px", height: "7px", "border-radius": "50%", background: couleur,
-    display: "inline-block", "flex-shrink": "0",
+/** Silhouette de personne : carte Compte. */
+function personne(taille, couleur) {
+  const s = svg("0 0 24 24", taille, { stroke: couleur, "stroke-width": "1.5",
+    "stroke-linecap": "round", "stroke-linejoin": "round" });
+  const c = document.createElementNS(NS_SVG, "circle");
+  c.setAttribute("cx", "12"); c.setAttribute("cy", "8"); c.setAttribute("r", "3.4");
+  c.setAttribute("stroke", couleur); c.setAttribute("stroke-width", "1.5");
+  s.appendChild(c);
+  trace(s, "M5.2 19.4a6.8 6.8 0 0 1 13.6 0");
+  return s;
+}
+
+/** Pastille Word : la marque de Microsoft n'est pas embarquée, seule sa couleur l'évoque. */
+function pastilleWord(taille) {
+  const b = el("span", {
+    width: taille + "px", height: taille + "px", "border-radius": "4px",
+    background: "#2B579A", color: "#FFFFFF", display: "inline-flex",
+    "align-items": "center", "justify-content": "center", "flex-shrink": "0",
+    font: "700 " + Math.round(taille * 0.58) + "px/1 " + SANS,
+  }, "W");
+  return b;
+}
+
+/**
+ * Fond : un paysage à l'aquarelle, très pâle, ancré en bas. Une présence, jamais un décor —
+ * il ne doit rien disputer au titre ni au bouton.
+ */
+function paysage() {
+  const s = document.createElementNS(NS_SVG, "svg");
+  s.setAttribute("viewBox", "0 0 400 260");
+  s.setAttribute("preserveAspectRatio", "xMidYMax slice");
+  s.setAttribute("aria-hidden", "true");
+  put(s, { position: "fixed", left: "0", right: "0", bottom: "0", width: "100%",
+    height: "62%", "pointer-events": "none", "z-index": "0" });
+  const couches = [
+    ["M0 190 L58 138 L96 166 L150 116 L206 168 L252 140 L312 186 L400 142 L400 260 L0 260 Z", ".07"],
+    ["M0 212 L70 170 L124 200 L182 158 L236 198 L298 168 L358 204 L400 182 L400 260 L0 260 Z", ".055"],
+    ["M0 236 L86 206 L158 230 L240 202 L322 232 L400 212 L400 260 L0 260 Z", ".045"],
+  ];
+  for (const [d, o] of couches) trace(s, d, { fill: BLUE, "fill-opacity": o });
+  return s;
+}
+
+/** Carte d'indicateur : une icône, un libellé, un état. Jamais une métrique. */
+function carteEtat(icone, libelle, valeur) {
+  const c = el("div", {
+    display: "flex", "align-items": "center", gap: "10px",
+    padding: "11px 13px", background: CARTE, border: "1px solid " + LIGNE,
+    "border-radius": "10px", "box-shadow": "0 1px 1px rgba(26,30,36,.03)",
   });
+  c.appendChild(icone);
+  const t = el("div", { display: "flex", "flex-direction": "column", gap: "1px",
+    "min-width": "0" });
+  t.appendChild(el("span", { font: "12.5px/1.3 " + SANS, color: MUTED }, libelle));
+  t.appendChild(el("span", { font: "500 13.5px/1.3 " + SANS, color: INK }, valeur));
+  c.appendChild(t);
+  return c;
 }
 
 const jourMois = (d) => d.toLocaleDateString("fr-FR",
   { day: "numeric", month: "long", year: "numeric" });
+const heure = (d) => d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+function quand(d) {
+  const a = new Date();
+  const memeJour = d.toDateString() === a.toDateString();
+  return (memeJour ? "Aujourd’hui" : jourMois(d)) + " à " + heure(d);
+}
 
 /**
  * État PRÊT. Il n'est rendu que si Word est installé ET une session est ouverte : les
@@ -604,30 +688,35 @@ async function accueil() {
   document.body.textContent = "";
   put(document.body, {
     margin: "0", background: PAPER, color: INK, "min-height": "100vh",
-    font: "15px/1.6 " + SANS,
-    // Voile extrêmement discret : une présence, jamais un décor.
-    "background-image":
-      "radial-gradient(120% 70% at 50% -10%, rgba(44,74,110,.045) 0%, rgba(44,74,110,0) 60%)",
-    "background-repeat": "no-repeat",
+    font: "15px/1.6 " + SANS, overflow: "hidden auto",
   });
+  document.body.appendChild(paysage());
+
+  const page = el("div", { position: "relative", "z-index": "1", display: "flex",
+    "flex-direction": "column", "min-height": "100vh" });
 
   // --- en-tête très léger
   const header = el("header", {
     display: "flex", "align-items": "center", "justify-content": "space-between",
-    padding: "18px 26px", "border-bottom": "1px solid " + LIGNE,
+    padding: "13px 18px", "border-bottom": "1px solid " + LIGNE,
+    background: "rgba(251,250,247,.82)", "backdrop-filter": "saturate(140%) blur(6px)",
   });
-  header.appendChild(el("span", { font: "500 15px/1 " + SERIF, color: INK,
-    "letter-spacing": ".01em" }, "HumanOrigin"));
+  const gauche = el("div", { display: "flex", "align-items": "center", gap: "9px" });
+  gauche.appendChild(marque(21));
+  gauche.appendChild(el("span", { font: "600 15px/1 " + SANS, color: INK,
+    "letter-spacing": "-.005em" }, "HumanOrigin"));
+  header.appendChild(gauche);
 
-  const droite = el("div", { display: "flex", "align-items": "center", gap: "16px" });
-  const etatCompte = el("span", { display: "inline-flex", "align-items": "center", gap: "7px",
-    font: "13px/1 " + SANS, color: MUTED });
-  etatCompte.appendChild(pastille("#3E7D5A"));
+  const droite = el("div", { display: "flex", "align-items": "center", gap: "13px" });
+  const etatCompte = el("span", { display: "inline-flex", "align-items": "center", gap: "6px",
+    font: "12.5px/1 " + SANS, color: MUTED });
+  etatCompte.appendChild(el("span", { width: "7px", height: "7px", "border-radius": "50%",
+    background: VERT, display: "inline-block", "flex-shrink": "0" }));
   etatCompte.appendChild(el("span", null, "Connecté"));
   droite.appendChild(etatCompte);
 
   const reglages = el("button", {
-    background: "transparent", border: "0", padding: "6px", cursor: "pointer",
+    background: "transparent", border: "0", padding: "4px", cursor: "pointer",
     display: "inline-flex", "align-items": "center", "border-radius": "6px",
     appearance: "none", "pointer-events": "auto",
   });
@@ -639,36 +728,36 @@ async function accueil() {
   reglages.onclick = () => { panel().catch(fatal); };
   droite.appendChild(reglages);
   header.appendChild(droite);
-  document.body.appendChild(header);
+  page.appendChild(header);
 
-  // --- corps
-  const wrap = el("main", {
-    "max-width": "600px", margin: "0 auto", padding: "104px 32px 64px",
-    "text-align": "center",
-  });
+  // --- corps, aligné à gauche
+  const wrap = el("main", { padding: "38px 24px 0", "flex-grow": "1",
+    width: "100%", "max-width": "436px", "margin": "0 auto", "box-sizing": "border-box" });
 
   wrap.appendChild(el("h1", {
-    font: "400 34px/1.28 " + SERIF, color: BLUE, margin: "0 0 18px",
-    "letter-spacing": "-.01em",
+    font: "400 31px/1.22 " + SERIF, color: BLUE, margin: "0 0 14px",
+    "letter-spacing": "-.012em",
   }, "Créez votre prochain document HumanOrigin"));
 
-  const lede = el("p", { margin: "0 0 44px", color: MUTED, font: "16px/1.65 " + SANS });
+  const lede = el("p", { margin: "0 0 26px", color: MUTED, font: "14.5px/1.55 " + SANS });
   lede.appendChild(el("span", null, "Travaillez normalement dans Word."));
   lede.appendChild(el("br"));
   lede.appendChild(el("span", null, "HumanOrigin se charge de la preuve."));
   wrap.appendChild(lede);
 
   // --- une seule action dominante
-  const msg = el("p", { margin: "18px 0 0", font: "13px/1.5 " + SANS, color: MUTED });
-  const proposition = el("div", { margin: "18px 0 0" });
+  const msg = el("p", { margin: "14px 0 0", font: "13px/1.5 " + SANS, color: MUTED });
+  const proposition = el("div", { margin: "14px 0 0" });
   const cta = el("button", {
-    font: "600 16px/1 " + SANS, color: PAPER, background: BLUE,
-    border: "1px solid " + BLUE, "border-radius": "10px", padding: "15px 30px",
+    display: "flex", "align-items": "center", "justify-content": "center", gap: "9px",
+    width: "100%", font: "600 15.5px/1 " + SANS, color: PAPER, background: BLUE,
+    border: "1px solid " + BLUE, "border-radius": "10px", padding: "15px 18px",
     cursor: "pointer", appearance: "none", "pointer-events": "auto",
-    "box-shadow": "0 1px 2px rgba(26,30,36,.07)",
+    "box-shadow": "0 1px 2px rgba(26,30,36,.10)",
   });
   cta.type = "button";
-  cta.textContent = "Nouveau document";
+  cta.appendChild(feuille(17, PAPER));
+  cta.appendChild(el("span", null, "Nouveau document"));
   // EXACTEMENT l'action existante : dossiers connus -> création, sinon proposition du lieu.
   cta.onclick = async () => {
     say(msg, "");
@@ -681,35 +770,40 @@ async function accueil() {
   wrap.appendChild(proposition);
   wrap.appendChild(msg);
 
-  // --- deux indicateurs, très discrets
-  const ind = el("div", {
-    display: "flex", "justify-content": "center", gap: "26px", "flex-wrap": "wrap",
-    margin: "34px 0 0", font: "13px/1.5 " + SANS,
+  // --- deux cartes discrètes
+  const cartes = el("div", {
+    display: "grid", "grid-template-columns": "1fr 1fr", gap: "9px", margin: "11px 0 0",
   });
-  ind.appendChild(indicateur("Microsoft Word", "Prêt"));
-  ind.appendChild(indicateur("Compte", "Connecté"));
-  wrap.appendChild(ind);
+  cartes.appendChild(carteEtat(pastilleWord(19), "Microsoft Word", "Prêt"));
+  cartes.appendChild(carteEtat(personne(19, MUTED), "Compte", "Connecté"));
+  wrap.appendChild(cartes);
 
   // --- Versioning V1 : la section n'apparaît que si un document finalisé est ouvert.
   // Elle reste branchée telle quelle — ce chantier est clos et ne doit pas régresser.
-  const versions = el("div", { margin: "40px 0 0", "text-align": "left" });
+  const versions = el("div", { margin: "26px 0 0" });
   wrap.appendChild(versions);
   if (!(await renderVersioning(versions))) versions.remove();
 
-  document.body.appendChild(wrap);
+  page.appendChild(wrap);
 
   // --- dernière preuve, tout en bas
   const d = await lastProofAt();
-  const pied = el("footer", {
-    "max-width": "600px", margin: "0 auto", padding: "0 32px 56px",
-    "text-align": "center", font: "13px/1.6 " + SANS,
-  });
-  const filet = el("div", { height: "1px", background: LIGNE, margin: "0 0 20px" });
-  pied.appendChild(filet);
-  pied.appendChild(el("p", { margin: "0 0 3px", color: MUTED }, "Dernière preuve créée"));
-  pied.appendChild(el("p", { margin: "0", color: INK },
-    d ? jourMois(d) : "Aucune pour l’instant"));
-  document.body.appendChild(pied);
+  const pied = el("footer", { padding: "22px 24px 22px", "margin-top": "26px",
+    width: "100%", "max-width": "436px", "margin-left": "auto", "margin-right": "auto",
+    "box-sizing": "border-box" });
+  pied.appendChild(el("div", { height: "1px", background: LIGNE, margin: "0 0 15px" }));
+  const ligne = el("div", { display: "flex", "align-items": "center",
+    "justify-content": "space-between", gap: "12px" });
+  const txt = el("div", { "min-width": "0" });
+  txt.appendChild(el("p", { margin: "0 0 2px", font: "500 13px/1.4 " + SANS, color: INK },
+    "Dernière preuve créée"));
+  txt.appendChild(el("p", { margin: "0", font: "12.5px/1.4 " + SANS, color: MUTED },
+    d ? quand(d) : "Aucune pour l’instant"));
+  ligne.appendChild(txt);
+  pied.appendChild(ligne);
+  page.appendChild(pied);
+
+  document.body.appendChild(page);
 
   // Un retour de lien profond recompose l'accueil : l'état connecté apparaît sans relance.
   await brancherLiens(async (ok) => { if (ok) await accueil(); });
