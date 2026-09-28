@@ -11,6 +11,8 @@ import { appDataDir, join } from "@tauri-apps/api/path";
 import { PAPER, INK, MUTED, BLUE, put, mkButton } from "./ho_ui.js";
 import { reserveRecordId, supabase } from "./ho_reserve.js";
 import { listen } from "@tauri-apps/api/event";
+// Marque : copie versionnée du paquet d'identité gelé, jamais redessinée.
+import EMPREINTE_MARINE from "./brand/HumanOrigin_fingerprint_navy.png";
 
 const el = (tag, decls, text) => {
   const n = document.createElement(tag);
@@ -581,11 +583,11 @@ const trace = (parent, d, decls) => {
  * C'était une substitution, et le cercle était un ajout : la spec précise « Aucun cercle
  * n'a été ajouté ». Ce faux symbole est retiré.
  *
- * MARQUE_SRC reste nulle tant que l'asset canonique n'a pas été désigné et versionné.
- * Le mot-symbole tient seul l'en-tête d'ici là : mieux vaut pas de marque qu'une marque
- * inventée. Une seule ligne à changer ensuite, et un seul endroit.
+ * L'asset est l'empreinte marine du paquet officiel, copiée octet pour octet dans
+ * `src/brand/` et vérifiée par `tests/brand_assets.mjs`. Elle n'est ni entourée, ni
+ * recadrée, ni recolorée : seule sa hauteur varie selon le contexte.
  */
-const MARQUE_SRC = null;
+const MARQUE_SRC = EMPREINTE_MARINE;
 
 function HumanOriginBrandMark(taille) {
   if (!MARQUE_SRC) return null;

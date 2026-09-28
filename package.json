@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 1420 --strictPort",
-    "check:frontend": "node tests/frontend_symbols.mjs",
+    "check:frontend": "node tests/frontend_symbols.mjs && node tests/brand_assets.mjs",
     "build": "vite build --base=./",
     "preview": "vite preview",
     "tauri": "tauri",
