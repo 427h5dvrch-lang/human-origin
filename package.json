@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 1420 --strictPort",
+    "check:frontend": "node tests/frontend_symbols.mjs",
     "build": "vite build --base=./",
     "preview": "vite preview",
     "tauri": "tauri",
     "bump": "node bump_version.mjs",
     "bump:git": "node bump_version.mjs --git --tag",
     "bump:git:cargo": "node bump_version.mjs --git --tag --cargo",
-    "build:mac-app": "npm run build && tauri build --bundles app",
+    "build:mac-app": "npm run check:frontend && npm run build && tauri build --bundles app",
     "install:mac-app": "rm -rf /Applications/HumanOrigin.app && ditto src-tauri/target/release/bundle/macos/HumanOrigin.app /Applications/HumanOrigin.app",
     "run:mac-app": "open /Applications/HumanOrigin.app",
     "refresh:mac-app": "killall HumanOrigin 2>/dev/null || true && npm run build:mac-app && npm run install:mac-app && shasum -a 256 src-tauri/target/release/bundle/macos/HumanOrigin.app/Contents/MacOS/HumanOrigin /Applications/HumanOrigin.app/Contents/MacOS/HumanOrigin && npm run run:mac-app"

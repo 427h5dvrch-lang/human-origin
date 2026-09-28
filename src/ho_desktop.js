@@ -8,7 +8,7 @@ import { t } from "./ho_i18n.js";
 import { open } from "@tauri-apps/api/dialog";
 import { readTextFile } from "@tauri-apps/api/fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
-import { PAPER, INK, MUTED, put, mkButton } from "./ho_ui.js";
+import { PAPER, INK, MUTED, BLUE, put, mkButton } from "./ho_ui.js";
 import { reserveRecordId, supabase } from "./ho_reserve.js";
 import { listen } from "@tauri-apps/api/event";
 
