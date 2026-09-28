@@ -862,6 +862,22 @@ async function ecranReglages(ctx) {
   document.body.appendChild(cadre);
 }
 
+/**
+ * Une ligne de carte de réglage. Elle revient à la ligne plutôt que de se couper : une
+ * adresse e-mail tronquée ne dit plus de quel compte il s'agit. Comme une adresse n'offre
+ * aucun point de coupure naturel, on en ouvre un juste après le « @ ».
+ */
+function ligneDeCarte(decls, texte) {
+  const p = sh("p", Object.assign({ "overflow-wrap": "anywhere" }, decls));
+  const bouts = String(texte === undefined || texte === null ? "" : texte).split("@");
+  p.appendChild(document.createTextNode(bouts.shift() + (bouts.length ? "@" : "")));
+  if (bouts.length) {
+    p.appendChild(document.createElement("wbr"));
+    p.appendChild(document.createTextNode(bouts.join("@")));
+  }
+  return p;
+}
+
 /** Carte de réglage : une icône, un texte, et au plus une action. */
 function carteReglage(icone, principal, secondaire, action) {
   const l = sh("div", { display: "flex", "align-items": "center", gap: "10px",
@@ -872,11 +888,13 @@ function carteReglage(icone, principal, secondaire, action) {
     "min-width": "0" });
   if (icone) g.appendChild(icone);
   const t = sh("div", { "min-width": "0" });
-  t.appendChild(sh("p", { margin: "0", font: "13.5px/1.35 " + SANS, color: ENCRE,
-    overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }, principal));
+  // Une adresse e-mail réelle ou une phrase de diagnostic dépasse la largeur de 400 px.
+  // Deux lignes lisibles valent mieux qu'une ligne coupée par des points de suspension.
+  t.appendChild(ligneDeCarte({ margin: "0", font: "13.5px/1.35 " + SANS, color: ENCRE },
+    principal));
   if (secondaire) {
-    t.appendChild(sh("p", { margin: "1px 0 0", font: "12.5px/1.35 " + SANS, color: ATONE,
-      overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }, secondaire));
+    t.appendChild(ligneDeCarte({ margin: "1px 0 0", font: "12.5px/1.35 " + SANS,
+      color: ATONE }, secondaire));
   }
   g.appendChild(t);
   l.appendChild(g);
