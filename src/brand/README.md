@@ -9,15 +9,38 @@ détectable — pas pour être modifiés.
 
 | Fichier | Rôle | Dimensions |
 |---|---|---|
-| `HumanOrigin_fingerprint_navy.png` | empreinte seule, encre marine `#012454`, sur fond clair | 130 × 137 |
-| `HumanOrigin_fingerprint_white.png` | même couche alpha, encre blanche `#FAFAFB`, sur fond marine | 130 × 137 |
+| `HumanOrigin_wordmark_navy.png` | mot-symbole complet, encre marine `#012454`, sur fond clair | 850 × 150 |
+| `HumanOrigin_wordmark_white.png` | même couche alpha, encre blanche `#FAFAFB`, pour fond sombre | 850 × 150 |
+| `HumanOrigin_fingerprint_navy.png` | empreinte seule, encre marine, sur fond clair | 130 × 137 |
+| `HumanOrigin_fingerprint_white.png` | même couche alpha, encre blanche, sur fond marine | 130 × 137 |
 
-L'empreinte a été isolée du Golden Master par composantes connexes : aucun pixel coupé ni
-ajouté, **aucun cercle ajouté**. Ne pas l'entourer, ne pas la recadrer, ne pas la recolorer.
+## Le mot-symbole contient l'empreinte
 
-Seule la **taille** varie selon le contexte. Elle entre dans l'interface par un seul point,
-`HumanOriginBrandMark` dans `../ho_desktop.js` : aucun écran ne redessine ni ne réimporte la
-marque ailleurs.
+Le mot-symbole canonique s'écrit `H` + « uman » + **l'empreinte à la place du « O » d'Origin** +
+« rigin ». Ce n'est pas une composition : c'est un seul raster gelé, extrait du Golden Master
+(`GOLDEN_MASTER_SYSTEM.md`, lot A : « Contient le H, "uman", le O-empreinte d'origine et
+"rigin" »). Il ne se recompose donc **jamais** en posant une empreinte à gauche d'un
+« HumanOrigin » écrit dans une police système.
+
+L'empreinte seule est **ce même « O »**, isolé par composantes connexes — aucun pixel coupé ni
+ajouté, aucun cercle. Elle ne s'emploie que là où le nom HumanOrigin est déjà établi par le
+contexte : icône d'application, favicon, volet Word.
+
+Seule la **taille** varie. Le mot-symbole entre dans l'interface par un seul point,
+`HumanOriginBrandMark` dans `../ho_shell.js` : aucun écran ne redessine ni ne réimporte la marque
+ailleurs, et aucun texte « HumanOrigin » ne l'accompagne.
+
+## Icône de l'application
+
+`src-tauri/icons/` est **dérivé** de `HumanOrigin_fingerprint_white.png`, et de rien d'autre :
+
+```sh
+python3 tools/generer_icone_app.py          # écrit tools/HumanOrigin_app_icon_1024.png
+npm run tauri icon tools/HumanOrigin_app_icon_1024.png
+```
+
+Le script ne change que le **cadrage, le fond et l'échelle** : la géométrie de l'empreinte est
+reprise telle quelle, sans redessin ni ajout de cercle.
 
 ## Vérifier
 

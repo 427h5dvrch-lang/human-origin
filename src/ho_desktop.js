@@ -835,10 +835,7 @@ async function ecranReglages(ctx) {
   const h = sh("header", { display: "flex", "align-items": "center",
     "justify-content": "space-between", padding: "13px 18px",
     "border-bottom": "1px solid " + LIGNE, background: "rgba(251,250,247,.86)" });
-  const g = sh("div", { display: "flex", "align-items": "center", gap: "9px" });
-  g.appendChild(HumanOriginBrandMark(21));
-  g.appendChild(sh("span", { font: "600 15px/1 " + SANS, color: ENCRE }, "HumanOrigin"));
-  h.appendChild(g);
+  h.appendChild(HumanOriginBrandMark(22));
   const fermer = sh("button", { background: "transparent", border: "0", padding: "4px",
     cursor: "pointer", display: "inline-flex", appearance: "none", "pointer-events": "auto" });
   fermer.type = "button";

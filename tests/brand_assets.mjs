@@ -43,13 +43,54 @@ ck("un seul module importe la marque", importeurs.length === 1, importeurs.join(
 // la pose. Les écrans passent par HumanOriginBrandMark, jamais par l'asset.
 const shell = fs.readFileSync(path.join(SRC, "ho_shell.js"), "utf8");
 ck("elle passe par HumanOriginBrandMark", /function HumanOriginBrandMark\(/.test(shell));
-ck("l'asset n'est lu qu'à cet endroit",
-  (shell.match(/EMPREINTE_MARINE/g) || []).length === 2,
-  String((shell.match(/EMPREINTE_MARINE/g) || []).length));
+for (const jeton of ["MOT_SYMBOLE_MARINE", "MOT_SYMBOLE_BLANC"]) {
+  const n = (shell.match(new RegExp(jeton, "g")) || []).length;
+  ck(jeton + " : importé puis posé, nulle part ailleurs", n === 2, String(n));
+}
+// Le mot-symbole est celui du paquet gelé, pas l'empreinte seule : dans l'interface, la
+// marque porte le nom. L'empreinte seule ne sert que à l'icône de l'application, hors du
+// frontend.
+ck("c'est le mot-symbole qui entre dans l'interface",
+  /brand\/HumanOrigin_wordmark_navy\.png/.test(shell));
+ck("aucune empreinte seule dans le frontend", !/brand\/HumanOrigin_fingerprint/.test(shell));
 // Les écrans n'ont AUCUN accès direct à l'asset : ils passent par le composant.
 const ecrans = fs.readFileSync(path.join(SRC, "ho_desktop.js"), "utf8");
-ck("les écrans ne touchent pas l'asset", !/EMPREINTE_MARINE|brand\//.test(ecrans));
+ck("les écrans ne touchent pas l'asset", !/MOT_SYMBOLE_|brand\//.test(ecrans));
 ck("les écrans passent par le composant", /HumanOriginBrandMark\(/.test(ecrans));
+
+console.log("\n-- le nom n'est jamais réécrit à côté de la marque --");
+// Le défaut corrigé le 2026-09-28 : une empreinte posée à gauche d'un « HumanOrigin »
+// composé en police système. Le mot-symbole canonique CONTIENT déjà le nom, empreinte en
+// « O » comprise ; le doubler d'un texte, c'est le recomposer. On regarde donc le
+// voisinage immédiat de chaque pose de la marque.
+for (const [nom, src] of [["ho_shell.js", shell], ["ho_desktop.js", ecrans]]) {
+  const fautes = [...src.matchAll(/HumanOriginBrandMark\s*\(/g)]
+    // La déclaration du composant porte le nom accessible `alt` : c'est sa place.
+    .filter((m) => src.slice(Math.max(0, m.index - 9), m.index) !== "function ")
+    .filter((m) => {
+      const autour = src.slice(m.index, m.index + 260);
+      return /["'\u0060]HumanOrigin["'\u0060]/.test(autour);
+    });
+  ck(nom + " : le nom n'est pas recomposé près de la marque", fautes.length === 0,
+    fautes.length ? fautes.length + " passage(s)" : "");
+}
+
+console.log("\n-- l'icône de l'application descend du master gelé --");
+{
+  const OUTIL = path.join(ici, "../tools/generer_icone_app.py");
+  ck("le générateur est versionné", fs.existsSync(OUTIL));
+  if (fs.existsSync(OUTIL)) {
+    const py = fs.readFileSync(OUTIL, "utf8");
+    const attendue = (py.match(/EMPREINTE_ATTENDUE\s*=\s*"([0-9a-f]{64})"/) || [])[1];
+    const declaree = (sommes.find((x) => x.nom === "HumanOrigin_fingerprint_white.png") || {}).hex;
+    ck("il part de l'empreinte déclarée", !!attendue && attendue === declaree,
+      attendue ? attendue.slice(0, 16) + "…" : "absente");
+    ck("il ne lit que le master blanc",
+      /HumanOrigin_fingerprint_white\.png/.test(py) && !/wordmark/.test(py));
+  }
+  ck("la source 1024 est versionnée",
+    fs.existsSync(path.join(ici, "../tools/HumanOrigin_app_icon_1024.png")));
+}
 
 console.log("\n-- aucune marque redessinée --");
 // Le contrôle porte sur le CODE : un commentaire qui PARLE de la marque ne la dessine pas,

@@ -7,7 +7,8 @@
 // Règle : UN ÉCRAN = UN ÉTAT. Aucun composant d'ici ne compose deux états.
 import { put } from "./ho_ui.js";
 // Marque : copie versionnée du paquet d'identité gelé, jamais redessinée.
-import EMPREINTE_MARINE from "./brand/HumanOrigin_fingerprint_navy.png";
+import MOT_SYMBOLE_MARINE from "./brand/HumanOrigin_wordmark_navy.png";
+import MOT_SYMBOLE_BLANC from "./brand/HumanOrigin_wordmark_white.png";
 
 // ---------------------------------------------------------------- jetons
 export const PAPIER = "#FBFAF7";   // ivoire, jamais le blanc clinique
@@ -151,15 +152,17 @@ export const pastilleWord = (taille) => el("span", {
  * MARQUE HUMANORIGIN — POINT UNIQUE.
  *
  * Le paquet d'identité est gelé : `DO NOT REDRAW · DO NOT RECREATE FROM FONT ·
- * DO NOT SUBSTITUTE FINGERPRINT`. Le symbole est SÉPARÉ du mot-symbole, il ne remplace
- * jamais le « O » d'Origin, et le sceau rond du marquage Record n'est pas un logo
- * d'application. Seule la HAUTEUR varie ici.
+ * DO NOT SUBSTITUTE FINGERPRINT`. Le mot-symbole canonique porte **l'empreinte à la place du
+ * « O » d'Origin** : c'est un seul raster, jamais une empreinte posée à gauche d'un
+ * « HumanOrigin » écrit dans une police. Le sceau rond du marquage Record n'est pas un logo
+ * d'application. Seule la HAUTEUR varie ici ; la largeur suit le ratio exact de l'asset.
+ *
+ * `sombre` ne sert qu'aux fonds sombres, où l'encre marine ne tiendrait pas.
  */
-export function HumanOriginBrandMark(taille) {
+export function HumanOriginBrandMark(taille, sombre) {
   const i = document.createElement("img");
-  i.src = EMPREINTE_MARINE;
-  i.alt = "";
-  i.setAttribute("aria-hidden", "true");
+  i.src = sombre ? MOT_SYMBOLE_BLANC : MOT_SYMBOLE_MARINE;
+  i.alt = "HumanOrigin";
   put(i, { height: taille + "px", width: "auto", display: "block", "flex-shrink": "0" });
   return i;
 }
@@ -215,11 +218,8 @@ export function entete({ connecte, onReglages }) {
     background: "rgba(251,250,247,.86)", "backdrop-filter": "saturate(140%) blur(6px)",
     position: "relative", "z-index": "2",
   });
-  const g = el("div", { display: "flex", "align-items": "center", gap: "9px" });
-  g.appendChild(HumanOriginBrandMark(21));
-  g.appendChild(el("span", { font: "600 15px/1 " + SANS, color: ENCRE,
-    "letter-spacing": "-.005em" }, "HumanOrigin"));
-  h.appendChild(g);
+  // Le mot-symbole dit déjà le nom : aucun texte ne le double.
+  h.appendChild(HumanOriginBrandMark(22));
 
   const d = el("div", { display: "flex", "align-items": "center", gap: "13px" });
   const etat = el("span", { display: "inline-flex", "align-items": "center", gap: "6px",
