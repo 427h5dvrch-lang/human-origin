@@ -570,18 +570,33 @@ const trace = (parent, d, decls) => {
   return p;
 };
 
-/** Marque HumanOrigin : empreinte, tracée en arcs concentriques. */
-function marque(taille) {
-  const s = svg("0 0 24 24", taille, { stroke: BLUE, "stroke-width": "1.5",
-    "stroke-linecap": "round" });
-  const c = document.createElementNS(NS_SVG, "circle");
-  c.setAttribute("cx", "12"); c.setAttribute("cy", "12"); c.setAttribute("r", "10.2");
-  c.setAttribute("stroke", BLUE); c.setAttribute("stroke-width", "1.5");
-  s.appendChild(c);
-  trace(s, "M7.6 14.6a4.6 4.6 0 0 1 8.8-2.2");
-  trace(s, "M9.9 16.4a2.3 2.3 0 0 1 4.3-1.6");
-  trace(s, "M5.6 10.6a7 7 0 0 1 12.2-1.1");
-  return s;
+/**
+ * MARQUE HUMANORIGIN — POINT UNIQUE.
+ *
+ * Aucun écran ne doit redessiner la marque. Le paquet d'identité est gelé et le dit
+ * lui-même : `STATUS = FROZEN · DO NOT REDRAW · DO NOT RECREATE FROM FONT ·
+ * DO NOT SUBSTITUTE FINGERPRINT` (HUMANORIGIN_BRAND_MASTER_V1/BRAND_SPEC.md).
+ *
+ * Une version précédente de cet écran traçait une empreinte en SVG, entourée d'un cercle.
+ * C'était une substitution, et le cercle était un ajout : la spec précise « Aucun cercle
+ * n'a été ajouté ». Ce faux symbole est retiré.
+ *
+ * MARQUE_SRC reste nulle tant que l'asset canonique n'a pas été désigné et versionné.
+ * Le mot-symbole tient seul l'en-tête d'ici là : mieux vaut pas de marque qu'une marque
+ * inventée. Une seule ligne à changer ensuite, et un seul endroit.
+ */
+const MARQUE_SRC = null;
+
+function HumanOriginBrandMark(taille) {
+  if (!MARQUE_SRC) return null;
+  const i = document.createElement("img");
+  i.src = MARQUE_SRC;
+  i.alt = "";
+  i.setAttribute("aria-hidden", "true");
+  // Seule la TAILLE varie : géométrie, proportions, épaisseurs et couleurs viennent de
+  // l'asset et ne sont jamais retouchées en CSS.
+  put(i, { height: taille + "px", width: "auto", display: "block", "flex-shrink": "0" });
+  return i;
 }
 
 function engrenage() {
@@ -702,7 +717,8 @@ async function accueil() {
     background: "rgba(251,250,247,.82)", "backdrop-filter": "saturate(140%) blur(6px)",
   });
   const gauche = el("div", { display: "flex", "align-items": "center", gap: "9px" });
-  gauche.appendChild(marque(21));
+  const m = HumanOriginBrandMark(21);
+  if (m) gauche.appendChild(m);
   gauche.appendChild(el("span", { font: "600 15px/1 " + SANS, color: INK,
     "letter-spacing": "-.005em" }, "HumanOrigin"));
   header.appendChild(gauche);
