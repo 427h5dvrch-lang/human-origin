@@ -176,23 +176,23 @@ export function paysage(intensite) {
   s.setAttribute("preserveAspectRatio", "xMidYMax slice");
   s.setAttribute("aria-hidden", "true");
   put(s, { position: "fixed", left: "0", right: "0", bottom: "0", width: "100%",
-    height: "42%", "pointer-events": "none", "z-index": "0" });
+    height: "56%", "pointer-events": "none", "z-index": "0" });
 
   // Chaque couche se dissout vers le haut : c'est ce qui la fait lire comme une texture
   // et non comme un graphique. Des crêtes anguleuses et opaques dominaient la page.
   const defs = document.createElementNS(NS, "defs");
   s.appendChild(defs);
   const couches = [
-    ["M0 96 C 48 62, 92 88, 138 60 S 224 92, 268 64 S 348 96, 400 70 L400 200 L0 200 Z", 0.052],
-    ["M0 126 C 56 100, 108 124, 162 98 S 250 128, 302 104 S 372 126, 400 112 L400 200 L0 200 Z", 0.040],
-    ["M0 156 C 70 138, 132 158, 198 140 S 320 160, 400 146 L400 200 L0 200 Z", 0.030],
+    ["M0 96 C 48 62, 92 88, 138 60 S 224 92, 268 64 S 348 96, 400 70 L400 200 L0 200 Z", 0.085],
+    ["M0 126 C 56 100, 108 124, 162 98 S 250 128, 302 104 S 372 126, 400 112 L400 200 L0 200 Z", 0.065],
+    ["M0 156 C 70 138, 132 158, 198 140 S 320 160, 400 146 L400 200 L0 200 Z", 0.048],
   ];
   couches.forEach(([d, o], i) => {
     const g = document.createElementNS(NS, "linearGradient");
     g.setAttribute("id", "ho-paysage-" + i);
     g.setAttribute("x1", "0"); g.setAttribute("y1", "0");
     g.setAttribute("x2", "0"); g.setAttribute("y2", "1");
-    for (const [offset, alpha] of [["0", 0], ["1", o * k]]) {
+    for (const [offset, alpha] of [["0", o * k * 0.18], ["1", o * k]]) {
       const st = document.createElementNS(NS, "stop");
       st.setAttribute("offset", offset);
       st.setAttribute("stop-color", MARINE);

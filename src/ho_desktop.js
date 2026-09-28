@@ -574,8 +574,11 @@ async function ecranPret(ctx) {
   p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
 
   const c = colonne({ padding: "38px 24px 0", "flex-grow": "1" });
-  c.appendChild(sh("h1", { font: "400 31px/1.22 " + SERIF, color: MARINE, margin: "0 0 14px",
-    "letter-spacing": "-.012em" }, "Créez votre prochain document HumanOrigin"));
+  // Trois lignes, comme la planche : la mesure du titre est bornée pour que le rythme
+  // ne dépende pas de la largeur exacte de la fenêtre.
+  c.appendChild(sh("h1", { font: "400 28px/1.24 " + SERIF, color: MARINE, margin: "0 0 13px",
+    "letter-spacing": "-.012em", "max-width": "250px" },
+    "Créez votre prochain document HumanOrigin"));
   c.appendChild(corps(["Travaillez normalement dans Word.",
                        "HumanOrigin se charge de la preuve."], "left"));
 
