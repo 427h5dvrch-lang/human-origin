@@ -730,11 +730,9 @@ async function ecranVersionPrete(ctx) {
     try { await invoke("open_file", { path: doc.path }); }
     catch (e) { say(msg, errorText(e, "Le document n’a pas pu être ouvert."), true); }
   };
+  // Une seule action, comme la planche. Ouvrir le document EST la suite naturelle ;
+  // un second bouton de même poids ferait deux intentions sur un écran qui n'en a qu'une.
   c.appendChild(ouvrir);
-  const retour = ctaSecondaire("Retour");
-  put(retour, { margin: "9px 0 0" });
-  retour.onclick = () => router({ ecran: "pret" });
-  c.appendChild(retour);
   c.appendChild(msg);
   p.appendChild(c);
 }
@@ -824,6 +822,10 @@ async function ecranPremiere(ctx) {
 }
 
 // ---------------------------------------------------------------- 7 · RÉGLAGES
+// La planche montre les réglages dans une fenêtre large, avec une barre latérale. À 400 px
+// cette barre écrase le contenu — l'adresse se réduit à une lettre. Les six rubriques sont
+// donc empilées dans la MÊME colonne et la même grille que les autres écrans. Le défilement
+// vertical est admis ici.
 async function ecranReglages(ctx) {
   document.body.textContent = "";
   put(document.body, { margin: "0", background: PAPIER, color: ENCRE, "min-height": "100vh",
@@ -832,13 +834,13 @@ async function ecranReglages(ctx) {
   const cadre = sh("div", { display: "flex", "flex-direction": "column", "min-height": "100vh" });
   const h = sh("header", { display: "flex", "align-items": "center",
     "justify-content": "space-between", padding: "13px 18px",
-    "border-bottom": "1px solid " + LIGNE, background: CARTE });
+    "border-bottom": "1px solid " + LIGNE, background: "rgba(251,250,247,.86)" });
   const g = sh("div", { display: "flex", "align-items": "center", gap: "9px" });
   g.appendChild(HumanOriginBrandMark(21));
   g.appendChild(sh("span", { font: "600 15px/1 " + SANS, color: ENCRE }, "HumanOrigin"));
   h.appendChild(g);
   const fermer = sh("button", { background: "transparent", border: "0", padding: "4px",
-    cursor: "pointer", display: "inline-flex", appearance: "none" });
+    cursor: "pointer", display: "inline-flex", appearance: "none", "pointer-events": "auto" });
   fermer.type = "button";
   fermer.setAttribute("aria-label", "Fermer");
   fermer.appendChild(ICONES.croix(17, ATONE));
@@ -846,154 +848,136 @@ async function ecranReglages(ctx) {
   h.appendChild(fermer);
   cadre.appendChild(h);
 
-  const corpsReglages = sh("div", { display: "flex", "flex-grow": "1", "align-items": "stretch" });
-  const rubriques = ["Compte", "Microsoft Word", "Documents", "Langue", "À propos"];
-  const icones = { "Compte": "personne", "Microsoft Word": "feuille", "Documents": "dossier",
-    "Langue": "globe", "À propos": "info" };
-  const cote = sh("nav", { width: "172px", "flex-shrink": "0", padding: "14px 10px",
-    "border-right": "1px solid " + LIGNE, background: "#F6F4EF" });
-  const pane = sh("div", { "flex-grow": "1", padding: "22px 24px", "min-width": "0" });
-
-  const montrer = (nom) => {
-    [...cote.children].forEach((b) => put(b, {
-      background: b.dataset.nom === nom ? CARTE : "transparent",
-      "box-shadow": b.dataset.nom === nom ? "0 1px 1px rgba(26,30,36,.05)" : "none",
-    }));
-    pane.textContent = "";
-    rubrique(nom, pane);
-  };
-  for (const nom of rubriques) {
-    const b = sh("button", { display: "flex", "align-items": "center", gap: "9px",
-      width: "100%", padding: "9px 10px", "border-radius": "8px", border: "1px solid transparent",
-      background: "transparent", cursor: "pointer", appearance: "none",
-      font: "13.5px/1.2 " + SANS, color: ENCRE, "text-align": "left", margin: "0 0 2px" });
-    b.type = "button";
-    b.dataset.nom = nom;
-    b.appendChild(ICONES[icones[nom]](16, ATONE));
-    b.appendChild(sh("span", null, nom));
-    b.onclick = () => montrer(nom);
-    cote.appendChild(b);
+  const c = colonne({ padding: "20px 24px 28px", "flex-grow": "1" });
+  for (const nom of ["Compte", "Microsoft Word", "Documents", "Langue", "À propos", "Diagnostic"]) {
+    const bloc = sh("section", { margin: "0 0 20px" });
+    bloc.appendChild(sh("h2", { font: "600 12.5px/1.3 " + SANS, color: ATONE,
+      margin: "0 0 8px" }, nom));
+    const dedans = sh("div");
+    bloc.appendChild(dedans);
+    c.appendChild(bloc);
+    await rubrique(nom, dedans);
   }
-  corpsReglages.appendChild(cote);
-  corpsReglages.appendChild(pane);
-  cadre.appendChild(corpsReglages);
+  cadre.appendChild(c);
   document.body.appendChild(cadre);
-  montrer("Compte");
 }
 
-const sousSection = (parent, titreTexte) => {
-  parent.appendChild(sh("h2", { font: "600 13px/1.3 " + SANS, color: ENCRE,
-    margin: "0 0 10px" }, titreTexte));
+/** Carte de réglage : une icône, un texte, et au plus une action. */
+function carteReglage(icone, principal, secondaire, action) {
+  const l = sh("div", { display: "flex", "align-items": "center", gap: "10px",
+    "justify-content": "space-between", padding: "11px 13px", background: CARTE,
+    border: "1px solid " + LIGNE, "border-radius": "10px",
+    "box-shadow": "0 1px 1px rgba(26,30,36,.03)" });
+  const g = sh("div", { display: "flex", "align-items": "center", gap: "10px",
+    "min-width": "0" });
+  if (icone) g.appendChild(icone);
+  const t = sh("div", { "min-width": "0" });
+  t.appendChild(sh("p", { margin: "0", font: "13.5px/1.35 " + SANS, color: ENCRE,
+    overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }, principal));
+  if (secondaire) {
+    t.appendChild(sh("p", { margin: "1px 0 0", font: "12.5px/1.35 " + SANS, color: ATONE,
+      overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }, secondaire));
+  }
+  g.appendChild(t);
+  l.appendChild(g);
+  if (action) {
+    put(action, { width: "auto", padding: "8px 12px", font: "500 13px/1 " + SANS,
+      "flex-shrink": "0" });
+    l.appendChild(action);
+  }
+  return l;
+}
+
+const pastilleEtat = (vert) => sh("span", { width: "7px", height: "7px",
+  "border-radius": "50%", background: vert ? "#3E8E5A" : "#A9762B",
+  display: "inline-block", "flex-shrink": "0" });
+
+/** Le nom du dossier suffit à se reconnaître : aucun chemin système n'est montré. */
+const nomDeDossier = (p) => {
+  const bouts = String(p || "").replace(/\/+$/, "").split("/");
+  return bouts[bouts.length - 1] || "";
 };
 
-async function rubrique(nom, pane) {
-  const msg = sh("p", { margin: "12px 0 0", font: "13px/1.5 " + SANS, color: ATONE });
+async function rubrique(nom, hote) {
+  const msg = sh("p", { margin: "8px 0 0", font: "12.5px/1.5 " + SANS, color: ATONE });
 
   if (nom === "Compte") {
-    sousSection(pane, "Compte");
     const session = await sessionCourante();
-    const ligne = sh("div", { display: "flex", "align-items": "center", gap: "10px",
-      "justify-content": "space-between", padding: "12px 13px", background: CARTE,
-      border: "1px solid " + LIGNE, "border-radius": "10px" });
-    const gauche = sh("div", { display: "flex", "align-items": "center", gap: "9px",
-      "min-width": "0" });
-    gauche.appendChild(ICONES.personne(17, ATONE));
-    gauche.appendChild(sh("span", { font: "13.5px/1.3 " + SANS, color: ENCRE,
-      overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" },
-      (session && session.user && session.user.email) || "Non connecté"));
-    ligne.appendChild(gauche);
+    let action = null;
     if (session) {
-      const out = ctaSecondaire("Se déconnecter");
-      put(out, { width: "auto", padding: "8px 12px", font: "500 13px/1 " + SANS });
-      out.onclick = async () => {
-        out.disabled = true;
+      action = ctaSecondaire("Se déconnecter");
+      action.onclick = async () => {
+        action.disabled = true;
         try { await supabase.auth.signOut(); router({ ecran: null }); }
-        catch (e) { say(msg, errorText(e, "La déconnexion a échoué."), true); out.disabled = false; }
+        catch (e) { say(msg, errorText(e, "La déconnexion a échoué."), true); action.disabled = false; }
       };
-      ligne.appendChild(out);
     }
-    pane.appendChild(ligne);
-    pane.appendChild(msg);
+    hote.appendChild(carteReglage(ICONES.personne(17, ATONE),
+      (session && session.user && session.user.email) || "Non connecté", null, action));
+    hote.appendChild(msg);
     return;
   }
 
   if (nom === "Microsoft Word") {
-    sousSection(pane, "Microsoft Word");
     let st = null;
     try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
-    const installe = st && st.state === "installed";
-    const ligne = sh("div", { display: "flex", "align-items": "center",
-      "justify-content": "space-between", gap: "10px", padding: "12px 13px", background: CARTE,
-      border: "1px solid " + LIGNE, "border-radius": "10px" });
-    const g2 = sh("div", { display: "flex", "align-items": "center", gap: "9px" });
-    g2.appendChild(sh("span", { width: "7px", height: "7px", "border-radius": "50%",
-      background: installe ? "#3E8E5A" : "#A9762B", display: "inline-block" }));
-    g2.appendChild(sh("span", { font: "13.5px/1.3 " + SANS, color: ENCRE },
-      installe ? "Intégration opérationnelle" : "Intégration à installer"));
-    ligne.appendChild(g2);
-    const rep = ctaSecondaire(installe ? "Réparer l’intégration" : "Installer");
-    put(rep, { width: "auto", padding: "8px 12px", font: "500 13px/1 " + SANS });
-    rep.onclick = () => runSetup(pane, rep, msg);
-    ligne.appendChild(rep);
-    pane.appendChild(ligne);
-    pane.appendChild(msg);
+    const pret = st && st.state === "installed";
+    const action = ctaSecondaire(pret ? "Réparer" : "Installer");
+    action.onclick = () => runSetup(hote, action, msg);
+    hote.appendChild(carteReglage(pastilleEtat(pret),
+      pret ? "Intégration opérationnelle" : "Intégration à installer", null, action));
+    hote.appendChild(msg);
     return;
   }
 
   if (nom === "Documents") {
-    sousSection(pane, "Documents HumanOrigin");
     let folders = [];
     try { folders = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { folders = []; }
-    const ligne = sh("div", { display: "flex", "align-items": "center",
-      "justify-content": "space-between", gap: "10px", padding: "12px 13px", background: CARTE,
-      border: "1px solid " + LIGNE, "border-radius": "10px" });
-    const g3 = sh("div", { display: "flex", "align-items": "center", gap: "9px",
-      "min-width": "0" });
-    g3.appendChild(ICONES.dossier(17, ATONE));
-    const txt = sh("div", { "min-width": "0" });
-    txt.appendChild(sh("p", { margin: "0", font: "13px/1.3 " + SANS, color: ATONE },
-      "Dossier par défaut"));
-    // Les Réglages sont le SEUL endroit où un chemin est montré : ailleurs, jamais.
-    txt.appendChild(sh("p", { margin: "1px 0 0", font: "12.5px/1.3 " + SANS, color: ENCRE,
-      overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" },
-      folders[0] || "Aucun dossier choisi"));
-    g3.appendChild(txt);
-    ligne.appendChild(g3);
-    const mod = ctaSecondaire("Modifier");
-    put(mod, { width: "auto", padding: "8px 12px", font: "500 13px/1 " + SANS });
-    mod.onclick = async () => {
-      const picked = await open({ directory: true, multiple: false });
-      if (!picked) return;
-      const refus = await invoke("ho_check_work_folder", { folder: picked });
+    const action = ctaSecondaire("Modifier");
+    action.onclick = async () => {
+      const choisi = await open({ directory: true, multiple: false });
+      if (!choisi) return;
+      const refus = await invoke("ho_check_work_folder", { folder: choisi });
       if (refus) { say(msg, refus, true); return; }
-      await invoke("ho_finalizer_set_folders", { folders: [picked], registry: null });
-      pane.textContent = ""; rubrique("Documents", pane);
+      await invoke("ho_finalizer_set_folders", { folders: [choisi], registry: null });
+      hote.textContent = ""; rubrique("Documents", hote);
     };
-    ligne.appendChild(mod);
-    pane.appendChild(ligne);
-    pane.appendChild(msg);
+    hote.appendChild(carteReglage(ICONES.dossier(17, ATONE),
+      nomDeDossier(folders[0]) || "Aucun dossier choisi", "Dossier de vos documents", action));
+    hote.appendChild(msg);
     return;
   }
 
   if (nom === "Langue") {
-    sousSection(pane, "Langue");
-    const ligne = sh("div", { display: "flex", "align-items": "center", gap: "9px",
-      padding: "12px 13px", background: CARTE, border: "1px solid " + LIGNE,
-      "border-radius": "10px" });
-    ligne.appendChild(ICONES.globe(17, ATONE));
-    ligne.appendChild(sh("span", { font: "13.5px/1.3 " + SANS, color: ENCRE }, "Français"));
-    pane.appendChild(ligne);
+    hote.appendChild(carteReglage(ICONES.globe(17, ATONE), "Français", null, null));
     return;
   }
 
-  sousSection(pane, "À propos");
-  const bloc = sh("div", { padding: "12px 13px", background: CARTE,
-    border: "1px solid " + LIGNE, "border-radius": "10px" });
-  bloc.appendChild(sh("p", { margin: "0", font: "13.5px/1.5 " + SANS, color: ENCRE },
-    "HumanOrigin"));
-  bloc.appendChild(sh("p", { margin: "2px 0 0", font: "12.5px/1.5 " + SANS, color: ATONE },
-    "Une preuve vérifiable du processus observé, jamais une affirmation sur son auteur."));
-  pane.appendChild(bloc);
+  if (nom === "À propos") {
+    hote.appendChild(carteReglage(ICONES.bouclier(17, ATONE), "HumanOrigin",
+      "Une preuve vérifiable du processus observé.", null));
+    return;
+  }
+
+  // Diagnostic : relecture des contrôles déjà existants, rien de nouveau.
+  const bloc = sh("div");
+  const peindre = async () => {
+    bloc.textContent = "";
+    let st = null, actif = null;
+    try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
+    try { actif = await invoke("ho_finalizer_status"); } catch (e) { actif = null; }
+    const revoir = ctaSecondaire("Vérifier");
+    revoir.onclick = () => peindre();
+    bloc.appendChild(carteReglage(pastilleEtat(!!(actif && actif.active)),
+      actif && actif.active ? "Surveillance de vos documents active"
+                            : "Aucun dossier surveillé", null, revoir));
+    const d2 = sh("div", { margin: "8px 0 0" });
+    d2.appendChild(carteReglage(pastilleEtat(!!(st && st.state === "installed")),
+      st && st.state === "installed" ? "Word répond" : "Word ne répond pas", null, null));
+    bloc.appendChild(d2);
+  };
+  hote.appendChild(bloc);
+  await peindre();
 }
 
 // ---------------------------------------------------------------- routage
