@@ -117,10 +117,13 @@ export const ICONES = {
     rond(s, "12", "8", "3.4").setAttribute("stroke", c);
     trait(s, "M5.2 19.4a6.8 6.8 0 0 1 13.6 0");
   }),
+  // Un anneau, un moyeu, huit dents courtes. Sans l'anneau, huit rayons isolés se lisent
+  // comme un soleil — c'est ce que rendait la version précédente.
   engrenage: (t, c) => icone(t, c, (s) => {
-    rond(s, "12", "12", "3").setAttribute("stroke", c);
-    trait(s, "M12 2.6v2.1M12 19.3v2.1M4.3 4.3l1.5 1.5M18.2 18.2l1.5 1.5"
-          + "M2.6 12h2.1M19.3 12h2.1M4.3 19.7l1.5-1.5M18.2 5.8l1.5-1.5");
+    rond(s, "12", "12", "6.1").setAttribute("stroke", c);
+    rond(s, "12", "12", "2.4").setAttribute("stroke", c);
+    trait(s, "M12 3.4v2.4M12 18.2v2.4M3.4 12h2.4M18.2 12h2.4"
+          + "M5.9 5.9l1.7 1.7M16.4 16.4l1.7 1.7M5.9 18.1l1.7-1.7M16.4 7.6l1.7-1.7");
   }),
   globe: (t, c) => icone(t, c, (s) => {
     rond(s, "12", "12", "8.4").setAttribute("stroke", c);
@@ -167,25 +170,41 @@ export function HumanOriginBrandMark(taille) {
  * doit rien disputer au titre ni au bouton.
  */
 export function paysage(intensite) {
-  const k = intensite === "accueil" ? 1 : 0.7;
+  const k = intensite === "accueil" ? 1 : 0.72;
   const s = document.createElementNS(NS, "svg");
-  s.setAttribute("viewBox", "0 0 400 260");
+  s.setAttribute("viewBox", "0 0 400 200");
   s.setAttribute("preserveAspectRatio", "xMidYMax slice");
   s.setAttribute("aria-hidden", "true");
   put(s, { position: "fixed", left: "0", right: "0", bottom: "0", width: "100%",
-    height: "58%", "pointer-events": "none", "z-index": "0" });
+    height: "42%", "pointer-events": "none", "z-index": "0" });
+
+  // Chaque couche se dissout vers le haut : c'est ce qui la fait lire comme une texture
+  // et non comme un graphique. Des crêtes anguleuses et opaques dominaient la page.
+  const defs = document.createElementNS(NS, "defs");
+  s.appendChild(defs);
   const couches = [
-    ["M0 186 L54 132 L94 162 L148 110 L204 164 L250 134 L310 182 L400 138 L400 260 L0 260 Z", 0.075],
-    ["M0 210 L68 166 L122 198 L180 154 L234 196 L296 164 L356 202 L400 178 L400 260 L0 260 Z", 0.055],
-    ["M0 236 L84 204 L156 230 L238 200 L320 232 L400 210 L400 260 L0 260 Z", 0.042],
+    ["M0 96 C 48 62, 92 88, 138 60 S 224 92, 268 64 S 348 96, 400 70 L400 200 L0 200 Z", 0.052],
+    ["M0 126 C 56 100, 108 124, 162 98 S 250 128, 302 104 S 372 126, 400 112 L400 200 L0 200 Z", 0.040],
+    ["M0 156 C 70 138, 132 158, 198 140 S 320 160, 400 146 L400 200 L0 200 Z", 0.030],
   ];
-  for (const [d, o] of couches) {
-    const p = trait(s, d);
-    p.setAttribute("fill", MARINE);
-    p.setAttribute("fill-opacity", String((o * k).toFixed(3)));
-  }
+  couches.forEach(([d, o], i) => {
+    const g = document.createElementNS(NS, "linearGradient");
+    g.setAttribute("id", "ho-paysage-" + i);
+    g.setAttribute("x1", "0"); g.setAttribute("y1", "0");
+    g.setAttribute("x2", "0"); g.setAttribute("y2", "1");
+    for (const [offset, alpha] of [["0", 0], ["1", o * k]]) {
+      const st = document.createElementNS(NS, "stop");
+      st.setAttribute("offset", offset);
+      st.setAttribute("stop-color", MARINE);
+      st.setAttribute("stop-opacity", String(alpha.toFixed(4)));
+      g.appendChild(st);
+    }
+    defs.appendChild(g);
+    trait(s, d).setAttribute("fill", "url(#ho-paysage-" + i + ")");
+  });
   return s;
 }
+
 
 // ---------------------------------------------------------------- composants
 /** En-tête, identique sur tous les états normaux. */
