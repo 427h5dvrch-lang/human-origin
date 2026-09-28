@@ -538,6 +538,183 @@ async function panel() {
 }
 
 /** Une initialisation qui échoue doit se voir. Elle ne dit rien du document de l'utilisateur. */
+// ---------------------------------------------------------------- Creator Shell V1
+// L'écran d'accueil n'est pas un tableau de bord : c'est une page calme dont une seule
+// action est visible. Tout ce qui relève du réglage — dossiers, installation, compte —
+// quitte l'accueil et vit derrière l'engrenage.
+//
+// Aucune logique métier ici : l'état vient des mêmes sources qu'avant, et le bouton appelle
+// exactement l'action existante.
+const SERIF = 'ui-serif, Georgia, "Times New Roman", serif';
+const SANS = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+const LIGNE = "#E8E4DA";   // bordure très fine, à peine plus sombre que le papier
+
+function engrenage() {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", "17");
+  svg.setAttribute("height", "17");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", MUTED);
+  svg.setAttribute("stroke-width", "1.6");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  svg.setAttribute("aria-hidden", "true");
+  const cercle = document.createElementNS(NS, "circle");
+  cercle.setAttribute("cx", "12"); cercle.setAttribute("cy", "12"); cercle.setAttribute("r", "3");
+  const dents = document.createElementNS(NS, "path");
+  dents.setAttribute("d",
+    "M12 2.4v2.2M12 19.4v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.4 12h2.2M19.4 12h2.2"
+    + "M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6");
+  svg.appendChild(cercle); svg.appendChild(dents);
+  return svg;
+}
+
+/** Pastille + libellé, en très discret. */
+function indicateur(libelle, valeur) {
+  const l = el("span", { display: "inline-flex", "align-items": "baseline", gap: "6px" });
+  l.appendChild(el("span", { color: MUTED }, libelle));
+  l.appendChild(el("span", { color: MUTED, opacity: ".55" }, "—"));
+  l.appendChild(el("span", { color: INK, "font-weight": "500" }, valeur));
+  return l;
+}
+
+function pastille(couleur) {
+  return el("span", {
+    width: "7px", height: "7px", "border-radius": "50%", background: couleur,
+    display: "inline-block", "flex-shrink": "0",
+  });
+}
+
+const jourMois = (d) => d.toLocaleDateString("fr-FR",
+  { day: "numeric", month: "long", year: "numeric" });
+
+/**
+ * État PRÊT. Il n'est rendu que si Word est installé ET une session est ouverte : les
+ * autres états ne sont pas encore repris par ce shell et gardent le panneau existant.
+ */
+async function accueil() {
+  let st = null;
+  try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
+  const session = await sessionCourante();
+  const pret = st && st.state === "installed" && !!session;
+  if (!pret) return panel();
+
+  document.body.textContent = "";
+  put(document.body, {
+    margin: "0", background: PAPER, color: INK, "min-height": "100vh",
+    font: "15px/1.6 " + SANS,
+    // Voile extrêmement discret : une présence, jamais un décor.
+    "background-image":
+      "radial-gradient(120% 70% at 50% -10%, rgba(44,74,110,.045) 0%, rgba(44,74,110,0) 60%)",
+    "background-repeat": "no-repeat",
+  });
+
+  // --- en-tête très léger
+  const header = el("header", {
+    display: "flex", "align-items": "center", "justify-content": "space-between",
+    padding: "18px 26px", "border-bottom": "1px solid " + LIGNE,
+  });
+  header.appendChild(el("span", { font: "500 15px/1 " + SERIF, color: INK,
+    "letter-spacing": ".01em" }, "HumanOrigin"));
+
+  const droite = el("div", { display: "flex", "align-items": "center", gap: "16px" });
+  const etatCompte = el("span", { display: "inline-flex", "align-items": "center", gap: "7px",
+    font: "13px/1 " + SANS, color: MUTED });
+  etatCompte.appendChild(pastille("#3E7D5A"));
+  etatCompte.appendChild(el("span", null, "Connecté"));
+  droite.appendChild(etatCompte);
+
+  const reglages = el("button", {
+    background: "transparent", border: "0", padding: "6px", cursor: "pointer",
+    display: "inline-flex", "align-items": "center", "border-radius": "6px",
+    appearance: "none", "pointer-events": "auto",
+  });
+  reglages.type = "button";
+  reglages.title = "Réglages";
+  reglages.setAttribute("aria-label", "Réglages");
+  reglages.appendChild(engrenage());
+  // Cette phase ne redessine pas les réglages : elle les retire seulement de l'accueil.
+  reglages.onclick = () => { panel().catch(fatal); };
+  droite.appendChild(reglages);
+  header.appendChild(droite);
+  document.body.appendChild(header);
+
+  // --- corps
+  const wrap = el("main", {
+    "max-width": "600px", margin: "0 auto", padding: "104px 32px 64px",
+    "text-align": "center",
+  });
+
+  wrap.appendChild(el("h1", {
+    font: "400 34px/1.28 " + SERIF, color: BLUE, margin: "0 0 18px",
+    "letter-spacing": "-.01em",
+  }, "Créez votre prochain document HumanOrigin"));
+
+  const lede = el("p", { margin: "0 0 44px", color: MUTED, font: "16px/1.65 " + SANS });
+  lede.appendChild(el("span", null, "Travaillez normalement dans Word."));
+  lede.appendChild(el("br"));
+  lede.appendChild(el("span", null, "HumanOrigin se charge de la preuve."));
+  wrap.appendChild(lede);
+
+  // --- une seule action dominante
+  const msg = el("p", { margin: "18px 0 0", font: "13px/1.5 " + SANS, color: MUTED });
+  const proposition = el("div", { margin: "18px 0 0" });
+  const cta = el("button", {
+    font: "600 16px/1 " + SANS, color: PAPER, background: BLUE,
+    border: "1px solid " + BLUE, "border-radius": "10px", padding: "15px 30px",
+    cursor: "pointer", appearance: "none", "pointer-events": "auto",
+    "box-shadow": "0 1px 2px rgba(26,30,36,.07)",
+  });
+  cta.type = "button";
+  cta.textContent = "Nouveau document";
+  // EXACTEMENT l'action existante : dossiers connus -> création, sinon proposition du lieu.
+  cta.onclick = async () => {
+    say(msg, "");
+    let folders = [];
+    try { folders = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { folders = []; }
+    if (folders.length) return createDocument(cta, msg, null, proposition);
+    await proposeLocation(proposition, msg);
+  };
+  wrap.appendChild(cta);
+  wrap.appendChild(proposition);
+  wrap.appendChild(msg);
+
+  // --- deux indicateurs, très discrets
+  const ind = el("div", {
+    display: "flex", "justify-content": "center", gap: "26px", "flex-wrap": "wrap",
+    margin: "34px 0 0", font: "13px/1.5 " + SANS,
+  });
+  ind.appendChild(indicateur("Microsoft Word", "Prêt"));
+  ind.appendChild(indicateur("Compte", "Connecté"));
+  wrap.appendChild(ind);
+
+  // --- Versioning V1 : la section n'apparaît que si un document finalisé est ouvert.
+  // Elle reste branchée telle quelle — ce chantier est clos et ne doit pas régresser.
+  const versions = el("div", { margin: "40px 0 0", "text-align": "left" });
+  wrap.appendChild(versions);
+  if (!(await renderVersioning(versions))) versions.remove();
+
+  document.body.appendChild(wrap);
+
+  // --- dernière preuve, tout en bas
+  const d = await lastProofAt();
+  const pied = el("footer", {
+    "max-width": "600px", margin: "0 auto", padding: "0 32px 56px",
+    "text-align": "center", font: "13px/1.6 " + SANS,
+  });
+  const filet = el("div", { height: "1px", background: LIGNE, margin: "0 0 20px" });
+  pied.appendChild(filet);
+  pied.appendChild(el("p", { margin: "0 0 3px", color: MUTED }, "Dernière preuve créée"));
+  pied.appendChild(el("p", { margin: "0", color: INK },
+    d ? jourMois(d) : "Aucune pour l’instant"));
+  document.body.appendChild(pied);
+
+  // Un retour de lien profond recompose l'accueil : l'état connecté apparaît sans relance.
+  await brancherLiens(async (ok) => { if (ok) await accueil(); });
+}
+
 function fatal(e) {
   document.body.textContent = "";
   put(document.body, { margin: "0", background: PAPER, color: INK,
@@ -556,7 +733,7 @@ function fatal(e) {
 (async () => {
   try {
     // Aucun choix de dossier au démarrage : l'emplacement est proposé au premier document.
-    await panel();
+    await accueil();
   } catch (e) {
     fatal(e);
   }
