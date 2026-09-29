@@ -38,6 +38,12 @@ jobs:
       - name: Install dependencies (NPM)
         run: npm ci
 
+      # Le banc frontend AVANT le build. Vite assemble sans vérifier qu'un identifiant est
+      # défini, et les assets de marque ne sont contrôlés nulle part ailleurs : une release
+      # pouvait partir avec un Creator Shell qui ne démarre pas. Elle ne le peut plus.
+      - name: Frontend benches
+        run: npm run check:frontend
+
       # Décodage de la clé App Store Connect (.p8) vers un fichier temporaire
       # éphémère du runner. Le secret n'est jamais imprimé ; le .p8 n'est jamais committé.
       - name: Prepare Apple API key (macOS only)
@@ -87,8 +93,11 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: "HumanOrigin ${{ github.ref_name }}"
           releaseBody: "Release signed (Developer ID) and notarized."
+          # Brouillon : rien ne devient public sans un geste explicite. Mais plus une
+          # préversion : `releases/latest` les exclut par définition, et l'updater lit
+          # précisément `releases/latest/download/latest.json`.
           releaseDraft: true
-          prerelease: true
+          prerelease: false
 
       # Tauri staple le .app mais pas le .dmg, et tauri-action a déjà uploadé le
       # .dmg non staplé : on notarise + staple le .dmg puis on remplace l'asset.
