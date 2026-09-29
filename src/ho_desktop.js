@@ -59,12 +59,18 @@ const say = (node, text, isError) => {
   put(node, { color: isError ? ERROR_INK : MUTED });
 };
 
-/** L'installation (ou la réparation) est le SEUL moment où HumanOrigin accède au dossier de Word. */
+/**
+ * Installation du complément Word : le SEUL point du frontend qui invoque la commande
+ * native. Deux écrans s'en servent — celui de l'intégration et les Réglages — mais le
+ * mécanisme est un. C'est aussi le SEUL moment où HumanOrigin accède au dossier de Word.
+ */
+const installerWord = () => invoke("ho_word_setup_install");
+
 async function runSetup(box, button, msg) {
   button.disabled = true;
   say(msg, t("setup.word.progress"));
   try {
-    await invoke("ho_word_setup_install");
+    await installerWord();
     await renderWord(box);
   } catch (e) {
     say(msg, String((e && (e.message || e)) || t("setup.word.failed")), true);
@@ -572,6 +578,52 @@ function zoneMessage() {
     "text-align": "center" }, VUE.message || "");
 }
 
+// ---------------------------------------------------------------- 1bis · INTÉGRATION WORD
+/**
+ * INSTALLER LE COMPLÉMENT WORD.
+ *
+ * Sans cet écran, un utilisateur CONNECTÉ dont le complément n'était pas posé retombait sur
+ * l'écran de connexion. Cet écran-là n'a pas de roue crantée, donc pas d'accès aux Réglages,
+ * où vivait le seul bouton d'installation : il fallait déjà avoir le complément pour pouvoir
+ * l'installer. Le même piège attrapait un utilisateur existant dont le manifeste devenait
+ * « outdated » après une mise à jour de l'application.
+ *
+ * Aucun second mécanisme : le bouton appelle `installerWord`, qui est le seul point de tout
+ * le frontend à invoquer `ho_word_setup_install`.
+ */
+async function ecranInstallerWord(ctx) {
+  const aMettreAJour = !!(ctx && ctx.etat === "outdated");
+  const p = page();
+  p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
+  const c = colonne({ padding: "40px 24px 0", "flex-grow": "1" });
+  c.appendChild(medaillon("alerte", "ambre"));
+  c.appendChild(titre(aMettreAJour ? "Mettre à jour l’intégration Word"
+                                   : "Connecter HumanOrigin à Word"));
+  c.appendChild(corps(aMettreAJour
+    ? ["Une nouvelle version de l’intégration est disponible.",
+       "Sans elle, la finalisation peut échouer."]
+    : ["HumanOrigin travaille depuis Word.",
+       "Une seule installation, et vous n’y revenez plus."]));
+
+  const msg = zoneMessage();
+  const b = ctaPrincipal(aMettreAJour ? "Mettre à jour" : "Installer dans Word");
+  b.onclick = async () => {
+    b.disabled = true;
+    say(msg, aMettreAJour ? "Mise à jour…" : "Installation…");
+    try {
+      await installerWord();
+      await router();                     // l'état réel reprend la main : Prêt suit
+    } catch (e) {
+      say(msg, errorText(e, "L’intégration Word n’a pas pu être installée."), true);
+      b.disabled = false;
+    }
+  };
+  c.appendChild(b);
+  c.appendChild(msg);
+  c.appendChild(mention("info", "Relancez Word après l’installation."));
+  p.appendChild(c);
+}
+
 // ---------------------------------------------------------------- 1 · PRÊT
 async function ecranPret(ctx) {
   const p = page("accueil");
@@ -1008,6 +1060,7 @@ async function router(cible) {
       "pret": ecranPret, "continuer": ecranContinuer, "source-modifiee": ecranSourceModifiee,
       "version-prete": ecranVersionPrete, "connexion": ecranConnexion,
       "premiere": ecranPremiere, "reglages": ecranReglages,
+      "installer-word": ecranInstallerWord,
     };
     if (cible.ecran === "pret") return etatCourant();
     return table[cible.ecran]({ doc: VUE.doc });
@@ -1027,9 +1080,13 @@ async function etatCourant() {
     const vierge = !folders.length && !(st && st.state === "installed");
     return vierge ? ecranPremiere({}) : ecranConnexion({});
   }
+  // Connecté mais sans complément posé : on mène à l'installation, jamais à l'écran de
+  // connexion — il n'a pas de roue crantée, et la boucle se refermait là.
   let st = null;
   try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
-  if (!st || st.state !== "installed") return ecranPremiere({});
+  if (!st || st.state !== "installed") {
+    return ecranInstallerWord({ etat: st && st.state });
+  }
 
   // Un document finalisé ouvert dans Word appelle son propre écran.
   let docs = [];
