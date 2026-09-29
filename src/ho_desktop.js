@@ -1030,6 +1030,24 @@ async function rubrique(nom, hote) {
     return;
   }
 
+/**
+ * Causes de dépôt, dites à l'utilisateur. La clé vient du finalizer natif, qui est le seul
+ * à pouvoir l'établir. On ne traduit QUE ce qu'on sait : `deposit_authorization_unavailable`
+ * ne se dit pas « session expirée », parce qu'un trousseau verrouillé ou une réservation
+ * perdue donneraient le même signal.
+ */
+const CAUSES = {
+  deposit_authorization_unavailable:
+    "Autorisation de dépôt introuvable — reconnectez-vous, puis rouvrez le document",
+  folder_not_allowed: "Un dossier surveillé n'est plus accessible",
+  document_read_failed: "Un document n'a pas pu être lu",
+  decrypt_failed: "Les faits d'un document n'ont pas pu être ouverts",
+  scrub_refused: "Un document n'a pas pu être préparé pour sa liaison",
+  registry_rejected: "Le registre a refusé un dépôt",
+  registry_unavailable: "Le registre n'a pas pu être joint",
+  unknown_failure: "Un dépôt a échoué, sans cause identifiée",
+};
+
   // Diagnostic : relecture des contrôles déjà existants, rien de nouveau.
   const bloc = sh("div");
   const peindre = async () => {
@@ -1046,6 +1064,16 @@ async function rubrique(nom, hote) {
     d2.appendChild(carteReglage(pastilleEtat(!!(st && st.state === "installed")),
       st && st.state === "installed" ? "Word répond" : "Word ne répond pas", null, null));
     bloc.appendChild(d2);
+
+    // Dernier incident de dépôt. L'application est la seule à connaître la cause : le volet
+    // Word ne voit que l'absence de preuve au registre, et aucun canal ne les relie.
+    const inc = actif && actif.incident;
+    if (inc && inc.cause) {
+      const d3 = sh("div", { margin: "8px 0 0" });
+      d3.appendChild(carteReglage(pastilleEtat(false), CAUSES[inc.cause] || CAUSES.unknown_failure,
+        inc.document || null, null));
+      bloc.appendChild(d3);
+    }
   };
   hote.appendChild(bloc);
   await peindre();

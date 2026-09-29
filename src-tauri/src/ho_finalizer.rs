@@ -37,6 +37,10 @@ const REGISTRY_URL: &str = match option_env!("HO_REGISTRY_URL") {
 // Débounce : on ne lit pas un fichier que Word vient d'écrire. Ce n'est PAS un délai
 // d'éligibilité — un document reste finalisable des heures ou des jours après sa sauvegarde.
 const SETTLE_MS: u64 = 1200;
+/// Dernier incident de finalisation. Fichier distinct de finalizer_state.json : l'un dit
+/// ce qui est engagé, l'autre ce qui vient d'échouer. On ne mélange pas les deux.
+const INCIDENT_FILE: &str = "finalizer_incident.json";
+const INCIDENT_SCHEMA: &str = "ho-finalizer-incident/1";
 
 // ---------------------------------------------------------------- état
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -194,6 +198,19 @@ fn fichier_entetes(capability: &str) -> Result<(PathBuf, PathBuf), String> {
     writeln!(h, "content-type: application/json").map_err(|e| e.to_string())?;
     h.sync_all().map_err(|e| e.to_string())?;
     Ok((dir, f))
+}
+
+/// Classe une issue de dépôt. Le message d'erreur porte le code HTTP ou une panne de
+/// transport ; seule la CATÉGORIE en ressort.
+fn cause_registre(err: &str) -> &'static str {
+    let code: Option<u16> = err.rsplit(' ').next().and_then(|c| c.parse().ok());
+    match code {
+        Some(c) if (500..600).contains(&c) => "registry_unavailable",
+        Some(c) if (400..500).contains(&c) => "registry_rejected",
+        Some(_) => "unknown_failure",
+        // Pas de code du tout : curl n'a pas pu parler au registre.
+        None => "registry_unavailable",
+    }
 }
 
 fn put_record(registry: &str, record_id: &str, body: &str, capability: &str) -> Result<(), String> {
@@ -449,6 +466,47 @@ impl Finalizer {
             serde_json::to_string_pretty(&*st).unwrap_or_default(),
         );
     }
+    /// DERNIER INCIDENT PERTINENT. Un seul, remplacé à chaque fois : ce n'est pas un
+    /// journal, et rien ne s'y accumule. Il vit à côté du registre local des dépôts,
+    /// jamais dedans : le registre engage des preuves, ce fichier ne dit qu'un état courant.
+    ///
+    /// Ce qu'il contient : une cause TYPÉE et le nom du document. Jamais de capability,
+    /// jamais de corps de réponse du registre, jamais de chemin complet, jamais de code HTTP.
+    fn noter_incident(&self, cause: &'static str, document: &str) {
+        let chemin = self.dir.join(INCIDENT_FILE);
+        // Le balayage repasse toutes les 1,5 s : sans cette garde, un dossier refusé
+        // réécrirait le fichier quarante fois par minute pour n'y rien changer.
+        if let Ok(t) = fs::read_to_string(&chemin) {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&t) {
+                if v["cause"] == cause && v["document"] == document {
+                    return;
+                }
+            }
+        }
+        let _ = fs::write(
+            &chemin,
+            serde_json::json!({
+                "schema": INCIDENT_SCHEMA,
+                "cause": cause,
+                "document": document,
+                "at": now_rfc3339(),
+            })
+            .to_string(),
+        );
+    }
+
+    /// Un dépôt réussi efface l'incident : c'est un état courant, pas une archive.
+    fn oublier_incident(&self) {
+        let _ = fs::remove_file(self.dir.join(INCIDENT_FILE));
+    }
+
+    /// L'incident courant, tel quel, pour l'affichage. Rend `None` s'il n'y en a pas.
+    pub fn incident(&self) -> Option<serde_json::Value> {
+        let v: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(self.dir.join(INCIDENT_FILE)).ok()?).ok()?;
+        if v["schema"] == INCIDENT_SCHEMA { Some(v) } else { None }
+    }
+
     fn already(&self, sig: &str) -> bool {
         self.state.lock().unwrap().done.contains_key(sig)
     }
@@ -491,7 +549,16 @@ impl Finalizer {
         // Stabilité : les octets lus doivent être ceux d'un fichier qui ne bouge pas. On compare
         // taille et date de part et d'autre de la lecture ; sinon on réessaiera au prochain tour.
         let before = fs::metadata(path).ok()?;
-        let bytes = fs::read(path).ok()?;
+        let bytes = match fs::read(path) {
+            Ok(b) => b,
+            // Les métadonnées viennent d'être lues : un échec ici n'est plus une course
+            // bénigne avec Word, c'est un document qu'on ne peut pas ouvrir.
+            Err(_) => {
+                let n = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                self.noter_incident("document_read_failed", &n);
+                return None;
+            }
+        };
         let after = fs::metadata(path).ok()?;
         if before.len() != after.len()
             || before.len() != bytes.len() as u64
@@ -507,9 +574,19 @@ impl Finalizer {
         // Sans capability, aucune publication : le dépôt anonyme n'existe plus. On s'arrête
         // avant tout travail coûteux, et le document sera repris au prochain passage si la
         // capability réapparaît — par exemple après une ré-émission.
-        let capability = crate::ho_capability::lire(&m.record_id)?;
+        let nom_doc = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let capability = match crate::ho_capability::lire(&m.record_id) {
+            Some(c) => c,
+            // Le trousseau ne porte pas d'autorisation pour ce Record. On ne prétend PAS
+            // savoir pourquoi : une session expirée, une réservation perdue et un trousseau
+            // verrouillé se ressemblent ici, et rien ne permet de les distinguer.
+            None => { self.noter_incident("deposit_authorization_unavailable", &nom_doc); return None; }
+        };
 
-        let facts = decrypt_facts(&m.facts_blob, &m.key, &m.record_id)?;
+        let facts = match decrypt_facts(&m.facts_blob, &m.key, &m.record_id) {
+            Some(f) => f,
+            None => { self.noter_incident("decrypt_failed", &nom_doc); return None; }
+        };
         let (facts_arr, periods) = split_facts(&facts);
 
         // Le document envoyé ne doit pas dépendre du complément Office : la référence HumanOrigin,
@@ -519,6 +596,7 @@ impl Finalizer {
         {
             use crate::ho_docx_scrub::{scrub_file_atomic, HUMANORIGIN_ADDIN_IDS};
             if !binding_allowed(&scrub_file_atomic(path, &bytes, &after, HUMANORIGIN_ADDIN_IDS)) {
+                self.noter_incident("scrub_refused", &nom_doc);
                 return None;
             }
         }
@@ -587,9 +665,16 @@ impl Finalizer {
                 // Le lineage a rempli son office : il est DANS la preuve, définitivement.
                 // Le garder sur disque n'ajouterait rien et laisserait traîner un état.
                 crate::ho_version::oublier_sidecar(&self.dir, &m.record_id);
+                // L'état courant redevient sain.
+                self.oublier_incident();
                 Some(m.record_id)
             }
-            Err(_) => None, // registre indisponible : on retentera au prochain passage
+            Err(e) => {
+                // Le code HTTP sert à CLASSER, et ne sort pas d'ici : l'interface ne montre
+                // qu'une cause typée. On retentera de toute façon au prochain passage.
+                self.noter_incident(cause_registre(&e), &nom_doc);
+                None
+            }
         }
     }
 
@@ -692,13 +777,22 @@ impl Finalizer {
         for folder in cfg.folders.iter() {
             // Un dossier situé dans le conteneur d'une application n'est jamais lu : macOS
             // redemanderait l'autorisation à chaque lancement.
+            let dir = PathBuf::from(folder);
+            // Le nom du dossier suffit à se repérer : aucun chemin complet ne sort d'ici.
+            let nom_dossier = dir
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
             if forbidden_work_folder(folder).is_some() {
+                self.noter_incident("folder_not_allowed", &nom_dossier);
                 continue;
             }
-            let dir = PathBuf::from(folder);
             let entries = match fs::read_dir(&dir) {
                 Ok(e) => e,
-                Err(_) => continue, // dossier non autorisé ou absent : on passe
+                Err(_) => {
+                    self.noter_incident("folder_not_allowed", &nom_dossier);
+                    continue;
+                }
             };
             for e in entries.flatten() {
                 let p = e.path();
@@ -712,6 +806,152 @@ impl Finalizer {
             }
         }
         done
+    }
+}
+
+#[cfg(test)]
+mod incident_tests {
+    use super::*;
+
+    /// Pose dans le paquet les deux propriétés que le volet Word écrit à la finalisation.
+    /// Test uniquement : rien de ceci n'existe dans le produit.
+    fn ajoute_marqueur(docx: &[u8], locator: &str) -> Vec<u8> {
+        use std::io::{Read as _, Write as _};
+        let mut z = zip::ZipArchive::new(std::io::Cursor::new(docx.to_vec())).unwrap();
+        let mut sortie = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let opts =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for i in 0..z.len() {
+            let mut e = z.by_index(i).unwrap();
+            let nom = e.name().to_string();
+            let mut buf = Vec::new();
+            e.read_to_end(&mut buf).unwrap();
+            if nom == "docProps/custom.xml" {
+                let t = String::from_utf8_lossy(&buf).to_string();
+                let ajout = format!(
+                    "<property fmtid=\"{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}\" pid=\"90\" \
+                     name=\"HOLocator\"><vt:lpwstr>{}</vt:lpwstr></property>\
+                     <property fmtid=\"{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}\" pid=\"91\" \
+                     name=\"HOFacts\"><vt:lpwstr>blob</vt:lpwstr></property></Properties>",
+                    locator);
+                buf = t.replace("</Properties>", &ajout).into_bytes();
+            }
+            sortie.start_file(nom, opts).unwrap();
+            sortie.write_all(&buf).unwrap();
+        }
+        sortie.finish().unwrap().into_inner()
+    }
+
+    fn bac() -> PathBuf {
+        let d = std::env::temp_dir().join(format!("ho-inc-{}", std::process::id()))
+            .join(format!("{:?}", std::time::SystemTime::now()));
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// Le code HTTP sert à classer, et ne ressort jamais tel quel.
+    #[test]
+    fn le_registre_est_classe_sans_divulguer_le_code() {
+        assert_eq!(cause_registre("registre : 401"), "registry_rejected");
+        assert_eq!(cause_registre("registre : 403"), "registry_rejected");
+        assert_eq!(cause_registre("registre : 500"), "registry_unavailable");
+        assert_eq!(cause_registre("registre : 503"), "registry_unavailable");
+        // Aucun code : curl n'a pas pu parler au registre.
+        assert_eq!(cause_registre("Connection refused"), "registry_unavailable");
+        assert_eq!(cause_registre("registre : 000"), "unknown_failure");
+    }
+
+    #[test]
+    fn l_incident_se_note_se_lit_et_s_efface() {
+        let f = Finalizer::new(bac());
+        assert!(f.incident().is_none(), "aucun incident au départ");
+        f.noter_incident("registry_unavailable", "Rapport.docx");
+        let v = f.incident().expect("incident lu");
+        assert_eq!(v["cause"], "registry_unavailable");
+        assert_eq!(v["document"], "Rapport.docx");
+        assert_eq!(v["schema"], INCIDENT_SCHEMA);
+        f.oublier_incident();
+        assert!(f.incident().is_none(), "un dépôt réussi efface l'incident");
+    }
+
+    /// Le balayage repasse toutes les 1,5 s : la même cause ne doit pas réécrire le fichier.
+    #[test]
+    fn la_meme_cause_ne_reecrit_pas_le_fichier() {
+        let f = Finalizer::new(bac());
+        f.noter_incident("folder_not_allowed", "Bureau");
+        let t1 = f.incident().unwrap()["at"].clone();
+        std::thread::sleep(Duration::from_millis(20));
+        f.noter_incident("folder_not_allowed", "Bureau");
+        assert_eq!(f.incident().unwrap()["at"], t1, "horodatage inchangé");
+        f.noter_incident("registry_rejected", "Bureau");
+        assert_ne!(f.incident().unwrap()["at"], t1, "une cause différente remplace");
+    }
+
+    /// Un seul incident vit à la fois : ce n'est pas un journal.
+    #[test]
+    fn un_seul_incident_a_la_fois() {
+        let f = Finalizer::new(bac());
+        for c in ["decrypt_failed", "scrub_refused", "document_read_failed"] {
+            f.noter_incident(c, "A.docx");
+        }
+        assert_eq!(f.incident().unwrap()["cause"], "document_read_failed");
+        let brut = fs::read_to_string(f.dir.join(INCIDENT_FILE)).unwrap();
+        assert!(!brut.contains("decrypt_failed"), "rien ne s'accumule");
+    }
+
+    /// CAPABILITY ABSENTE, de bout en bout. Un document réel, dans un dossier réel, sans
+    /// aucune entrée au trousseau : le finalizer doit s'arrêter AVANT tout travail coûteux
+    /// et nommer la cause. Rien de l'environnement de l'utilisateur n'est touché.
+    #[test]
+    fn capability_absente_donne_la_cause_exacte() {
+        let base = bac();
+        let dossier = base.join("travail");
+        fs::create_dir_all(&dossier).unwrap();
+
+        // Un identifiant qui n'existe dans aucun trousseau.
+        let rid = format!("HO-ABSENT{}", std::process::id() % 100000);
+        let docx = crate::ho_word_setup::bootstrap_docx(
+            &[dossier.to_string_lossy().to_string()], &rid).unwrap();
+
+        // On y pose le marqueur que le volet écrirait à la finalisation.
+        let cle = [3u8; 32];
+        let locator = format!("ho1.{}.{}", rid, b64u(&cle));
+        let chemin = dossier.join("Document.docx");
+        fs::write(&chemin, ajoute_marqueur(&docx, &locator)).unwrap();
+        // Le fichier doit être immobile depuis SETTLE_MS.
+        std::thread::sleep(Duration::from_millis(SETTLE_MS + 200));
+
+        let f = Finalizer::new(base.clone());
+        f.set_config(&FinalizerConfig {
+            folders: vec![dossier.to_string_lossy().to_string()],
+            registry: None,
+        }).unwrap();
+
+        assert!(f.incident().is_none(), "aucun incident avant le balayage");
+        let deposes = f.scan_once();
+        assert!(deposes.is_empty(), "rien n'a pu etre depose");
+
+        let v = f.incident().expect("une cause est notee");
+        assert_eq!(v["cause"], "deposit_authorization_unavailable");
+        assert_eq!(v["document"], "Document.docx");
+        let brut = fs::read_to_string(base.join(INCIDENT_FILE)).unwrap();
+        assert!(!brut.contains(&rid), "l'identifiant du Record ne sort pas");
+        assert!(!brut.contains(&dossier.to_string_lossy().to_string()),
+            "aucun chemin complet ne sort");
+    }
+
+    /// Le fichier ne porte que ce qu'on a décidé d'y mettre.
+    #[test]
+    fn rien_de_sensible_dans_le_fichier() {
+        let f = Finalizer::new(bac());
+        f.noter_incident("deposit_authorization_unavailable", "Note.docx");
+        let brut = fs::read_to_string(f.dir.join(INCIDENT_FILE)).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&brut).unwrap();
+        let cles: Vec<&str> = v.as_object().unwrap().keys().map(|s| s.as_str()).collect();
+        assert_eq!(cles.len(), 4, "schema, cause, document, at — et rien d'autre : {:?}", cles);
+        for interdit in ["capability", "Bearer", "/Users/", "record_id", "http"] {
+            assert!(!brut.contains(interdit), "« {} » n'a rien à faire ici", interdit);
+        }
     }
 }
 
@@ -758,12 +998,16 @@ mod tests {
         // 4 -> 5. L'URL du dépôt est bâtie sur ce même identifiant. Contrôle de SOURCE :
         // l'envoi réel exige le réseau, mais la construction de l'URL et l'argument passé
         // au point d'appel sont vérifiables ici.
-        let src = include_str!("ho_finalizer.rs");
+        // `include_str!` inclut AUSSI ce fichier de test : un motif qui figure dans
+        // l'assertion elle-même s'y trouve toujours, et le contrôle ne peut plus
+        // échouer. On ne regarde donc que le code, avant les modules de test.
+        let entier = include_str!("ho_finalizer.rs");
+        let src = &entier[..entier.find("\n#[cfg(test)]\nmod ").unwrap_or(entier.len())];
         assert!(src.contains("let url = format!(\"{}/r/{}\", registry.trim_end_matches('/'), record_id);"),
             "l'URL est batie sur le record_id recu");
         assert!(src.contains("match put_record(registry, &m.record_id, &record, &capability)"),
             "le point d'appel passe l'identifiant du marqueur, et pas un autre");
-        assert!(src.contains("let capability = crate::ho_capability::lire(&m.record_id)?;"),
+        assert!(src.contains("crate::ho_capability::lire(&m.record_id)"),
             "la capability est lue sous ce meme identifiant, avant tout travail");
     }
 

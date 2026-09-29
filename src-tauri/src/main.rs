@@ -2049,8 +2049,15 @@ fn ho_finalizer_set_folders(folders: Vec<String>, registry: Option<String>) -> R
 
 #[tauri::command]
 fn ho_finalizer_status() -> serde_json::Value {
-    let cfg = ho_finalizer::Finalizer::new(ho_finalizer_dir()).config();
-    serde_json::json!({ "folders": cfg.folders.len(), "active": !cfg.folders.is_empty() })
+    let f = ho_finalizer::Finalizer::new(ho_finalizer_dir());
+    let cfg = f.config();
+    // `incident` porte une cause TYPÉE et un nom de document. Jamais de capability, jamais
+    // de corps de réponse du registre, jamais de chemin complet, jamais de code HTTP.
+    serde_json::json!({
+        "folders": cfg.folders.len(),
+        "active": !cfg.folders.is_empty(),
+        "incident": f.incident(),
+    })
 }
 
 #[tauri::command]
