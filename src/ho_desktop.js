@@ -90,9 +90,10 @@ async function createDocument(button, msg, folder, proposalBox) {
     // Purement CSS : Word s'ouvre sans attendre quoi que ce soit.
     jouerDepot();
     if (proposalBox) proposalBox.textContent = "";
+    // Aucun chemin système : ce n'est jamais un concept d'interface ici.
     say(msg, r.opened_in_word
-      ? `« ${r.name} » a été créé dans ${r.folder} et s’ouvre dans Word.`
-      : `« ${r.name} » a été créé dans ${r.folder}. Ouvrez-le dans Word.`);
+      ? "Document créé et ouvert dans Word."
+      : "Document créé. Ouvrez-le dans Word.");
     await refreshFolderList();
   } catch (e) {
     say(msg, errorText(e, t("document.failed")), true);
