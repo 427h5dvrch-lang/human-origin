@@ -148,6 +148,17 @@ export const pastilleWord = (taille) => el("span", {
 }, "W");
 
 // ---------------------------------------------------------------- marque
+// Bornes du « O » dans le master 850 × 150, mesurées sur le fichier lui-même :
+// x 446 → 576, y 0 → 137. Le rectangle ne contient QUE l'empreinte — l'encre des colonnes
+// voisines plafonne à 9/255, et à 5/255 sous elle. Rien du « n » ni du « r » n'y entre.
+const O_GAUCHE = "52.470588%";     // 446 / 850
+const O_DROITE = "67.764706%";     // 576 / 850
+const O_CENTRE = "60.117647% 45.666667%";   // centre optique du O, origine de l'impulsion
+const MASQUE_MOT = "linear-gradient(to right, #000 0 " + O_GAUCHE + ", transparent "
+  + O_GAUCHE + " " + O_DROITE + ", #000 " + O_DROITE + " 100%)";
+const MASQUE_O = "linear-gradient(to right, transparent 0 " + O_GAUCHE + ", #000 "
+  + O_GAUCHE + " " + O_DROITE + ", transparent " + O_DROITE + " 100%)";
+
 /**
  * MARQUE HUMANORIGIN — POINT UNIQUE.
  *
@@ -157,14 +168,55 @@ export const pastilleWord = (taille) => el("span", {
  * « HumanOrigin » écrit dans une police. Le sceau rond du marquage Record n'est pas un logo
  * d'application. Seule la HAUTEUR varie ici ; la largeur suit le ratio exact de l'asset.
  *
+ * Deux calques du MÊME fichier, à la MÊME échelle : le mot privé de son O, puis le O seul.
+ * Le rééchantillonnage est donc identique par construction, et le composite est pixel pour
+ * pixel le raster intact — mesuré à 0/255 d'écart. Reposer le master empreinte, lui,
+ * déviait de 97 à 176/255 : deux grilles de départ différentes, donc deux antialiasings.
+ *
  * `sombre` ne sert qu'aux fonds sombres, où l'encre marine ne tiendrait pas.
  */
 export function HumanOriginBrandMark(taille, sombre) {
-  const i = document.createElement("img");
-  i.src = sombre ? MOT_SYMBOLE_BLANC : MOT_SYMBOLE_MARINE;
-  i.alt = "HumanOrigin";
-  put(i, { height: taille + "px", width: "auto", display: "block", "flex-shrink": "0" });
-  return i;
+  const src = sombre ? MOT_SYMBOLE_BLANC : MOT_SYMBOLE_MARINE;
+  const m = document.createElement("span");
+  m.className = "ho-marque";
+  put(m, { position: "relative", display: "inline-block", "vertical-align": "top",
+    "line-height": "0", "flex-shrink": "0" });
+
+  const mot = document.createElement("img");
+  mot.src = src;
+  mot.alt = "HumanOrigin";
+  put(mot, { height: taille + "px", width: "auto", display: "block",
+    "-webkit-mask-image": MASQUE_MOT, "mask-image": MASQUE_MOT });
+
+  // Le O. Il ne porte AUCUN style d'animation en ligne : `put` écrit en `!important` et
+  // empêcherait toute règle de la feuille de style d'agir.
+  const o = document.createElement("img");
+  o.src = src;
+  o.alt = "";
+  o.setAttribute("aria-hidden", "true");
+  o.className = "ho-o";
+  put(o, { position: "absolute", left: "0", top: "0", height: taille + "px", width: "auto",
+    display: "block", "transform-origin": O_CENTRE,
+    "-webkit-mask-image": MASQUE_O, "mask-image": MASQUE_O });
+
+  m.appendChild(mot);
+  m.appendChild(o);
+  return m;
+}
+
+/**
+ * DÉPÔT — le passage de « rien » à « document HumanOrigin prêt ».
+ *
+ * Joué une fois, au succès réel de la création, et jamais rejoué au retour de focus :
+ * personne ne l'appelle ailleurs. Purement CSS, donc rien n'attend : l'ouverture de Word
+ * n'est pas retardée d'une milliseconde.
+ */
+export function jouerDepot() {
+  const o = document.querySelector(".ho-marque .ho-o");
+  if (!o) return;
+  o.classList.remove("ho-depot");
+  void o.offsetWidth;                      // force le recalcul : l'animation repart de zéro
+  o.classList.add("ho-depot");
 }
 
 // ---------------------------------------------------------------- fond

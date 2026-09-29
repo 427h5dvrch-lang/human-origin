@@ -13,7 +13,7 @@ import { reserveRecordId, supabase } from "./ho_reserve.js";
 import { listen } from "@tauri-apps/api/event";
 import {
   PAPIER, CARTE, MARINE, ENCRE, ATONE, LIGNE, SERIF, SANS, COLONNE, ICONES,
-  HumanOriginBrandMark, entete, colonne, medaillon, titre, sousTitre, corps,
+  HumanOriginBrandMark, jouerDepot, entete, colonne, medaillon, titre, sousTitre, corps,
   ctaPrincipal, ctaSecondaire, ctaWord, pilule, carteEtat, mention, page, pastilleWord,
   el as sh,
 } from "./ho_shell.js";
@@ -86,6 +86,9 @@ async function createDocument(button, msg, folder, proposalBox) {
     // aucun document HumanOrigin n'est créé. Le jeton de session reste côté frontend.
     const { record_id, capability } = await reserveRecordId();
     const r = await invoke("ho_new_document", { folder, recordId: record_id, capability });
+    // Dépôt : le document existe et porte son identité. La marque le dit, une fois.
+    // Purement CSS : Word s'ouvre sans attendre quoi que ce soit.
+    jouerDepot();
     if (proposalBox) proposalBox.textContent = "";
     say(msg, r.opened_in_word
       ? `« ${r.name} » a été créé dans ${r.folder} et s’ouvre dans Word.`

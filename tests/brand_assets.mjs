@@ -115,15 +115,50 @@ for (const f of modules) {
     suspects.length ? suspects.length + " passage(s)" : "");
 }
 
-console.log("\n-- seule la taille varie --");
+console.log("\n-- seule la taille varie, et le composite vaut le raster intact --");
 {
   const d = shell.indexOf("function HumanOriginBrandMark(");
   const corps = shell.slice(d, shell.indexOf("\n}", d));
-  ck("hauteur paramétrée", /height: taille/.test(corps));
-  ck("largeur laissée au ratio de l'asset", /width: "auto"/.test(corps));
-  for (const interdit of ["filter", "border-radius", "clip-path", "background", "transform"]) {
-    ck("aucune retouche « " + interdit + " »", !new RegExp(interdit).test(corps));
+  ck("hauteur paramétrée sur les deux calques",
+    (corps.match(/height: taille/g) || []).length === 2);
+  ck("largeur laissée au ratio de l'asset",
+    (corps.match(/width: "auto"/g) || []).length === 2);
+  // `transform-origin` ne déforme rien : il nomme le pivot de l'impulsion. C'est
+  // `transform:` qui serait une retouche du raster.
+  for (const interdit of ["filter", "border-radius", "clip-path", "background", "transform:"]) {
+    ck("aucune retouche « " + interdit + " »", !corps.includes(interdit));
   }
+  ck("aucune opacité posée en ligne", !/opacity/.test(corps),
+    "put() écrit en !important et bloquerait l'animation");
+  ck("deux calques", (corps.match(/document\.createElement\("img"\)/g) || []).length === 2);
+  ck("les deux calques sont le MÊME fichier",
+    (corps.match(/\.src = src;/g) || []).length === 2 && /const src = sombre \?/.test(corps));
+  ck("bornes du O mesurées sur le master",
+    shell.includes('O_GAUCHE = "52.470588%"') && shell.includes('O_DROITE = "67.764706%"'));
+  ck("origine de l'impulsion au centre optique",
+    shell.includes('O_CENTRE = "60.117647% 45.666667%"'));
+  ck("le mot est privé de son O, le O seul est reposé",
+    shell.includes('MASQUE_MOT = "linear-gradient(to right, #000 0 "')
+    && shell.includes('MASQUE_O = "linear-gradient(to right, transparent 0 "'));
+}
+
+console.log("\n-- le Dépôt se joue une fois, au succès réel --");
+{
+  ck("un seul point de déclenchement", (ecrans.match(/jouerDepot\(\)/g) || []).length === 1);
+  const i = ecrans.indexOf("jouerDepot()");
+  const j = ecrans.indexOf('invoke("ho_new_document"');
+  ck("après la réussite de ho_new_document", j > 0 && i > j);
+  ck("jamais sur un retour de focus",
+    !/(visibilitychange|"focus")[\s\S]{0,200}jouerDepot/.test(ecrans));
+  ck("l'animation est du CSS, pas du JS",
+    !/requestAnimationFrame|\.animate\(/.test(shell + ecrans));
+  const html = fs.readFileSync(path.join(ici, "../index.html"), "utf8");
+  ck("les images-clés sont dans la feuille de l'application", /@keyframes ho-depot/.test(html));
+  ck("le O ne grandit jamais au-delà de sa place",
+    !/@keyframes ho-depot[\s\S]*?scale\(1\.\d/.test(html));
+  ck("prefers-reduced-motion neutralise tout",
+    /@media \(prefers-reduced-motion: reduce\)/.test(html)
+    && /animation: none !important/.test(html));
 }
 
 console.log(`\n  ${ok} réussis · ${ko} échoués  =>  BRAND_ASSETS = ${ko === 0 ? "PASS" : "FAIL"}\n`);

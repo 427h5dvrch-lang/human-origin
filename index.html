@@ -7,6 +7,25 @@
 <style>
   :root { color-scheme: light; }
   html, body { margin: 0; background: #FBFAF7; color: #1A1E24; }
+
+  /* DÉPÔT — la seule animation de l'application.
+     Le O du mot-symbole se dépose : il descend de 5 px, prend son encre et sa taille.
+     Le mot, lui, ne bouge pas. Jouée une fois, au succès réel de la création.
+     Les styles structurels de la marque sont posés en ligne par `HumanOriginBrandMark` ;
+     ici on ne touche QUE ce qui s'anime, pour que rien n'entre en conflit. */
+  @keyframes ho-depot {
+    from { opacity: .3; transform: translateY(-5px) scale(.97); }
+    to   { opacity: 1;  transform: translateY(0)    scale(1); }
+  }
+  .ho-marque .ho-o.ho-depot {
+    animation: ho-depot 380ms cubic-bezier(.16, 1, .3, 1) 1 both;
+  }
+
+  /* Mouvement réduit : rien ne bouge, la marque est pleine et immobile d'emblée.
+     Le sens ne tient à aucun mouvement — il est dans le texte de l'écran. */
+  @media (prefers-reduced-motion: reduce) {
+    .ho-marque .ho-o { animation: none !important; opacity: 1 !important; transform: none !important; }
+  }
 </style>
 </head>
 <body>
