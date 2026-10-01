@@ -1,0 +1,91 @@
+name: Pack de qualification — controle
+
+# Execute pour de vrai le script de collecte sur un Windows propre. Il ne trouvera ni
+# Word ni HumanOrigin : c'est l'interet, toutes les branches « absent » sont parcourues,
+# et une erreur de syntaxe ou d'execution apparait ici plutot que chez le testeur.
+#
+# Ce workflow ne touche a rien de la chaine de release. Il ne construit pas, ne publie pas.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [windows-private-beta-v1]
+    paths: ['docs/windows/pack_qualification/**', '.github/workflows/pack-qualification-check.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  controle:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Analyse syntaxique
+        shell: pwsh
+        run: |
+          $f = "docs/windows/pack_qualification/collecte_logs.ps1"
+          $erreurs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile($f, [ref]$null, [ref]$erreurs) | Out-Null
+          if ($erreurs -and $erreurs.Count -gt 0) {
+            $erreurs | ForEach-Object { Write-Host "$($_.Extent.StartLineNumber): $($_.Message)" }
+            throw "$($erreurs.Count) erreur(s) de syntaxe"
+          }
+          Write-Host "Syntaxe valide."
+
+      - name: Execution reelle sur machine vierge
+        shell: pwsh
+        working-directory: docs/windows/pack_qualification
+        run: |
+          .\collecte_logs.ps1 -Etape avant
+          $d = Get-ChildItem -Directory -Filter "HO_Qualification_*" | Select-Object -First 1
+          if (-not $d) { throw "Aucun dossier de collecte produit." }
+          Write-Host "--- fichiers produits ---"
+          Get-ChildItem $d.FullName | Select-Object Name, Length | Format-Table -AutoSize
+          # Le controle de caviardage doit avoir conclu, et conclu favorablement.
+          if (Test-Path (Join-Path $d.FullName 'ALERTE_CAVIARDAGE.txt')) {
+            Get-Content (Join-Path $d.FullName 'ALERTE_CAVIARDAGE.txt')
+            throw "Le controle de caviardage a signale des traces suspectes."
+          }
+          if (!(Test-Path (Join-Path $d.FullName 'caviardage_verifie.txt'))) {
+            throw "Le controle de caviardage ne s'est pas execute."
+          }
+          Write-Host "Controle de caviardage : passe."
+
+      - name: Le filtre caviarde vraiment
+        shell: pwsh
+        working-directory: docs/windows/pack_qualification
+        run: |
+          # On injecte des secrets plausibles dans un fichier, on applique le filtre du
+          # script, et on exige qu'il ne reste rien. Un filtre jamais mis a l'epreuve ne
+          # protege personne.
+          $src = Get-Content .\collecte_logs.ps1 -Raw
+          $debut = $src.IndexOf('$motifs = @(')
+          $fin = $src.IndexOf('function Ecris')
+          Invoke-Expression $src.Substring($debut, $fin - $debut)
+
+          $cas = @(
+            'authorization: Bearer eyJhbGciOiJIUzI1NiJ9.charge.signature',
+            'https://verify.humanorigin.io/?record=HO-Abc123#k=ZmFrZWtleQ',
+            '"capability": "cap_9f2bd61ae8c4517d0b3e"',
+            'contact: quelquun@humanorigin.io'
+          )
+          foreach ($c in $cas) {
+            $r = Protege $c
+            Write-Host "  $r"
+            if ($r -match '(?i)bearer\s+[A-Za-z0-9]') { throw "porteur non caviarde : $r" }
+            if ($r -match '#k=[A-Za-z0-9]')           { throw "cle de fragment non caviardee : $r" }
+            if ($r -match 'cap_9f2bd61')              { throw "capability non caviardee : $r" }
+            if ($r -match '@humanorigin\.io')         { throw "adresse non caviardee : $r" }
+          }
+
+          # Controle negatif : ce qui doit rester lisible doit l'etre.
+          $utile = 'SHA256 : EB161389C5683EF7357BCD2D49C62427BD1657B2FD96AF2DEDDD5B09F05C1255'
+          if ((Protege $utile) -ne $utile) { throw "le filtre detruit une empreinte SHA-256" }
+          Write-Host "Filtre verifie : caviarde les secrets, preserve le diagnostic."
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exemple-collecte
+          retention-days: 7
+          path: docs/windows/pack_qualification/HO_Qualification_*/**
