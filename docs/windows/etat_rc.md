@@ -21,6 +21,32 @@ Dernière mise à jour : 2026-10-01. Branche `windows-private-beta-v1`.
 | WebView2 | géré | `downloadBootstrapper` — installé à la volée si absent |
 | Updater | **branché** | Windows ajouté à la matrice de release : sans cela `latest.json` n'annonce que darwin |
 
+## L'installateur produit
+
+Build vert du 2026-10-01, workflow « Windows RC », commit `db2a7d8`.
+
+| | |
+|---|---|
+| Fichier | `HumanOrigin_0.3.1_x64-setup.exe` |
+| Taille | 7 265 664 octets (6,93 Mo) |
+| SHA-256 | `eb161389c5683ef7357bcd2d49c62427bd1657b2fd96af2deddd5b09f05c1255` |
+| Signature updater | `HumanOrigin_0.3.1_x64-setup.nsis.zip.sig` produite |
+| Artefact CI | `humanorigin-windows-rc`, conservé 14 jours |
+
+Contenu vérifié en ouvrant l'installateur, pas en le supposant :
+
+| Fichier empaqueté | Taille |
+|---|---|
+| `HumanOrigin.exe` | 10 904 064 |
+| `pdfium.dll` | 5 802 496 |
+| `humanorigin-publisher.exe` | 6 872 576 |
+| `humanorigin-converter.exe` | 283 136 |
+| `uninstall.exe` | présent |
+
+Les quatre premiers sont déposés au même niveau : `pdfium.dll` se retrouve donc bien à
+côté de l'exécutable, là où le code la cherche. L'empreinte téléchargée depuis GitHub
+correspond exactement à celle calculée par la CI.
+
 ## Ce qui n'est pas vérifié, et pourquoi
 
 **Aucun environnement Windows n'était disponible.** La VM Parallels enregistrée sur la
