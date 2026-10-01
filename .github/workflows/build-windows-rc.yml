@@ -50,8 +50,25 @@ jobs:
       - name: Dépendances frontend
         run: npm ci
 
-      - name: Bancs frontend
-        run: npm run check:frontend
+      # Les deux bancs separement : un echec doit nommer lequel, et les fins de ligne
+      # doivent etre verifiees avant de soupconner le code.
+      - name: Fins de ligne preservees au checkout
+        shell: pwsh
+        run: |
+          $f = "src/ho_shell.js"
+          $octets = [System.IO.File]::ReadAllBytes($f)
+          $crlf = 0
+          for ($i = 0; $i -lt $octets.Length - 1; $i++) {
+            if ($octets[$i] -eq 13 -and $octets[$i+1] -eq 10) { $crlf++ }
+          }
+          Write-Host "$f : $crlf sequences CRLF"
+          if ($crlf -gt 0) { throw "Le checkout a converti les fins de ligne : les bancs de source ne peuvent plus passer." }
+
+      - name: Banc des symboles frontend
+        run: node tests/frontend_symbols.mjs
+
+      - name: Banc des actifs de marque
+        run: node tests/brand_assets.mjs
 
       - name: Bancs Rust
         run: cargo test --manifest-path src-tauri/Cargo.toml --bin human-origin
