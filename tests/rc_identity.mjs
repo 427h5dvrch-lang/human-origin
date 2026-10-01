@@ -5,8 +5,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ici = path.dirname(new URL(import.meta.url).pathname);
+const ici = path.dirname(fileURLToPath(import.meta.url));
 const R = (f) => fs.readFileSync(path.join(ici, "..", f), "utf8");
 // Le dépôt web vit ailleurs ; chemin surchargeable, et le banc se déclare ignoré s'il manque.
 const WEB = [process.env.HO_WEB_DIR, "/private/tmp/rwa",

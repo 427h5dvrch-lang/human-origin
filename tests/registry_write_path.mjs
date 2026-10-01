@@ -1,7 +1,8 @@
 // Chemin complet, local : reserve -> capability -> HOReservedId -> Word -> finalizer -> Registry.
 import path from "node:path"; import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 // Chemins surchargeables : le registre vit dans un autre dépôt.
-const APP = process.env.HO_APP_DIR || path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const APP = process.env.HO_APP_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REG_CANDIDATS = [process.env.HO_REGISTRY_DIR, "/tmp/rwa/registry",
   path.join(process.env.HOME, "Developer/HO_FIRSTRUN_RC/humanorigin-web-consultation/registry")].filter(Boolean);
 

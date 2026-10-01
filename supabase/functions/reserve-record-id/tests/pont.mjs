@@ -12,8 +12,9 @@
 
 import path from "node:path";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const ici = path.dirname(new URL(import.meta.url).pathname);
+const ici = path.dirname(fileURLToPath(import.meta.url));
 const RACINE = path.join(ici, "../../../..");
 const MIG = fs.readFileSync(path.join(RACINE,
   "supabase/migrations/20260921000000_bridge_registry_write_reservation.sql"), "utf8");

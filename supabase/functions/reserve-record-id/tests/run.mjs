@@ -1,7 +1,8 @@
 // Banc RESERVE-RECORD-ID. Dépendances simulées, aucun réseau, aucune base.
 // La paire Ed25519 est générée EN MÉMOIRE : aucun matériel privé dans le dépôt.
 import path from "node:path";
-const ici = path.dirname(new URL(import.meta.url).pathname);
+import { fileURLToPath } from "node:url";
+const ici = path.dirname(fileURLToPath(import.meta.url));
 const { traiter } = await import(path.join(ici, "../handler.ts"));
 const P = await import(path.join(ici, "../protocol.ts"));
 // Le vérificateur du registre vit dans un autre dépôt. Chemin surchargeable, et le banc

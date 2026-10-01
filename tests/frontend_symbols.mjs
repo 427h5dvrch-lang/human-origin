@@ -12,8 +12,9 @@
 //
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ici = path.dirname(new URL(import.meta.url).pathname);
+const ici = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.join(ici, "../src");
 const MODULES = ["ho_desktop.js", "ho_ui.js", "ho_i18n.js", "ho_reserve.js", "ho_onboarding.js"]
   .filter((f) => fs.existsSync(path.join(SRC, f)));
