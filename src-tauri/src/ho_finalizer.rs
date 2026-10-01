@@ -957,6 +957,71 @@ mod incident_tests {
 
 #[cfg(test)]
 mod tests {
+
+    // ---------------------------------------------------------- extraction de la source
+    // Plusieurs contrôles portent sur le CODE, faute de pouvoir provoquer la condition
+    // (réseau, refus distant). Ils n'ont de valeur que s'ils peuvent échouer : d'où ces
+    // extracteurs, eux-mêmes sous test.
+
+    /// Source du module, modules de test EXCLUS.
+    ///
+    /// `include_str!` inclut AUSSI les bancs. Deux conséquences, toutes deux vues en vrai :
+    /// un motif présent dans une assertion s'y trouve toujours, et l'assertion ne peut plus
+    /// échouer ; et si le code produit cesse de porter le motif, `find` se rabat
+    /// silencieusement sur une occurrence située dans un banc au lieu d'échouer. Tout le
+    /// code produit précède le premier module de test, d'où la coupe.
+    fn code_produit() -> &'static str {
+        const ENTIER: &str = include_str!("ho_finalizer.rs");
+        let i = ENTIER.find("\n#[cfg(test)]\nmod ").expect("au moins un module de test");
+        &ENTIER[..i]
+    }
+
+    /// Corps d'une fonction, de sa signature à l'accolade fermante en colonne zéro.
+    ///
+    /// Remplace les fenêtres de N octets : une borne arbitraire laisse passer ce qui tombe
+    /// au-delà et affaiblit donc toute assertion négative. `find` rend des indices sur
+    /// frontières de caractères, la découpe ne peut pas paniquer sur un accent.
+    fn fonction(src: &'static str, signature: &str) -> &'static str {
+        let i = src.find(signature)
+            .unwrap_or_else(|| panic!("signature absente : {}", signature));
+        let reste = &src[i..];
+        let j = reste.find("\n}")
+            .unwrap_or_else(|| panic!("fin de fonction absente : {}", signature));
+        &reste[..j + 2]
+    }
+
+    /// Mêmes lignes, commentaires retirés : un commentaire peut nommer ce que le CODE ne
+    /// doit pas porter.
+    fn sans_commentaires(bloc: &str) -> String {
+        bloc.lines().map(|l| l.split("//").next().unwrap_or("")).collect::<Vec<_>>().join("\n")
+    }
+
+    #[test]
+    fn l_extracteur_de_source_exclut_les_bancs() {
+        let produit = code_produit();
+        // Sentinelle qui n'existe QUE dans ce banc. Si elle se retrouve dans le « code
+        // produit », la coupe n'a pas eu lieu et tous les contrôles de source sont vides.
+        assert!(!produit.contains("SENTINELLE_DE_BANC_NE_PAS_UTILISER_AILLEURS"),
+            "la coupe n'exclut pas les bancs : les contrôles de source seraient vides");
+        assert!(produit.contains("fn put_record("), "le code produit doit être là");
+        assert!(produit.len() < include_str!("ho_finalizer.rs").len(),
+            "la coupe doit retirer quelque chose");
+    }
+
+    #[test]
+    fn l_extracteur_de_fonction_delimite_vraiment() {
+        const SRC: &str = "avant\nfn a(x: u32) {\n    corps_de_a();\n}\nfn b() {\n    corps_de_b();\n}\n";
+        let a = fonction(SRC, "fn a(");
+        assert!(a.contains("corps_de_a"), "{}", a);
+        assert!(!a.contains("corps_de_b"), "la region deborde sur la fonction suivante : {}", a);
+        assert!(!a.contains("avant"), "la region remonte avant la signature : {}", a);
+    }
+
+    #[test]
+    #[should_panic(expected = "signature absente")]
+    fn l_extracteur_refuse_une_signature_absente() {
+        let _ = fonction("fn autre() {\n}\n", "fn disparue(");
+    }
     use super::forbidden_work_folder;
 
     /// INVARIANT DE DÉPLOIEMENT : un SEUL identifiant traverse toute la moitié native.
@@ -998,11 +1063,9 @@ mod tests {
         // 4 -> 5. L'URL du dépôt est bâtie sur ce même identifiant. Contrôle de SOURCE :
         // l'envoi réel exige le réseau, mais la construction de l'URL et l'argument passé
         // au point d'appel sont vérifiables ici.
-        // `include_str!` inclut AUSSI ce fichier de test : un motif qui figure dans
-        // l'assertion elle-même s'y trouve toujours, et le contrôle ne peut plus
-        // échouer. On ne regarde donc que le code, avant les modules de test.
-        let entier = include_str!("ho_finalizer.rs");
-        let src = &entier[..entier.find("\n#[cfg(test)]\nmod ").unwrap_or(entier.len())];
+        // Un seul chemin d'extraction pour tous les contrôles de source : voir
+        // `code_produit`, qui exclut les bancs et qui est lui-même sous test.
+        let src = code_produit();
         assert!(src.contains("let url = format!(\"{}/r/{}\", registry.trim_end_matches('/'), record_id);"),
             "l'URL est batie sur le record_id recu");
         assert!(src.contains("match put_record(registry, &m.record_id, &record, &capability)"),
@@ -1298,25 +1361,28 @@ mod tests {
     fn la_capability_ne_passe_jamais_par_argv() {
         // Invariant de source : l'appel à curl ne doit porter QUE la référence au fichier
         // d'en-têtes. Un « Bearer » construit dans les arguments serait visible par `ps`.
-        let src = include_str!("ho_finalizer.rs");
-        let i = src.find("Command::new(\"/usr/bin/curl\")").expect("appel curl");
-        let bloc = &src[i..i + 400];
-        assert!(!bloc.contains("Bearer"), "aucun Bearer dans les arguments de curl");
-        assert!(bloc.contains("&arg_entetes"), "seule la référence au fichier est passée");
+        // La portée est la fonction ENTIÈRE, et non une fenêtre de 400 octets : au-delà
+        // d'une telle borne, un Bearer réintroduit n'était plus vu, et l'assertion
+        // négative ne valait que pour les 400 premiers octets de l'appel. L'ancre est
+        // prise dans le code produit seul : un jour où put_record cessera de nommer ce
+        // chemin, le contrôle échouera au lieu de se rabattre sur le curl d'un banc.
+        let f = fonction(code_produit(), "fn put_record(");
+        assert!(f.contains("Command::new(\"/usr/bin/curl\")"), "l'appel curl est dans put_record");
+        assert!(f.contains("&arg_entetes"), "seule la reference au fichier d'en-tetes est passee");
+        assert!(!sans_commentaires(f).contains("Bearer"),
+            "aucun Bearer dans put_record : argv est lisible par `ps`");
     }
 
     #[test]
     fn la_capability_n_apparait_dans_aucun_message() {
         // Le message d'erreur ne porte que le code HTTP : ni la capability, ni le corps de
         // la réponse, ni l'URL. Contrôle de source, faute de pouvoir provoquer un refus ici.
-        let src = include_str!("ho_finalizer.rs");
-        let i = src.find("match code.as_str()").expect("aiguillage du code HTTP");
-        // Commentaires retirés : ils parlent de la capability, le CODE ne doit pas la porter.
-        let bloc: String = src[i..i + 400]
-            .lines()
-            .map(|l| l.split("//").next().unwrap_or(""))
-            .collect::<Vec<_>>()
-            .join("\n");
+        // Région bornée par la structure : de l'aiguillage à la fin de la fonction, et
+        // non sur 400 octets. Commentaires retirés : ils parlent de la capability, le CODE
+        // ne doit pas la porter.
+        let f = fonction(code_produit(), "fn put_record(");
+        let i = f.find("match code.as_str()").expect("aiguillage du code HTTP");
+        let bloc = sans_commentaires(&f[i..]);
         assert!(bloc.contains("format!(\"registre : {}\", other)"),
             "le message ne joint que le code");
         assert!(!bloc.contains("capability"), "la capability n'entre dans aucun message");
