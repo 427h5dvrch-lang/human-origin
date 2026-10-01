@@ -1,0 +1,121 @@
+name: Windows RC
+
+# Produit un installateur Windows réel, en profil release, et le qualifie autant qu'une
+# machine de CI le permet. Ce qu'il ne peut pas faire — installer, lancer, finaliser —
+# reste à un poste Windows. Rien n'est publié ici.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - windows-private-beta-v1
+
+permissions:
+  contents: read
+
+jobs:
+  windows-rc:
+    name: Installateur Windows x64
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Sidecars Windows présents et non vides
+        shell: pwsh
+        run: |
+          $attendus = @(
+            "src-tauri/binaries/humanorigin-publisher-x86_64-pc-windows-msvc.exe",
+            "src-tauri/binaries/humanorigin-converter-x86_64-pc-windows-msvc.exe"
+          )
+          foreach ($f in $attendus) {
+            if (!(Test-Path $f)) { throw "Sidecar manquant : $f" }
+            $taille = (Get-Item $f).Length
+            if ($taille -lt 100000) { throw "Sidecar suspect (trop petit) : $f = $taille octets" }
+            # Un exécutable Windows commence par la signature MZ. Un fichier macOS déposé
+            # là par erreur passerait les contrôles de taille mais pas celui-ci.
+            $octets = [System.IO.File]::ReadAllBytes($f)[0..1]
+            if ($octets[0] -ne 0x4D -or $octets[1] -ne 0x5A) { throw "Pas un exécutable Windows : $f" }
+            Write-Host "OK  $f  ($taille octets)"
+          }
+
+      - name: Dépendances frontend
+        run: npm ci
+
+      - name: Bancs frontend
+        run: npm run check:frontend
+
+      - name: Bancs Rust
+        run: cargo test --manifest-path src-tauri/Cargo.toml --bin human-origin
+
+      # PDFium n'est pas dans le dépôt : on prend la même version que macOS, variante
+      # Windows x64. La DLL doit se retrouver à côté de l'exécutable installé, d'où sa
+      # déclaration en ressource du bundle.
+      - name: PDFium pour Windows
+        shell: pwsh
+        run: |
+          $url = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7690/pdfium-win-x64.tgz"
+          Invoke-WebRequest -Uri $url -OutFile pdfium.tgz
+          tar -xzf pdfium.tgz bin/pdfium.dll
+          Copy-Item bin/pdfium.dll src-tauri/pdfium.dll
+          $t = (Get-Item src-tauri/pdfium.dll).Length
+          if ($t -lt 1000000) { throw "pdfium.dll suspecte : $t octets" }
+          Write-Host "pdfium.dll : $t octets"
+
+      # `resources` ne peut pas etre declare dans le fichier commite : Tauri v1 echoue si
+      # le motif ne correspond a rien, et pdfium.dll n'existe que sur Windows — la release
+      # macOS casserait. On l'injecte donc ici, pour ce build seulement.
+      - name: Declarer pdfium.dll en ressource (CI Windows uniquement)
+        shell: pwsh
+        run: |
+          $chemin = "src-tauri/tauri.conf.json"
+          $json = Get-Content $chemin -Raw | ConvertFrom-Json
+          $json.tauri.bundle | Add-Member -NotePropertyName resources -NotePropertyValue @("pdfium.dll") -Force
+          $json | ConvertTo-Json -Depth 100 | Set-Content $chemin -Encoding UTF8
+          Write-Host "pdfium.dll declaree en ressource pour ce build."
+
+      - name: Construire l'installateur
+        shell: pwsh
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: npm run tauri -- build --target x86_64-pc-windows-msvc
+
+      - name: Qualifier l'artefact
+        shell: pwsh
+        run: |
+          $base = "src-tauri/target/x86_64-pc-windows-msvc/release"
+          $nsis = Get-ChildItem "$base/bundle/nsis/*.exe" -ErrorAction SilentlyContinue
+          if (-not $nsis) { throw "Aucun installateur NSIS produit." }
+          foreach ($f in $nsis) {
+            $mo = [math]::Round($f.Length / 1MB, 2)
+            Write-Host "Installateur : $($f.Name)  $mo Mo"
+            if ($f.Length -lt 2MB) { throw "Installateur suspect : $($f.Length) octets" }
+          }
+          # L'exécutable principal et la DLL doivent exister côte à côte avant empaquetage.
+          if (!(Test-Path "$base/human-origin.exe")) { throw "Exécutable principal absent." }
+          if (!(Test-Path "$base/pdfium.dll"))       { throw "pdfium.dll absente du dossier de build." }
+          Write-Host "--- contenu du bundle ---"
+          Get-ChildItem "$base/bundle" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+
+      - name: Empreintes
+        shell: pwsh
+        run: |
+          Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe" |
+            ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash, $_.Name }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: humanorigin-windows-rc
+          retention-days: 14
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.sig

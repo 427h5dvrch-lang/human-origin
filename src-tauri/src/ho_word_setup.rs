@@ -46,8 +46,43 @@ pub fn manifest_version() -> String {
     tag_value(&String::from_utf8_lossy(MANIFEST), "Version")
 }
 
+#[cfg(not(target_os = "windows"))]
 fn word_container() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join("Library/Containers").join(WORD_BUNDLE))
+}
+
+/// Windows n'a pas de dossier `wef` auto-chargé : Word y découvre les compléments par un
+/// « catalogue de dossier approuvé », déclaré dans la base de registre et pointant un
+/// répertoire ordinaire. Ce répertoire reste sous l'espace local de l'application, jamais
+/// dans le conteneur d'Office.
+#[cfg(target_os = "windows")]
+pub fn dossier_catalogue() -> Option<PathBuf> {
+    dirs::data_local_dir().map(|d| d.join("HumanOrigin").join("WordAddin"))
+}
+
+/// Identifiant du catalogue HumanOrigin dans la base de registre. Il est FIXE : une
+/// réinstallation doit réécrire la même entrée, jamais en empiler une seconde.
+#[cfg(target_os = "windows")]
+const CATALOGUE_GUID: &str = "{6F3C9A41-2B8E-4D77-A5E1-0C94B7D2F318}";
+
+/// Déclare le dossier comme catalogue approuvé. Sans cette entrée, Word ignore le
+/// manifeste même posé au bon endroit.
+#[cfg(target_os = "windows")]
+fn declarer_catalogue(dossier: &Path) -> Result<(), String> {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_WRITE};
+    use winreg::RegKey;
+    let chemin = format!(
+        r"Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{}",
+        CATALOGUE_GUID
+    );
+    let echec = |e: std::io::Error| format!("Word n'a pas pu etre prepare (registre) : {}", e);
+    let (cle, _) = RegKey::predef(HKEY_CURRENT_USER)
+        .create_subkey_with_flags(&chemin, KEY_WRITE)
+        .map_err(echec)?;
+    cle.set_value("Id", &CATALOGUE_GUID).map_err(echec)?;
+    cle.set_value("Url", &dossier.to_string_lossy().to_string()).map_err(echec)?;
+    cle.set_value("Flags", &1u32).map_err(echec)?;
+    Ok(())
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -88,32 +123,54 @@ pub fn status(app_dir: &Path) -> serde_json::Value {
 }
 
 // ---------------------------------------------------------------- installation / réparation
+
+/// Où déposer le manifeste, et comment nommer un refus du système, selon la plateforme.
+/// macOS auto-charge le dossier `wef` du conteneur de Word ; Windows lit un catalogue
+/// approuvé que l'on déclare ensuite dans la base de registre.
+fn depot_du_manifeste() -> Result<(PathBuf, fn(std::io::Error) -> String), String> {
+    #[cfg(target_os = "windows")]
+    {
+        fn refus(e: std::io::Error) -> String {
+            format!("Word n'a pas pu etre prepare : {}", e)
+        }
+        let dossier = dossier_catalogue().ok_or("Dossier personnel introuvable.")?;
+        return Ok((dossier, refus));
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        fn refus(e: std::io::Error) -> String {
+            if e.kind() == std::io::ErrorKind::PermissionDenied {
+                "macOS n'a pas autorisé HumanOrigin à préparer Word. Utilisez « Réparer \
+                 l'intégration Word » et choisissez Autoriser."
+                    .to_string()
+            } else {
+                format!("Word n'a pas pu être préparé : {}", e)
+            }
+        }
+        let container = word_container().ok_or("Dossier personnel introuvable.")?;
+        if !container.exists() {
+            return Err("Microsoft Word n'est pas installé sur ce Mac, ou n'a jamais été ouvert. \
+                        Ouvrez Word une fois, puis réessayez."
+                .into());
+        }
+        return Ok((container.join("Data/Documents/wef"), refus));
+    }
+}
 /// Geste explicite de l'utilisateur. C'est ici, et seulement ici, que macOS peut demander
 /// l'autorisation d'accéder aux données de Word.
 pub fn install(app_dir: &Path, app_version: &str) -> Result<serde_json::Value, String> {
-    let container = word_container().ok_or("Dossier personnel introuvable.")?;
-    if !container.exists() {
-        return Err("Microsoft Word n'est pas installé sur ce Mac, ou n'a jamais été ouvert. \
-                    Ouvrez Word une fois, puis réessayez."
-            .into());
-    }
-    let wef = container.join("Data/Documents/wef");
-    let denied = |e: std::io::Error| {
-        if e.kind() == std::io::ErrorKind::PermissionDenied {
-            "macOS n'a pas autorisé HumanOrigin à préparer Word. Utilisez « Réparer l'intégration \
-             Word » et choisissez Autoriser."
-                .to_string()
-        } else {
-            format!("Word n'a pas pu être préparé : {}", e)
-        }
-    };
-    fs::create_dir_all(&wef).map_err(denied)?;
-    let target = wef.join(MANIFEST_FILE);
+    let (dossier, denied): (PathBuf, fn(std::io::Error) -> String) = depot_du_manifeste()?;
+    fs::create_dir_all(&dossier).map_err(denied)?;
+    let target = dossier.join(MANIFEST_FILE);
     write_atomic(&target, MANIFEST).map_err(denied)?;
     let back = fs::read(&target).map_err(denied)?;
     if back != MANIFEST {
         return Err("Le complément déposé ne correspond pas à celui de HumanOrigin. Réessayez.".into());
     }
+    // Sur Windows, le fichier bien posé ne suffit pas : encore faut-il que Word ait le
+    // droit de regarder dans ce dossier.
+    #[cfg(target_os = "windows")]
+    declarer_catalogue(&dossier)?;
 
     let sentinel = serde_json::json!({
         "schema": SENTINEL_SCHEMA,
@@ -266,12 +323,30 @@ pub fn ouvrir_dans_word(path: &str) -> bool {
     if path.is_empty() {
         return false;
     }
-    std::process::Command::new("/usr/bin/open")
-        .args(["-b", WORD_BUNDLE])
-        .arg(path)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    ouvrir_document(Path::new(path))
+}
+
+/// Confie le document au système pour qu'il l'ouvre dans Word. macOS vise le bundle de
+/// Word explicitement ; Windows passe par le gestionnaire par défaut du type `.docx`,
+/// qui est Word dès lors qu'il est installé.
+fn ouvrir_document(path: &Path) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path.to_string_lossy()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        std::process::Command::new("/usr/bin/open")
+            .args(["-b", WORD_BUNDLE])
+            .arg(path)
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
 }
 
 pub fn new_document(work_folders: &[String], record_id: &str) -> Result<serde_json::Value, String> {
@@ -294,12 +369,7 @@ pub fn new_document(work_folders: &[String], record_id: &str) -> Result<serde_js
                     let _ = fs::remove_file(&path);
                     format!("Le document n'a pas pu être créé : {}", e)
                 })?;
-                let opened = std::process::Command::new("/usr/bin/open")
-                    .args(["-b", WORD_BUNDLE])
-                    .arg(&path)
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false);
+                let opened = ouvrir_document(&path);
                 return Ok(serde_json::json!({
                     "path": path.to_string_lossy(), "name": name, "folder": folder, "opened_in_word": opened
                 }));
