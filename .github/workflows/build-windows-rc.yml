@@ -70,6 +70,11 @@ jobs:
       - name: Banc des actifs de marque
         run: node tests/brand_assets.mjs
 
+      # `generate_context!` valide distDir a la COMPILATION : sans dist/, meme `cargo test`
+      # echoue, avant d'avoir execute le moindre banc.
+      - name: Construire le frontend
+        run: npm run build
+
       - name: Bancs Rust
         run: cargo test --manifest-path src-tauri/Cargo.toml --bin human-origin
 
