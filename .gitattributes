@@ -1,0 +1,16 @@
+# Les bancs comparent le CODE SOURCE caractère par caractère. Un checkout Windows avec
+# core.autocrlf=true réécrit les fins de ligne et fait échouer ces comparaisons, sans que
+# rien du produit n'ait changé. Les fins de ligne restent donc en LF partout.
+* text=auto eol=lf
+
+# Binaires : aucune réécriture, jamais.
+*.png   binary
+*.ico   binary
+*.icns  binary
+*.dylib binary
+*.dll   binary
+*.exe   binary
+*.docx  binary
+*.pdf   binary
+*.zip   binary
+*.tgz   binary

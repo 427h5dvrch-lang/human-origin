@@ -16,8 +16,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # ON REMET WINDOWS ET MAC !
-        platform: [macos-latest]
+        # macOS Apple Silicon et Windows x64. Chaque plateforme produit ses artefacts et
+        # sa ligne dans latest.json : sans Windows ici, l'updater Windows n'existe pas.
+        platform: [macos-latest, windows-latest]
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -89,6 +90,45 @@ jobs:
             "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7690/pdfium-mac-arm64.tgz" \
             | tar xz lib/libpdfium.dylib
           cp lib/libpdfium.dylib src-tauri/libpdfium.dylib
+
+      # Meme version de PDFium que macOS, variante Windows x64. La DLL se pose a cote de
+      # l'executable : une installation NSIS est plate, il n'y a pas de dossier Frameworks.
+      - name: Download PDFium (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F7690/pdfium-win-x64.tgz"
+          Invoke-WebRequest -Uri $url -OutFile pdfium.tgz
+          tar -xzf pdfium.tgz bin/pdfium.dll
+          Copy-Item bin/pdfium.dll src-tauri/pdfium.dll
+          $t = (Get-Item src-tauri/pdfium.dll).Length
+          if ($t -lt 1000000) { throw "pdfium.dll suspecte : $t octets" }
+          Write-Host "pdfium.dll : $t octets"
+
+      # `resources` ne peut pas vivre dans le fichier commite : Tauri v1 echoue si le motif
+      # ne correspond a rien, et le build macOS se casserait. Injection ici, Windows seul.
+      - name: Declare pdfium.dll as a resource (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $chemin = "src-tauri/tauri.conf.json"
+          $json = Get-Content $chemin -Raw | ConvertFrom-Json
+          $json.tauri.bundle | Add-Member -NotePropertyName resources -NotePropertyValue @("pdfium.dll") -Force
+          $json | ConvertTo-Json -Depth 100 | Set-Content $chemin -Encoding UTF8
+
+      # Un sidecar macOS depose par erreur passerait un controle de taille, pas celui-ci.
+      - name: Verify Windows sidecars (Windows only)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          foreach ($f in @(
+            "src-tauri/binaries/humanorigin-publisher-x86_64-pc-windows-msvc.exe",
+            "src-tauri/binaries/humanorigin-converter-x86_64-pc-windows-msvc.exe")) {
+            if (!(Test-Path $f)) { throw "Sidecar manquant : $f" }
+            $o = [System.IO.File]::ReadAllBytes($f)[0..1]
+            if ($o[0] -ne 0x4D -or $o[1] -ne 0x5A) { throw "Pas un executable Windows : $f" }
+            Write-Host "OK  $f  ($((Get-Item $f).Length) octets)"
+          }
 
       # 🚀 CONSTRUCTION, SIGNATURE DEVELOPER ID, NOTARISATION ET RELEASE
       - name: Build and Release
