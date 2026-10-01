@@ -857,8 +857,17 @@ mod incident_tests {
     }
 
     fn bac() -> PathBuf {
-        let d = std::env::temp_dir().join(format!("ho-inc-{}", std::process::id()))
-            .join(format!("{:?}", std::time::SystemTime::now()));
+        // Le nom doit être unique ET valide comme nom de dossier. `{:?}` d'un SystemTime
+        // rend « SystemTime { intervals: … } » : accolades et deux-points y sont interdits
+        // sur Windows, et la création échouait avec « The directory name is invalid ».
+        // Les nanosecondes depuis l'époque suffisent à distinguer deux bacs.
+        let n = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let d = std::env::temp_dir()
+            .join(format!("ho-inc-{}", std::process::id()))
+            .join(format!("{}", n));
         fs::create_dir_all(&d).unwrap();
         d
     }

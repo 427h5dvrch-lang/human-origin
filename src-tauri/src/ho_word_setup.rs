@@ -411,8 +411,15 @@ mod tests {
     #[test]
     fn work_folder_is_proposed_then_prepared() {
         let proposed = default_work_folder().unwrap();
-        assert!(proposed.ends_with("/Documents/HumanOrigin Documents"), "{}", proposed);
-        assert!(!proposed.ends_with("/Documents/HumanOrigin"));
+        // Le séparateur de chemin n'est pas le même partout : comparer la FIN d'une chaîne
+        // avec des barres obliques n'a de sens que sur Unix. On compare donc les deux
+        // derniers segments, ce que la plateforme nomme elle-même correctement.
+        let chemin = PathBuf::from(&proposed);
+        let mut fin = chemin.iter().rev();
+        assert_eq!(fin.next().map(|s| s.to_string_lossy().to_string()).as_deref(),
+            Some(DEFAULT_WORK_FOLDER_NAME), "{}", proposed);
+        assert_eq!(fin.next().map(|s| s.to_string_lossy().to_string()).as_deref(),
+            Some("Documents"), "{}", proposed);
         let base = std::env::temp_dir().join(format!("ho-work-folder-{}", std::process::id()));
         let target = base.join("Documents").join(DEFAULT_WORK_FOLDER_NAME);
         assert!(!target.exists());
