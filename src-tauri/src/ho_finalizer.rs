@@ -213,17 +213,31 @@ fn cause_registre(err: &str) -> &'static str {
     }
 }
 
+/// Le curl du système. macOS le place à un chemin fixe ; Windows 10 (1803) et suivants
+/// embarquent `curl.exe` dans System32, que l'on nomme sans chemin pour laisser le
+/// résolveur de Windows le trouver — un chemin absolu casserait sur une installation
+/// dont le dossier système n'est pas sur C:.
+pub(crate) fn programme_curl() -> &'static str {
+    if cfg!(target_os = "windows") { "curl.exe" } else { "/usr/bin/curl" }
+}
+
+/// Le trou noir du système, où l'on jette le corps de la réponse : seul le code HTTP
+/// nous intéresse. `/dev/null` n'existe pas sur Windows, qui écrit dans `NUL`.
+pub(crate) fn peripherique_nul() -> &'static str {
+    if cfg!(target_os = "windows") { "NUL" } else { "/dev/null" }
+}
+
 fn put_record(registry: &str, record_id: &str, body: &str, capability: &str) -> Result<(), String> {
-    // HTTPS sans ajouter de dépendance : on délègue au curl du système, présent sur macOS.
+    // HTTPS sans ajouter de dépendance : on délègue au curl du système.
     let url = format!("{}/r/{}", registry.trim_end_matches('/'), record_id);
     let (dir, entetes) = fichier_entetes(capability)?;
     let arg_entetes = format!("@{}", entetes.to_string_lossy());
-    let out = std::process::Command::new("/usr/bin/curl")
+    let out = std::process::Command::new(programme_curl())
         .args([
             "-sS", "-m", "15", "-X", "POST",
             "-H", &arg_entetes,
             "--data-binary", "@-",
-            "-o", "/dev/null", "-w", "%{http_code}",
+            "-o", peripherique_nul(), "-w", "%{http_code}",
             &url,
         ])
         .stdin(std::process::Stdio::piped())
@@ -1358,6 +1372,26 @@ mod tests {
     }
 
     #[test]
+    fn le_transport_ne_suppose_plus_macos() {
+        // Le dépôt au registre passait par des chemins qui n'existent que sur macOS :
+        // l'application se serait installée sur Windows puis aurait échoué à finaliser,
+        // sans rien dire d'utile. La portabilité se contrôle ici, faute de pouvoir
+        // exécuter les deux plateformes dans le même banc.
+        let f = fonction(code_produit(), "fn put_record(");
+        assert!(!f.contains("\"/usr/bin/curl\""), "aucun chemin curl en dur dans put_record");
+        assert!(!f.contains("\"/dev/null\""), "aucun /dev/null en dur dans put_record");
+        assert!(f.contains("programme_curl()") && f.contains("peripherique_nul()"),
+            "put_record passe par les deux resolveurs de plateforme");
+
+        // Et les resolveurs eux-memes nomment bien les deux plateformes.
+        let src = code_produit();
+        assert!(src.contains("\"curl.exe\"") && src.contains("\"/usr/bin/curl\""),
+            "programme_curl couvre Windows et macOS");
+        assert!(src.contains("\"NUL\"") && src.contains("\"/dev/null\""),
+            "peripherique_nul couvre Windows et macOS");
+    }
+
+    #[test]
     fn la_capability_ne_passe_jamais_par_argv() {
         // Invariant de source : l'appel à curl ne doit porter QUE la référence au fichier
         // d'en-têtes. Un « Bearer » construit dans les arguments serait visible par `ps`.
@@ -1367,7 +1401,7 @@ mod tests {
         // prise dans le code produit seul : un jour où put_record cessera de nommer ce
         // chemin, le contrôle échouera au lieu de se rabattre sur le curl d'un banc.
         let f = fonction(code_produit(), "fn put_record(");
-        assert!(f.contains("Command::new(\"/usr/bin/curl\")"), "l'appel curl est dans put_record");
+        assert!(f.contains("Command::new(programme_curl())"), "l'appel curl est dans put_record");
         assert!(f.contains("&arg_entetes"), "seule la reference au fichier d'en-tetes est passee");
         assert!(!sans_commentaires(f).contains("Bearer"),
             "aucun Bearer dans put_record : argv est lisible par `ps`");

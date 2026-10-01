@@ -216,8 +216,14 @@ pub fn run_pdf_publication(job: &PublicationJob) -> PublicationResult {
             ),
         };
         let exe_dir = exe_path.parent().unwrap_or(std::path::Path::new("."));
-        // macOS app bundle: Contents/MacOS/ → Contents/Frameworks/
-        let lib_path = exe_dir.join("../Frameworks/libpdfium.dylib");
+        // Où vit la bibliothèque PDFium, selon la forme du paquet :
+        //   macOS  — bundle .app : Contents/MacOS/ → Contents/Frameworks/libpdfium.dylib
+        //   Windows — installation NSIS à plat : pdfium.dll est posée à côté de l'exécutable
+        let lib_path = if cfg!(target_os = "windows") {
+            exe_dir.join("pdfium.dll")
+        } else {
+            exe_dir.join("../Frameworks/libpdfium.dylib")
+        };
         let bindings = match Pdfium::bind_to_library(&lib_path) {
             Ok(b) => b,
             Err(e) => return PublicationResult::err(
