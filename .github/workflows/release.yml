@@ -6,7 +6,9 @@ permissions:
 on:
   push:
     tags:
-      - 'v*'
+      # Le dépôt porte des tags historiques « v24 », « v25 »… que « v* » attrapait : un
+      # tag sans rapport pouvait déclencher une release. On exige donc vX.Y.Z.
+      - 'v*.*.*'
   workflow_dispatch:
 
 jobs:
@@ -34,6 +36,24 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # GARDE-FOU DE RELEASE. Le tag nomme la Release, la version embarquée nomme les
+      # artefacts : si les deux divergent, une Release « v0.3.2 » livre des binaires 0.3.1,
+      # et cela ne se voit qu'à l'installation. Six emplacements déclarent cette version ;
+      # ils doivent tous concorder avec le tag. Aucune dépendance npm requise ici : le
+      # contrôle passe avant l'installation, pour échouer au plus tôt et au moins cher.
+      - name: Version coherence (tag vs sources)
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            node tools/release/version_coherence.mjs --tag "$GITHUB_REF_NAME"
+          else
+            node tools/release/version_coherence.mjs
+          fi
+
+      # Le banc de l'outillage lui-même : analyse des arguments, détection de chaque dérive
+      # de version, refus avant écriture. Il ne touche qu'un bac à sable temporaire.
+      - name: Release tooling benches
+        run: node tools/release/tests/release_tooling.mjs
 
       - name: Install dependencies (NPM)
         run: npm ci

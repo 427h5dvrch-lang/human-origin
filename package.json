@@ -9,6 +9,8 @@
     "build": "vite build --base=./",
     "preview": "vite preview",
     "tauri": "tauri",
+    "version:check": "node tools/release/version_coherence.mjs",
+    "test:release": "node tools/release/tests/release_tooling.mjs",
     "bump": "node bump_version.mjs",
     "bump:git": "node bump_version.mjs --git --tag",
     "bump:git:cargo": "node bump_version.mjs --git --tag --cargo",
