@@ -10,9 +10,10 @@
 
 import path from "node:path"; import fs from "node:fs";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const APP = process.env.HO_APP_DIR
-  || path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+  || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WEB_CANDIDATS = [process.env.HO_WEB_DIR, "/tmp/rwa",
   path.join(process.env.HOME, "Developer/HO_FIRSTRUN_RC/humanorigin-web-consultation")].filter(Boolean);
 const WEB = WEB_CANDIDATS.find((d) => fs.existsSync(path.join(d, ".git"))

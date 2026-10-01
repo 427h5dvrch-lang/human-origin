@@ -6,8 +6,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const ici = path.dirname(new URL(import.meta.url).pathname);
+const ici = path.dirname(fileURLToPath(import.meta.url));
 const SRC = fs.readFileSync(path.join(ici, "../src/ho_desktop.js"), "utf8");
 const { CATALOGUE } = await import(path.join(ici, "../src/ho_i18n.js"));
 

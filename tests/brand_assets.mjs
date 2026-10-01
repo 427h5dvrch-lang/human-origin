@@ -13,8 +13,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
 
-const ici = path.dirname(new URL(import.meta.url).pathname);
+const ici = path.dirname(fileURLToPath(import.meta.url));
 const BRAND = path.join(ici, "../src/brand");
 const SRC = path.join(ici, "../src");
 

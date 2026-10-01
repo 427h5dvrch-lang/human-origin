@@ -2,7 +2,8 @@
 // par le module de vérification de Verify, et donner SERVER_ATTESTED.
 // Le module de Verify vit dans un autre dépôt : le test se déclare ignoré s'il est absent.
 import path from "node:path"; import fs from "node:fs"; import vm from "node:vm";
-const ici = path.dirname(new URL(import.meta.url).pathname);
+import { fileURLToPath } from "node:url";
+const ici = path.dirname(fileURLToPath(import.meta.url));
 const { traiter } = await import(path.join(ici, "../handler.ts"));
 const P = await import(path.join(ici, "../protocol.ts"));
 let ok = 0, ko = 0;

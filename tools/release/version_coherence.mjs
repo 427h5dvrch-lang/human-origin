@@ -11,6 +11,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Semver, préversion admise, métadonnée de build refusée : Tauri ne l'accepte pas. */
 export const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$/;
@@ -130,7 +131,7 @@ export function incoherences(versions, attendue = null) {
 }
 
 // --- CLI ----------------------------------------------------------------------------
-const estPrincipal = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(new URL(import.meta.url).pathname);
+const estPrincipal = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (estPrincipal) {
   const arg = (n) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : null; };
   const racine = arg("--racine") ?? ".";

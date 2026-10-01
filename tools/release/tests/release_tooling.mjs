@@ -15,8 +15,9 @@ import {
   remplaceVersionDansLock, lireVersionDansLock, sources,
 } from "../version_coherence.mjs";
 import { analyser, comparer } from "../../../bump_version.mjs";
+import { fileURLToPath } from "node:url";
 
-const RACINE = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../..");
+const RACINE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 let ok = 0, ko = 0;
 const ck = (n, c, d = "") => { c ? ok++ : ko++; console.log(`  ${c ? "✓" : "✗"} ${n}${d ? "  → " + d : ""}`); };
 const leve = (f) => { try { f(); return null; } catch (e) { return e.message; } };

@@ -2,7 +2,8 @@
 // Aucune clé de production, aucun réseau, aucune base. La paire Ed25519 est générée
 // EN MÉMOIRE à chaque exécution : aucun matériel privé n'existe dans le dépôt.
 import path from "node:path"; import fs from "node:fs";
-const ici = path.dirname(new URL(import.meta.url).pathname);
+import { fileURLToPath } from "node:url";
+const ici = path.dirname(fileURLToPath(import.meta.url));
 const { traiter } = await import(path.join(ici, "../handler.ts"));
 const P = await import(path.join(ici, "../protocol.ts"));
 
