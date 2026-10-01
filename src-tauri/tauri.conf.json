@@ -114,8 +114,8 @@
         "nsis": {
           "installMode": "currentUser",
           "languages": [
-            "en-US",
-            "fr-FR"
+            "English",
+            "French"
           ],
           "displayLanguageSelector": true,
           "installerIcon": "icons/icon.ico"
