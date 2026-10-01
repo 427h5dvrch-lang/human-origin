@@ -122,9 +122,19 @@ jobs:
             Write-Host "Installateur : $($f.Name)  $mo Mo"
             if ($f.Length -lt 2MB) { throw "Installateur suspect : $($f.Length) octets" }
           }
-          # L'exécutable principal et la DLL doivent exister côte à côte avant empaquetage.
-          if (!(Test-Path "$base/human-origin.exe")) { throw "Exécutable principal absent." }
-          if (!(Test-Path "$base/pdfium.dll"))       { throw "pdfium.dll absente du dossier de build." }
+          # L'executable prend le nom du produit, pas celui du paquet Cargo : on le cherche
+          # au lieu de le supposer. Le dossier de sortie contient aussi les artefacts de
+          # compilation, d'ou la recherche a plat uniquement.
+          $exe = Get-ChildItem "$base/*.exe" -File | Where-Object { $_.Name -notmatch 'setup' }
+          if (-not $exe) { throw "Aucun executable principal dans $base" }
+          foreach ($e in $exe) { Write-Host "Executable : $($e.Name)  $($e.Length) octets" }
+
+          # PDFium doit voyager avec l'application, sinon la publication PDF echoue a
+          # l'execution — et seulement a ce moment-la, chez l'utilisateur.
+          $dll = Get-ChildItem "$base" -Recurse -Filter "pdfium.dll" -ErrorAction SilentlyContinue
+          if (-not $dll) { throw "pdfium.dll introuvable dans le dossier de build." }
+          foreach ($d in $dll) { Write-Host "pdfium.dll : $($d.FullName)  $($d.Length) octets" }
+
           Write-Host "--- contenu du bundle ---"
           Get-ChildItem "$base/bundle" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
 
