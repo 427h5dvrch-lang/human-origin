@@ -15,6 +15,13 @@ L'installateur n'est pas signé. Ce n'est pas un symptôme : c'est l'état connu
 la seule gate ouverte du chantier Windows. SmartScreen ne dit pas que le fichier est
 dangereux, il dit qu'il ne connaît pas son éditeur — ce qui est exact.
 
+**À ne pas croire pour autant** : signer ne fera pas disparaître cet avertissement du jour
+au lendemain. SmartScreen juge la réputation accumulée par le fichier, par le certificat
+et par l'URL de distribution, pas la seule validité du certificat. Une fois signé,
+l'installateur affichera **DAZEAS CORP** au lieu de « Éditeur inconnu », et sa réputation
+pourra commencer à se construire — ce qui est impossible sans signature. L'avertissement,
+lui, s'efface avec la diffusion réelle.
+
 Vérifier l'empreinte SHA-256 **avant** de passer outre remplace ici ce que la signature
 apportera plus tard : la certitude que le fichier est bien celui qui a été construit.
 

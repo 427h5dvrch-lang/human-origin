@@ -19,9 +19,15 @@ bêta publique, non.
 
 ## Les deux certificats possibles
 
+> **Correction du 2026-10-01.** Une version antérieure de ce document affirmait qu'un
+> certificat EV supprime l'avertissement SmartScreen dès la première signature. **C'est
+> faux.** Microsoft a retiré ce comportement en 2024 : un fichier signé EV passe désormais
+> par le même processus de construction de réputation qu'un fichier signé OV. Voir
+> « Ce que la signature ne fait pas » plus bas.
+
 | | OV (Organization Validation) | EV (Extended Validation) |
 |---|---|---|
-| Réputation SmartScreen | se construit avec le volume de téléchargements ; l'avertissement persiste des semaines | **immédiate** — aucun avertissement dès la première signature |
+| Réputation SmartScreen | se construit avec la diffusion réelle | se construit aussi, un peu plus vite en pratique |
 | Stockage de la clé | jeton matériel ou HSM cloud (obligatoire depuis juin 2023) | jeton matériel ou HSM cloud |
 | Validation | entité légale vérifiée | entité légale + vérification renforcée |
 | Ordre de prix annuel | ~200–400 € | ~350–700 € |
@@ -46,6 +52,33 @@ et conçue pour la CI.
 
 Alternatives si l'ancienneté bloque : SSL.com eSigner ou DigiCert KeyLocker, plus chers
 (certificat + service de signature), sans condition d'ancienneté comparable.
+
+## Ce que la signature ne fait pas
+
+**Signer ne garantit pas la disparition de l'avertissement SmartScreen.** C'est le point
+qu'il ne faut pas se raconter, ni raconter aux testeurs.
+
+SmartScreen ne juge pas seulement le certificat : il juge la **réputation**, c'est-à-dire
+la télémétrie accumulée par ce fichier précis, par ce certificat, et par l'URL qui le
+distribue. Un installateur fraîchement signé, téléchargé par quelques dizaines de
+personnes, reste « peu répandu » et peut continuer d'afficher « Windows a protégé votre
+ordinateur ».
+
+Ce qui change avec la signature :
+
+- l'éditeur affiché devient **DAZEAS CORP** au lieu de « Éditeur inconnu » ;
+- la réputation peut **commencer** à s'accumuler, ce qui est impossible sans signature ;
+- les stratégies d'entreprise qui bloquent tout binaire non signé cessent de bloquer.
+
+Ce qui ne change pas tout de suite : l'avertissement lui-même, qui s'efface avec la
+diffusion, sur des semaines.
+
+**Un risque réel et documenté** : en mars 2026, Artifact Signing a changé d'autorité
+intermédiaire sans préavis. Des fichiers signés sous la nouvelle autorité ont vu leur
+réputation SmartScreen repartir de zéro, alors que des installateurs identiques signés
+sous l'ancienne passaient sans avertissement. Le problème a été rapporté à plusieurs
+reprises sur le forum Microsoft. À connaître avant de promettre quoi que ce soit sur une
+date de disparition de l'avertissement.
 
 ## Ce qu'il faudra brancher ensuite
 
