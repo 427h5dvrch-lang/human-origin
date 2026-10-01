@@ -9,18 +9,31 @@ officielles — jamais « HumanOrigin », qui n'est pas une personne morale.
 
 ---
 
-## 0 · Une conséquence à connaître avant de commencer
+## 0 · La décision d'éditeur, et ce que la signature ne fera pas
 
-Le certificat portera le sujet **DAZEAS CORP**. C'est donc ce nom, et non « HumanOrigin »,
-que Windows affichera comme éditeur dans la boîte de dialogue au lancement de
-l'installateur — là où il écrit aujourd'hui « Éditeur inconnu ».
+**Décidé le 2026-10-01 :** HumanOrigin reste le nom du produit et la marque. **DAZEAS CORP
+devient l'éditeur Windows canonique** et le sujet légal de la signature.
 
-Le paquet déclare par ailleurs `publisher: "HumanOrigin"` dans sa configuration. Les deux
-peuvent diverger sans erreur technique, mais l'utilisateur verra DAZEAS CORP.
+L'alignement de `publisher` sur DAZEAS CORP dans la configuration du paquet est **mis en
+file**, pas appliqué : le RC actuel sert à la passe 1 fonctionnelle et ne sera pas
+reconstruit pour ce seul changement. Voir `plan_rc.md`.
 
-**Décision à prendre, pas un bug** : garder la divergence (le produit est HumanOrigin,
-l'éditeur est DAZEAS CORP — c'est la situation habituelle d'un éditeur logiciel), ou
-aligner `publisher` sur DAZEAS CORP. Je n'ai rien changé.
+### Ce que la signature ne fera pas
+
+**Signer ne fera pas disparaître l'avertissement SmartScreen tout de suite.** SmartScreen
+juge la réputation — la télémétrie accumulée par ce fichier, ce certificat et l'URL qui le
+distribue — et pas seulement la validité du certificat. Un installateur fraîchement signé
+et peu téléchargé reste « peu répandu ».
+
+Ce que la signature change vraiment : l'éditeur affiché devient **DAZEAS CORP** au lieu de
+« Éditeur inconnu », la réputation peut commencer à s'accumuler — ce qui est impossible
+sans elle — et les stratégies d'entreprise qui bloquent tout binaire non signé cessent de
+bloquer.
+
+Deux faits à garder en tête avant toute promesse : un certificat EV **ne donne plus** de
+réputation immédiate, Microsoft ayant retiré ce comportement en 2024 ; et en mars 2026,
+Artifact Signing a changé d'autorité intermédiaire sans préavis, faisant repartir de zéro
+la réputation de fichiers déjà signés.
 
 ---
 
@@ -37,20 +50,27 @@ plus rapide que les données saisies correspondent exactement à ces registres.
 | **Street / City / Country / State / Postal code** | l'adresse du **siège légal**, pas une adresse postale de confort |
 | **First Name / Last Name** | prénom et nom de Philippe **exactement** comme sur sa pièce d'identité officielle |
 
-### L'identifiant d'entreprise, selon le pays
+### L'identifiant d'entreprise — France
 
-Le suffixe « CORP » n'indique pas le pays à lui seul. Les deux cas sont couverts par
-l'éligibilité géographique d'Artifact Signing :
+DAZEAS CORP est immatriculée en **France**, qui est couverte par l'éligibilité
+d'Artifact Signing au titre de l'Union européenne.
 
-- **DAZEAS CORP immatriculée en France** → **SIREN** (9 chiffres) ou SIRET du siège. Le
-  nom et l'adresse doivent correspondre à l'avis de situation INSEE / extrait Kbis.
-- **DAZEAS CORP immatriculée aux États-Unis** → numéro d'immatriculation de l'État
-  (*state registration number*) et/ou **EIN**. Le nom et l'adresse doivent correspondre au
-  registre de l'État d'immatriculation.
+- **Business Identifier** → le **SIREN** à 9 chiffres. Le SIRET du siège (14 chiffres)
+  est accepté, mais le SIREN est l'identifiant de la personne morale et c'est lui qu'il
+  faut préférer.
+- **Organization Name** → la **dénomination sociale exacte** telle qu'inscrite au RNE,
+  avec sa forme juridique si elle en fait partie. À recopier depuis l'extrait Kbis, pas
+  de mémoire : une majuscule ou un espace de différence suffit à faire échouer le
+  rapprochement automatique avec le registre.
+- **Adresse** → celle du **siège social** au Kbis, pas une adresse de correspondance.
 
-Dans les deux cas, prévoir un **justificatif d'immatriculation** récent : Kbis de moins de
-trois mois pour la France, *Certificate of Good Standing* ou *Articles of Incorporation*
-pour les États-Unis.
+**Justificatif à prévoir** : extrait **Kbis de moins de trois mois**, ou avis de situation
+INSEE. Les deux se téléchargent gratuitement, l'un sur `procedures.inpi.fr`, l'autre sur
+`avis-situation-sirene.insee.fr`.
+
+Microsoft rapproche ces données de registres publics. Plus la saisie colle au Kbis, plus
+l'instruction est courte — et toute divergence déclenche une demande de pièces, donc des
+jours de délai.
 
 ### Si des pièces sont demandées
 
@@ -72,15 +92,17 @@ organisation, **la seconde doit être sur le même domaine que la première**.
 
 ### Ce que je recommande
 
-| Rôle | Adresse | Qui la relève |
-|---|---|---|
-| **Primary Email** | `admin@humanorigin.io` | Philippe, directement |
-| **Secondary Email** | `contact@humanorigin.io` | Philippe également, mais boîte séparée |
+**Décidé :** les deux adresses sont créées et surveillées séparément.
 
-Pourquoi ces deux-là : `admin@` est l'adresse d'administration de l'entité, celle qui
-portera plus tard le compte Azure et le renouvellement du domaine — c'est elle qui doit
-recevoir les liens sensibles. `contact@` existe de toute façon pour un produit public, et
-sert de second canal vérifiable sur le même domaine.
+| Rôle | Adresse | Ce qu'elle porte |
+|---|---|---|
+| **Primary Email** | `admin@humanorigin.io` | tout ce qui est bloquant |
+| **Secondary Email** | `contact@humanorigin.io` | second canal de vérification du domaine |
+
+`admin@` est l'adresse d'administration de l'entité, celle qui portera aussi le compte
+Azure et le renouvellement du domaine : c'est elle qui doit recevoir les liens sensibles.
+`contact@` existe de toute façon pour un produit public et fournit le second canal, qui
+doit obligatoirement être sur le même domaine.
 
 **À éviter** : `noreply@`, une boîte jamais relevée, un alias qui redirige vers Gmail sans
 boîte propre, et toute adresse sur un domaine qui n'appartient pas à DAZEAS CORP.
@@ -253,9 +275,11 @@ profil de certificat existe. `release.yml` n'a pas été modifié.
 
 ## 5 · Ce qui reste à Philippe, dans l'ordre
 
-1. Confirmer le **pays d'immatriculation** de DAZEAS CORP et réunir le justificatif.
-2. Créer **`admin@`** et **`contact@humanorigin.io`**, et vérifier qu'elles reçoivent bien
-   des liens cliquables depuis l'extérieur.
+1. Télécharger l'**extrait Kbis** de DAZEAS CORP (moins de trois mois) et me transmettre
+   la dénomination sociale exacte, le SIREN et l'adresse du siège — ou les saisir
+   vous-même le moment venu, en recopiant depuis le Kbis.
+2. Créer **`admin@`** et **`contact@humanorigin.io`**, surveillées séparément, et vérifier
+   qu'elles reçoivent bien des liens cliquables depuis un expéditeur externe.
 3. Récupérer la **facture du domaine** chez Hostinger, au nom de DAZEAS CORP si possible.
 4. Créer l'**abonnement Azure** — le point d'arrêt du § 3.
 5. Me dire quand c'est fait : je reprends au § 4.

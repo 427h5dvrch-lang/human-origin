@@ -26,15 +26,26 @@ les dossiers de collecte.
 c'est deviner — et c'est exactement ce qui a produit les trois hypothèses macOS que ce
 chantier vient de lever.
 
-## Entre les deux passes — périmètre fermé
+## Entre les deux passes — six étapes, dans cet ordre
 
-Ne seront corrigés **que les défauts observés en passe 1**. Pas de refactor, pas
-d'amélioration repérée en chemin, pas de dette traitée au passage. Chaque correctif
-nomme l'étape qui l'a révélé.
+Arrêté le 2026-10-01. Rien d'autre n'entre dans cette fenêtre.
 
-Si un correctif touche le binaire : reconstruire par le workflow Windows RC, et **la
-nouvelle empreinte remplace l'ancienne dans le pack**. Un pack dont l'empreinte ne
-correspond plus à son installateur ne vaut rien.
+1. **Corriger uniquement les défauts réellement observés** en passe 1. Pas de refactor,
+   pas d'amélioration repérée en chemin, pas de dette traitée au passage. Chaque correctif
+   nomme l'étape qui l'a révélé.
+2. **Aligner `publisher` sur DAZEAS CORP** dans la configuration du paquet. C'est le seul
+   changement admis qui ne vienne pas d'un défaut observé : il est décidé, et il se fait
+   ici plutôt que maintenant parce qu'il n'y a aucune raison de reconstruire le RC pour
+   lui seul.
+3. **Intégrer la signature Azure** — mais seulement **si la validation est disponible** à
+   ce moment-là. Elle met 1 à 20 jours ouvrés et ne commande pas le calendrier : si elle
+   n'est pas prête, la passe 2 se fait sur un installateur non signé, et la signature
+   arrive après.
+4. **Reconstruire** par le workflow Windows RC.
+5. **Générer la nouvelle empreinte et un nouveau pack.** L'ancienne empreinte est retirée
+   partout où elle figure. Un pack dont l'empreinte ne correspond plus à son installateur
+   ne vaut rien, et c'est la première chose que le testeur vérifie.
+6. **Passe 2 sur machine propre.**
 
 ## Passe 2 — le test propre
 
@@ -51,6 +62,12 @@ La signature Authenticode suit sa propre voie
 (`azure_procedure_dazeas_corp.md`), sans bloquer les deux passes : une bêta privée peut
 partir non signée auprès de testeurs prévenus, c'est précisément ce que la procédure
 SmartScreen du pack encadre.
+
+Et il ne faut pas attendre d'elle ce qu'elle ne donne pas : **signer ne fera pas
+disparaître l'avertissement SmartScreen immédiatement**. SmartScreen juge la réputation
+accumulée par le fichier, le certificat et l'URL, pas la seule validité du certificat. La
+signature fait afficher DAZEAS CORP au lieu de « Éditeur inconnu » et permet à la
+réputation de commencer à se construire — elle ne la fabrique pas.
 
 Windows ARM64, iOS, Android, et toute amélioration produit : hors sujet jusqu'à PRIVATE
 BETA READY.
