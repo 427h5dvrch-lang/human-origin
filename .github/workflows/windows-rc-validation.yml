@@ -66,7 +66,18 @@ jobs:
 
       - name: Installer en silencieux
         shell: pwsh
+        continue-on-error: true
         run: |
+          # Empreinte du disque AVANT, pour voir exactement ce que l'installateur depose.
+          $avant = @{}
+          foreach ($r in @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+            if ($r -and (Test-Path $r)) {
+              Get-ChildItem $r -Directory -ErrorAction SilentlyContinue | ForEach-Object { $avant[$_.FullName] = $true }
+            }
+          }
+          $avant.Keys | Out-File "$env:RUNNER_TEMP\avant.txt"
+          Write-Host "Dossiers recenses avant : $($avant.Count)"
+
           # L'installateur NSIS de Tauri accepte /S pour une installation silencieuse.
           # Sans cela, aucun runner sans session interactive ne pourrait l'installer.
           Write-Host "Lancement : $env:INSTALLER /S"
@@ -75,8 +86,63 @@ jobs:
           if ($p.ExitCode -ne 0) { throw "L'installateur a rendu $($p.ExitCode)" }
           Write-Host "PASS  installation silencieuse terminee."
 
-      - name: Ce qui a ete installe
+      - name: Ce que l'installateur a depose
         shell: pwsh
+        continue-on-error: true
+        run: |
+          # Difference de dossiers entre avant et apres : si l'installateur a ecrit quelque
+          # part, cela se voit ici, quel que soit le chemin qu'il a choisi.
+          $avant = @{}
+          if (Test-Path "$env:RUNNER_TEMP\avant.txt") {
+            Get-Content "$env:RUNNER_TEMP\avant.txt" | ForEach-Object { if ($_) { $avant[$_] = $true } }
+          }
+          $nouveaux = @()
+          foreach ($r in @($env:LOCALAPPDATA, $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+            if ($r -and (Test-Path $r)) {
+              foreach ($d in Get-ChildItem $r -Directory -ErrorAction SilentlyContinue) {
+                if (-not $avant.ContainsKey($d.FullName)) { $nouveaux += $d.FullName }
+              }
+            }
+          }
+          if ($nouveaux) {
+            Write-Host "NOUVEAUX dossiers apparus :"
+            $nouveaux | ForEach-Object { Write-Host "  $_" }
+          } else {
+            Write-Host "AUCUN nouveau dossier sous LOCALAPPDATA, ProgramFiles ou ProgramFiles(x86)."
+          }
+
+          Write-Host "--- recherche de HumanOrigin.exe sur tout le disque systeme ---"
+          $t = Get-ChildItem C:\ -Recurse -Filter 'HumanOrigin.exe' -ErrorAction SilentlyContinue -Force |
+               Select-Object -First 5
+          if ($t) { $t | ForEach-Object { Write-Host "  TROUVE $($_.FullName)" } }
+          else    { Write-Host "  INTROUVABLE sur C:\" }
+
+          Write-Host "--- entrees de desinstallation contenant HumanOrigin ---"
+          $vu = $false
+          foreach ($r in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+                           'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall')) {
+            if (Test-Path $r) {
+              foreach ($c in Get-ChildItem $r -ErrorAction SilentlyContinue) {
+                $p = Get-ItemProperty $c.PSPath -ErrorAction SilentlyContinue
+                if ($p.DisplayName -like '*HumanOrigin*') {
+                  Write-Host "  $($p.DisplayName)  InstallLocation=$($p.InstallLocation)"; $vu = $true
+                }
+              }
+            }
+          }
+          if (-not $vu) { Write-Host "  aucune" }
+
+          Write-Host "--- WebView2 present ? ---"
+          $wv = $false
+          foreach ($cle in @('HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+                             'HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}')) {
+            if (Test-Path $cle) { Write-Host "  $((Get-ItemProperty $cle).pv)"; $wv = $true }
+          }
+          if (-not $wv) { Write-Host "  WebView2 ABSENT" }
+
+      - name: Inventaire des fichiers attendus
+        shell: pwsh
+        continue-on-error: true
         run: |
           # Ne pas DEVINER le chemin : le lire la ou l'installateur l'a inscrit. Une premiere
           # version supposait %LOCALAPPDATA%\Programs\HumanOrigin et echouait alors que
@@ -122,6 +188,7 @@ jobs:
 
       - name: Entree de desinstallation
         shell: pwsh
+        continue-on-error: true
         run: |
           $trouve = $false
           foreach ($r in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
@@ -179,6 +246,7 @@ jobs:
 
       - name: Desinstaller
         shell: pwsh
+        continue-on-error: true
         run: |
           $u = Get-ChildItem $env:DOSSIER -Recurse -Filter 'uninstall.exe' | Select-Object -First 1
           if (-not $u) { throw "uninstall.exe introuvable." }
@@ -188,6 +256,7 @@ jobs:
 
       - name: Ce qui reste apres desinstallation
         shell: pwsh
+        continue-on-error: true
         run: |
           if (Test-Path $env:DOSSIER) {
             Write-Host "RESTE  Le dossier d'installation existe encore :"
@@ -216,6 +285,7 @@ jobs:
 
       - name: Reinstaller
         shell: pwsh
+        continue-on-error: true
         run: |
           $p = Start-Process -FilePath $env:INSTALLER -ArgumentList '/S' -PassThru -Wait
           Write-Host "Code de sortie : $($p.ExitCode)"
