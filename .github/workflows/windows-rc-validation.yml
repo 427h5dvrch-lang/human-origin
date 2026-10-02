@@ -154,7 +154,9 @@ jobs:
             foreach ($c in Get-ChildItem $r -ErrorAction SilentlyContinue) {
               $p = Get-ItemProperty $c.PSPath -ErrorAction SilentlyContinue
               if ($p.DisplayName -like '*HumanOrigin*' -and $p.InstallLocation) {
-                $dossier = $p.InstallLocation; break
+                # L'installateur ecrit InstallLocation ENTRE GUILLEMETS dans le registre.
+                # Tout Test-Path / Join-Path sur la valeur brute echoue : il faut les retirer.
+                $dossier = $p.InstallLocation.Trim('"'); break
               }
             }
             if ($dossier) { break }
