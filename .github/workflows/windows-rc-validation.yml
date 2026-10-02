@@ -78,9 +78,28 @@ jobs:
       - name: Ce qui a ete installe
         shell: pwsh
         run: |
-          $racines = @("$env:LOCALAPPDATA\Programs\HumanOrigin", "$env:ProgramFiles\HumanOrigin",
-                       "${env:ProgramFiles(x86)}\HumanOrigin")
-          $dossier = $racines | Where-Object { Test-Path $_ } | Select-Object -First 1
+          # Ne pas DEVINER le chemin : le lire la ou l'installateur l'a inscrit. Une premiere
+          # version supposait %LOCALAPPDATA%\Programs\HumanOrigin et echouait alors que
+          # l'installation avait reussi — Tauri en mode currentUser pose ailleurs.
+          $dossier = $null
+          foreach ($r in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+                           'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall')) {
+            if (-not (Test-Path $r)) { continue }
+            foreach ($c in Get-ChildItem $r -ErrorAction SilentlyContinue) {
+              $p = Get-ItemProperty $c.PSPath -ErrorAction SilentlyContinue
+              if ($p.DisplayName -like '*HumanOrigin*' -and $p.InstallLocation) {
+                $dossier = $p.InstallLocation; break
+              }
+            }
+            if ($dossier) { break }
+          }
+          if (-not $dossier) {
+            # Repli : chercher l'executable sous les emplacements plausibles.
+            $t = Get-ChildItem "$env:LOCALAPPDATA","$env:ProgramFiles","${env:ProgramFiles(x86)}" `
+                   -Recurse -Filter 'HumanOrigin.exe' -Depth 3 -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+            if ($t) { $dossier = $t.DirectoryName }
+          }
           if (-not $dossier) { throw "Aucun dossier d'installation trouve." }
           Write-Host "Dossier : $dossier"
           Get-ChildItem $dossier -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
