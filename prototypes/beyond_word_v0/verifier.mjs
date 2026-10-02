@@ -25,6 +25,17 @@ export function verifier({ cheminPreuve, cheminArtefact, cle }) {
     reel === p.artefact.commitment ? "" : `attendu ${p.artefact.commitment.slice(0,16)}… obtenu ${reel.slice(0,16)}…`);
   ok("taille coherente", octets.length === p.artefact.octets, `${octets.length} vs ${p.artefact.octets}`);
 
+  // P0 — le contrôle qui ferme la fenêtre. Une preuve non concordante est INVALIDE :
+  // l'artefact présenté n'est pas celui qui existait quand l'observation s'est arrêtée.
+  const c = p.concordance || { etat: "absent" };
+  ok("l'artefact n'a pas change depuis l'arret de l'observation",
+    c.etat === "concordant", c.etat);
+
+  // P1 — ce qui préexistait doit être lisible, et jamais compté comme observé.
+  const pre = p.preexistant || {};
+  ok("le volume preexistant est declare", pre.octets !== undefined && pre.observe === false,
+    pre.octets === null ? "aucune periode ouverte" : `${pre.octets} octets non observes`);
+
   // Les faits se descellent-ils avec cet identifiant ? Le record_id est en AAD : un blob
   // recopie depuis une autre preuve ne se descellera pas ici.
   let faits = null;
@@ -44,6 +55,8 @@ export function verifier({ cheminPreuve, cheminArtefact, cle }) {
 
   r.verdict = r.controles.some(c => c.resultat === "FAIL") ? "INVALIDE" : (lie ? "VALIDE" : "INVALIDE");
   r.ce_que_cela_dit = p.observation?.ce_qui_est_etabli;
+  r.preexistant_non_observe = pre.octets;
+  r.signal_regularite = p.observation?.signaux?.signal_regularite;
   r.ce_que_cela_ne_dit_pas = p.observation?.ce_qui_reste_inconnu;
   return r;
 }

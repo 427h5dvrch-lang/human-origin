@@ -29,7 +29,7 @@ frapper("", 1);
 frapper("Le detecteur estime apres coup.", 2);
 frapper("Le detecteur estime apres coup. HumanOrigin observe pendant.", 2);
 frapper("Trois paragraphes plus loin, la these tient.", 3);
-cap.fermerPeriode();
+cap.fermerPeriode(ART);   // P0 : l'engagement est pris ici, pas a la finalisation
 console.log(`   ${cap.faits.length} evenements sur ${cap.periode} periode(s)`);
 
 console.log("\n-- finalisation --");

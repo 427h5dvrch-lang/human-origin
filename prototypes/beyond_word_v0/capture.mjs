@@ -21,6 +21,12 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
 
+// Engagement de fin de processus. Primitive EXACTE de la production :
+// sha256 sur l'encodage base64 des octets du fichier. Elle ne suppose rien du format.
+export function commitBytes(octets) {
+  return crypto.createHash("sha256").update(Buffer.from(octets).toString("base64")).digest("hex");
+}
+
 // Seuil du volet de production : au-delà, la variation n'est plus attribuée à la frappe.
 export const LARGE = 120;
 
@@ -42,17 +48,47 @@ export class Capture {
     this.faits = [];
     this.longueurs = new Map();
     this.ouverte = false;
+    // P1 — ce qui existait AVANT la premiere periode. Jamais observe, et doit rester
+    // lisible comme tel dans la preuve.
+    this.baseline = null;
+    // P0 — engagement pris a l'instant exact ou l'observation s'arrete.
+    this.arret = null;
   }
 
   ouvrirPeriode(texteInitial = "") {
+    if (this.baseline === null) {
+      // Premiere ouverture : on fige ce qui preexiste. Un fichier vide donne une baseline
+      // vide — c'est un cas normal, pas une absence de baseline.
+      const octets = Buffer.from(texteInitial, "utf8");
+      this.baseline = {
+        octets: octets.length,
+        unites: texteInitial === "" ? 0 : unites(texteInitial).size,
+        empreinte: crypto.createHash("sha256").update(octets).digest("hex"),
+        observe: false,
+        mention: "ce volume etait present avant la premiere periode d'observation ; il n'a pas ete observe",
+      };
+    }
     this.longueurs = unites(texteInitial);
     this.ouverte = true;
     this.debutPeriode = new Date().toISOString();
   }
 
-  fermerPeriode() {
+  /// P0 — la fenetre se ferme ICI, pas a la finalisation.
+  ///
+  /// Tant que l'engagement n'etait pris qu'au moment de finaliser, on pouvait editer hors
+  /// observation puis finaliser : la preuve sortait valide. En prenant l'engagement a
+  /// l'arret, toute modification ulterieure devient detectable par simple comparaison.
+  fermerPeriode(cheminArtefact = null) {
     this.ouverte = false;
     this.periode += 1;
+    if (cheminArtefact) {
+      const octets = fs.readFileSync(cheminArtefact);
+      this.arret = {
+        at: new Date().toISOString(),
+        commitment: commitBytes(octets),
+        octets: octets.length,
+      };
+    }
   }
 
   // L'éditeur annonce : « ces unités ont changé ». C'est le contrat du volet Word.
@@ -111,10 +147,83 @@ export function desceller(blob, recordId, cle) {
   return JSON.parse(Buffer.concat([d.update(b.subarray(28)), d.final()]).toString("utf8"));
 }
 
-// Engagement de fin de processus. Primitive EXACTE de la production :
-// sha256 sur l'encodage base64 des octets du fichier. Elle ne suppose rien du format.
-export function commitBytes(octets) {
-  return crypto.createHash("sha256").update(Buffer.from(octets).toString("base64")).digest("hex");
+export function lireFichier(p) { return fs.readFileSync(p); }
+
+// ---------------------------------------------------------------- P2 · signaux de capture
+//
+// AVERTISSEMENT, qui n'est pas une formule de politesse :
+// ce qui suit décrit la FORME des événements observés. Rien ici n'établit qu'une personne
+// a écrit, ni qu'un outil n'a pas été utilisé. Ce sont des faits descriptifs et des
+// signaux d'assurance — jamais une preuve d'auteur. Un rythme régulier n'accuse personne,
+// et un rythme irrégulier n'innocente personne.
+//
+// Aucun libellé de production n'est touché : ces signaux vivent dans le prototype.
+
+function mediane(xs) {
+  if (!xs.length) return 0;
+  const t = [...xs].sort((a, b) => a - b), m = t.length >> 1;
+  return t.length % 2 ? t[m] : (t[m - 1] + t[m]) / 2;
 }
 
-export function lireFichier(p) { return fs.readFileSync(p); }
+function coefficientDeVariation(xs) {
+  if (xs.length < 2) return null;
+  const moy = xs.reduce((a, b) => a + b, 0) / xs.length;
+  if (moy === 0) return null;
+  const v = xs.reduce((a, b) => a + (b - moy) ** 2, 0) / xs.length;
+  return Math.sqrt(v) / moy;
+}
+
+export const RAFALE_MS = 2000;        // deux événements plus proches que cela : même rafale
+export const REGULARITE_SUSPECTE = 0.25; // en deçà, les intervalles sont anormalement réguliers
+export const MIN_POUR_JUGER = 8;      // sous ce nombre d'événements, on ne conclut rien
+
+export function signaux(faits) {
+  const t = faits.map(f => Date.parse(f.at));
+  const intervalles = t.slice(1).map((x, i) => x - t[i]).filter(x => x >= 0);
+  const insertions = faits.map(f => f.length_delta).filter(d => d > 0);
+
+  // Rafales : suites d'événements séparés de moins de RAFALE_MS.
+  const rafales = [];
+  let courante = 1;
+  for (const d of intervalles) {
+    if (d < RAFALE_MS) courante++;
+    else { if (courante > 1) rafales.push(courante); courante = 1; }
+  }
+  if (courante > 1) rafales.push(courante);
+
+  const dureeMs = t.length > 1 ? t[t.length - 1] - t[0] : 0;
+  const cvIntervalles = coefficientDeVariation(intervalles);
+  const cvTailles = coefficientDeVariation(insertions);
+
+  // Le collage fractionné, qu'un seuil par événement ne voit pas : beaucoup d'insertions
+  // de taille très proche, arrivant à intervalles très réguliers. C'est la REGULARITE qui
+  // le trahit, pas la quantité.
+  const assezDeMatiere = faits.length >= MIN_POUR_JUGER;
+  const tresRegulier = assezDeMatiere
+    && cvIntervalles !== null && cvIntervalles < REGULARITE_SUSPECTE
+    && cvTailles !== null && cvTailles < REGULARITE_SUSPECTE;
+
+  return {
+    evenements: faits.length,
+    duree_ms: dureeMs,
+    cadence_par_minute: dureeMs > 0 ? +(faits.length / (dureeMs / 60000)).toFixed(1) : null,
+    rafales: { nombre: rafales.length, plus_longue: rafales.length ? Math.max(...rafales) : 0 },
+    insertions: {
+      nombre: insertions.length,
+      mediane: mediane(insertions),
+      maximum: insertions.length ? Math.max(...insertions) : 0,
+    },
+    regularite: {
+      intervalles: cvIntervalles === null ? null : +cvIntervalles.toFixed(3),
+      tailles: cvTailles === null ? null : +cvTailles.toFixed(3),
+      // Plus le coefficient est bas, plus la suite est régulière.
+      lecture: "coefficient de variation ; une valeur basse signale une regularite inhabituelle",
+    },
+    repartition_source: faits.reduce((a, f) => { a[f.source] = (a[f.source] || 0) + 1; return a; }, {}),
+    // Le signal, et sa portée, dits ensemble pour qu'ils ne se séparent jamais.
+    signal_regularite: tresRegulier ? "inhabituelle" : (assezDeMatiere ? "ordinaire" : "indeterminee"),
+    portee_du_signal:
+      "signal descriptif sur la forme des evenements. N'etablit ni l'auteur, ni l'absence d'outil, " +
+      "ni la presence d'un collage : une suite reguliere peut venir d'une saisie reguliere.",
+  };
+}

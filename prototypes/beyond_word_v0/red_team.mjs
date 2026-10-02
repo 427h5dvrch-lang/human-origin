@@ -3,7 +3,7 @@
 // limite du modèle, et elle doit être écrite.
 
 import fs from "node:fs"; import crypto from "node:crypto";
-import { Capture } from "./capture.mjs";
+import { Capture, signaux } from "./capture.mjs";
 import { finaliser, ecrirePreuve, identifiantLocal } from "./finaliser.mjs";
 import { verifier } from "./verifier.mjs";
 
@@ -32,7 +32,7 @@ function atelier(nomFichier, lignes, source = "editeur") {
     if (source === "editeur") cap.changementAnnonce(texte, [`u${i}`], "edited");
     else cap.changementConstate(texte);
   });
-  cap.fermerPeriode();
+  cap.fermerPeriode(art);
   const preuve = finaliser({ cheminArtefact: art, capture: cap, recordId, cle });
   const chemin = `${art}.hoproof.json`; ecrirePreuve(preuve, chemin);
   return { art, chemin, cle, preuve, cap };
@@ -78,12 +78,16 @@ scenario("Collage massif pendant l'observation", () => {
 });
 
 scenario("Collage fractionne sous le seuil", () => {
-  const morceaux = Array.from({ length: 40 }, (_, i) => "y".repeat(100) + i);
-  const a = atelier("m6.md", morceaux);
-  const bas = a.cap.faits.filter(f => f.capture_assurance === "low").length;
-  return { detecte: bas > 0,
-    quoi: `${a.cap.faits.length} evenements, dont ${bas} signales. ${a.cap.faits.length - bas} passent pour de la frappe.`,
-    limite: "DEFAUT REEL du modele actuel, deja present dans le volet Word : le seuil est une quantite par evenement, pas un rythme. Un collage decoupe est indiscernable d'une frappe rapide." };
+  // 40 blocs de 100 caracteres, cadence metronomique. Aucun ne franchit le seuil de 120 :
+  // le controle par quantite ne voit rien. Le signal de REGULARITE, lui, voit.
+  const base = Date.parse("2026-10-02T10:00:00Z");
+  const faits = Array.from({ length: 40 }, (_, i) =>
+    ({ at: new Date(base + i * 180).toISOString(), length_delta: 100, source: "local_editing" }));
+  const sg = signaux(faits);
+  const vuParLeSeuil = faits.some(f => Math.abs(f.length_delta) >= 120);
+  return { detecte: sg.signal_regularite === "inhabituelle",
+    quoi: `le seuil ne signale rien (${vuParLeSeuil}) ; la regularite est ${sg.signal_regularite} — cv_intervalles=${sg.regularite.intervalles}, cv_tailles=${sg.regularite.tailles}.`,
+    limite: "le signal DECRIT une forme, il n'etablit rien. Un collage fractionne a intervalles volontairement irreguliers le contournerait, et une saisie naturellement reguliere le declencherait a tort. C'est un signal d'assurance, jamais une accusation." };
 });
 
 scenario("Import d'un contenu preexistant au depart", () => {
@@ -92,17 +96,18 @@ scenario("Import d'un contenu preexistant au depart", () => {
   fs.writeFileSync(art, prealable);
   const cle = crypto.randomBytes(32), recordId = identifiantLocal();
   const cap = new Capture({ source: "editeur" });
-  cap.ouvrirPeriode(prealable);              // l'observation demarre SUR ce contenu
-  let texte = prealable + "Et une phrase ajoutee sous observation.";
+  cap.ouvrirPeriode(prealable);
+  const texte = prealable + "Et une phrase ajoutee sous observation.";
   fs.writeFileSync(art, texte);
   cap.changementAnnonce(texte, ["u20"], "edited");
-  cap.fermerPeriode();
+  cap.fermerPeriode(art);
   const p = finaliser({ cheminArtefact: art, capture: cap, recordId, cle });
   const chemin = `${art}.hoproof.json`; ecrirePreuve(p, chemin);
   const v = verifier({ cheminPreuve: chemin, cheminArtefact: art, cle });
-  return { detecte: false,
-    quoi: `verdict ${v.verdict} : la preuve est valide, et elle ne couvre qu'un evenement pour ${prealable.length} caracteres deja presents.`,
-    limite: "NON DETECTE, et c'est structurel. L'observation commence quand elle commence. La preuve ne dit jamais que tout le contenu a ete observe — mais rien dans ce prototype ne quantifie la part non observee. A corriger : exposer le volume initial comme un fait." };
+  const declare = p.preexistant.octets === prealable.length && p.preexistant.observe === false;
+  return { detecte: declare,
+    quoi: `verdict ${v.verdict}, et la preuve declare ${p.preexistant.octets} octets preexistants NON observes pour ${p.observation.evenements} evenement(s). Le volume importe est lisible, il n'est plus noyé.`,
+    limite: "la preuve dit COMBIEN preexistait, jamais D'OU cela venait. L'origine du contenu importe reste inconnue, et c'est maintenant ecrit dans ce_qui_reste_inconnu." };
 });
 
 scenario("Fermeture puis reprise", () => {
@@ -110,7 +115,7 @@ scenario("Fermeture puis reprise", () => {
   // Reprise : nouvelle periode sur le meme artefact.
   a.cap.ouvrirPeriode(fs.readFileSync(a.art, "utf8"));
   const t = fs.readFileSync(a.art, "utf8") + "\nSeconde seance.";
-  fs.writeFileSync(a.art, t); a.cap.changementAnnonce(t, ["u1"], "edited"); a.cap.fermerPeriode();
+  fs.writeFileSync(a.art, t); a.cap.changementAnnonce(t, ["u1"], "edited"); a.cap.fermerPeriode(a.art);
   const p = finaliser({ cheminArtefact: a.art, capture: a.cap, recordId: a.preuve.record_id, cle: a.cle });
   return { detecte: p.observation.periodes === 2,
     quoi: `${p.observation.periodes} periodes distinctes enregistrees ; l'intervalle entre elles n'est pas observe et se voit.`,
@@ -124,9 +129,12 @@ scenario("Edition par une application non observee", () => {
   const p2 = finaliser({ cheminArtefact: a.art, capture: a.cap, recordId: a.preuve.record_id, cle: a.cle });
   const chemin2 = `${a.art}.hoproof2.json`; ecrirePreuve(p2, chemin2);
   const v = verifier({ cheminPreuve: chemin2, cheminArtefact: a.art, cle: a.cle });
-  return { detecte: false,
-    quoi: `verdict ${v.verdict} : re-finaliser apres une edition externe produit une preuve VALIDE, qui engage le nouveau fichier avec les anciens faits.`,
-    limite: "NON DETECTE, et c'est la faiblesse la plus serieuse trouvee. Rien ne lie les faits a l'etat final AUTREMENT que par le moment de la finalisation. En production, le volet scelle et ferme le document pour fermer cette fenetre ; le prototype ne le fait pas. A traiter avant tout usage reel." };
+  let refuse = false;
+  try { finaliser({ cheminArtefact: a.art, capture: a.cap, recordId: a.preuve.record_id, cle: a.cle, strict: true }); }
+  catch (e) { refuse = true; }
+  return { detecte: p2.concordance.etat === "non_concordant" && v.verdict === "INVALIDE" && refuse,
+    quoi: `concordance ${p2.concordance.etat}, verdict ${v.verdict}, et le mode strict refuse de finaliser. L'engagement pris a l'arret de l'observation ferme la fenetre.`,
+    limite: "un aller-retour qui restitue les OCTETS EXACTS reste indetectable : l'engagement porte sur l'etat final, jamais sur le chemin parcouru." };
 });
 
 scenario("Capture par surveillance de fichier plutot que par l'editeur", () => {

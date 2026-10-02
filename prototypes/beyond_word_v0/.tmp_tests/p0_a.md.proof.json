@@ -1,0 +1,63 @@
+{
+  "schema": "ho-prototype-sidecar/0",
+  "record_id": "HO-HvO6Q_M_PGM",
+  "artefact": {
+    "nom": "p0_a.md",
+    "octets": 19,
+    "commitment": "6c8f49e2ca0b19c05a2f7cd55178bbdb0b26678c157295d1899bd86804b40533",
+    "commitment_algorithm": "sha256-over-base64-bytes"
+  },
+  "concordance": {
+    "etat": "concordant",
+    "engagement_a_l_arret": "6c8f49e2ca0b19c05a2f7cd55178bbdb0b26678c157295d1899bd86804b40533",
+    "arret_at": "2026-10-02T12:23:43.144Z",
+    "explication": "les octets presents sont ceux engages a l'arret de l'observation"
+  },
+  "preexistant": {
+    "octets": 0,
+    "unites": 0,
+    "empreinte": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "observe": false,
+    "mention": "ce volume etait present avant la premiere periode d'observation ; il n'a pas ete observe"
+  },
+  "observation": {
+    "periodes": 1,
+    "evenements": 2,
+    "evenements_attribues_a_la_frappe": 2,
+    "source_de_capture": "editeur",
+    "ce_qui_est_etabli": "des modifications ont ete annoncees par l'editeur pendant les periodes observees",
+    "signaux": {
+      "evenements": 2,
+      "duree_ms": 0,
+      "cadence_par_minute": null,
+      "rafales": {
+        "nombre": 1,
+        "plus_longue": 2
+      },
+      "insertions": {
+        "nombre": 2,
+        "mediane": 9,
+        "maximum": 9
+      },
+      "regularite": {
+        "intervalles": null,
+        "tailles": 0,
+        "lecture": "coefficient de variation ; une valeur basse signale une regularite inhabituelle"
+      },
+      "repartition_source": {
+        "local_editing": 2
+      },
+      "signal_regularite": "indeterminee",
+      "portee_du_signal": "signal descriptif sur la forme des evenements. N'etablit ni l'auteur, ni l'absence d'outil, ni la presence d'un collage : une suite reguliere peut venir d'une saisie reguliere."
+    },
+    "ce_qui_reste_inconnu": [
+      "ce qui s'est passe hors des periodes observees",
+      "l'identite reelle de la personne",
+      "l'usage ou non d'outils d'aide a la redaction",
+      "l'origine du contenu present avant la premiere periode d'observation"
+    ]
+  },
+  "faits_scelles": "6lyV+hVrWOq98hMyJZJW5UKfTXPKWirsKezHU8ICxPpF4AAU164tpskdEYC7LTNLcumrYjVD4xXo0l+0j29WOSFQJIy3iBTx81URc/EH2sfRLULFjyVf3M2MkX8Dqle0ZOtQJlgpLw5PsS0dYZlOLOTeYjH7mD+TOIWZ85k5PWyEoDcqeHni5q60ZSBLXMFwSY9QEriiFOixtIbjHGlJVPhrdtMLHXryHHm4zKheO8iHnZB2HFGFojV8NHAsO0Oc/im3Fa7y7F+2QKi3RiQ/RyYEJoGkm3nZr1I6784TTxIDtKOFl0VX2kUmNqS4WW8PSdH5CIwJHI7SYgY+C7XCPh3R5kCSOiYNYagfkCHL52Kt51lbIs5dUMprNHiQyprlNXviL7gDulc5OOSCOzcx/HdEYXCfH1xWwBddVVmavEKRVGb8AmXTRNWwCGCUT51BPiJpQhQwWFSro8PIA5lV5/SFeQt4T40=",
+  "integrite_simulee": "cfef39832892b08f7662c835bf85525aea0ab684d0b0dc6e09bfa1939068397c",
+  "avertissement": "PROTOTYPE — ni HO-JSON, ni Registry, ni Verify de production."
+}

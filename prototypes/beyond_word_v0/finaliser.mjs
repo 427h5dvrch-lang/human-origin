@@ -17,7 +17,7 @@
 
 import fs from "node:fs";
 import crypto from "node:crypto";
-import { sceller, commitBytes } from "./capture.mjs";
+import { sceller, commitBytes, signaux } from "./capture.mjs";
 
 export const SCHEMA_PROTOTYPE = "ho-prototype-sidecar/0";
 
@@ -25,9 +25,48 @@ export function identifiantLocal() {
   return "HO-" + crypto.randomBytes(8).toString("base64url").slice(0, 12);
 }
 
-export function finaliser({ cheminArtefact, capture, recordId, cle }) {
+/// `strict` fait lever plutot que produire une preuve non concordante. Les deux chemins
+/// sont offerts a dessein : refuser est le comportement attendu d'un produit, mais une
+/// preuve qui DIT son desaccord est plus utile a un banc qu'une exception.
+export function finaliser({ cheminArtefact, capture, recordId, cle, strict = false }) {
   const octets = fs.readFileSync(cheminArtefact);
   const engagement = commitBytes(octets);
+
+  // ------------------------------------------------------------------ P0 · concordance
+  // L'engagement pris a l'arret de l'observation est compare a celui des octets presents
+  // maintenant. Toute edition faite entre les deux apparait ici, et nulle part ailleurs.
+  const arret = capture.arret;
+  let concordance;
+  if (!arret) {
+    concordance = {
+      etat: "sans_engagement_d_arret",
+      explication: "l'observation s'est arretee sans prendre d'engagement : la fenetre entre " +
+                   "l'arret et la finalisation n'est pas couverte",
+    };
+  } else if (arret.commitment === engagement) {
+    concordance = {
+      etat: "concordant",
+      engagement_a_l_arret: arret.commitment,
+      arret_at: arret.at,
+      explication: "les octets presents sont ceux engages a l'arret de l'observation",
+    };
+  } else {
+    concordance = {
+      etat: "non_concordant",
+      engagement_a_l_arret: arret.commitment,
+      engagement_a_la_finalisation: engagement,
+      arret_at: arret.at,
+      octets_a_l_arret: arret.octets,
+      octets_a_la_finalisation: octets.length,
+      explication: "l'artefact a change entre l'arret de l'observation et la finalisation ; " +
+                   "ce changement n'a pas ete observe",
+    };
+  }
+  if (strict && concordance.etat !== "concordant") {
+    const e = new Error(`finalisation refusee : ${concordance.etat}`);
+    e.concordance = concordance;
+    throw e;
+  }
 
   const faits = capture.faits;
   const periodes = faits.length ? Math.max(...faits.map(f => f.period)) + 1 : 0;
@@ -44,6 +83,14 @@ export function finaliser({ cheminArtefact, capture, recordId, cle }) {
       commitment: engagement,
       commitment_algorithm: "sha256-over-base64-bytes",
     },
+    // ------------------------------------------------------------------ P0
+    concordance,
+    // ------------------------------------------------------------------ P1 · preexistant
+    // Ce qui etait la AVANT la premiere periode. Jamais presente comme observe.
+    preexistant: capture.baseline ?? {
+      octets: null, unites: null, observe: false,
+      mention: "aucune periode d'observation n'a ete ouverte : rien n'est observe",
+    },
     observation: {
       periodes,
       evenements: faits.length,
@@ -53,10 +100,13 @@ export function finaliser({ cheminArtefact, capture, recordId, cle }) {
       ce_qui_est_etabli: capture.sourceCapture === "editeur"
         ? "des modifications ont ete annoncees par l'editeur pendant les periodes observees"
         : "le fichier a change entre deux releves ; la maniere dont il a change n'est pas observee",
+      // ------------------------------------------------------------------ P2
+      signaux: signaux(faits),
       ce_qui_reste_inconnu: [
         "ce qui s'est passe hors des periodes observees",
         "l'identite reelle de la personne",
         "l'usage ou non d'outils d'aide a la redaction",
+        "l'origine du contenu present avant la premiere periode d'observation",
       ],
     },
     faits_scelles: sceller(faits, recordId, cle),

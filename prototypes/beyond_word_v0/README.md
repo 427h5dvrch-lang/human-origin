@@ -125,45 +125,89 @@ fournit un `uniqueLocalId` qui survit à l'édition. C'est plus faible, exprès.
 
 ---
 
-## 5 · Red-team — 6 détectées, 3 non détectées
+## 4 bis · V0.1 — ce qui a été durci
 
-**Tenu :** modification externe après finalisation · remplacement complet du fichier ·
-preuve recopiée depuis un autre Record (le `record_id` en AAD fait son travail) ·
-fermeture puis reprise, dont les périodes distinctes se voient · collage massif, signalé
-en `source: unknown` · capture par surveillance de fichier, qui n'attribue jamais rien à
-la frappe.
+### P0 · La fenêtre entre l'arrêt de l'observation et la finalisation
 
-**Non tenu, et c'est le vrai apport de l'exercice :**
+C'était la faille la plus sérieuse du V0 : rien ne liait les faits à l'état final autrement
+que par l'instant de la finalisation. On éditait hors observation, on finalisait, la preuve
+sortait valide.
 
-**Le collage fractionné sous le seuil.** 40 blocs de 100 caractères passent intégralement
-pour de la frappe. Le seuil est une quantité **par événement**, pas un rythme. **Ce défaut
-existe déjà dans le volet Word de production** — il n'est pas né du prototype.
+L'engagement est désormais pris **à l'instant exact où l'observation s'arrête**, conservé
+dans la preuve, et recalculé à la finalisation. Trois états possibles, tous explicites :
+`concordant`, `non_concordant`, `sans_engagement_d_arret`. Un mode `strict` fait refuser la
+finalisation ; par défaut, la preuve **dit** son désaccord plutôt que de disparaître, ce qui
+est plus utile à un banc. Le vérificateur traite les deux états non concordants comme
+INVALIDE.
 
-**L'import de contenu préexistant.** L'observation démarre sur 1 000 caractères déjà
-présents, et la preuve est valide avec un seul événement. La preuve ne prétend pas couvrir
-tout le contenu, mais **rien ne quantifie la part non observée**. Exposer le volume
-initial comme un fait réglerait l'essentiel.
+**Un cas documenté, pas corrigé** : un aller-retour qui restitue les **octets exacts** reste
+indétectable. L'engagement porte sur l'état final, jamais sur le chemin parcouru. Ce n'est
+pas un oubli — c'est ce que cette primitive peut faire, et elle ne prétend pas davantage.
 
-**Re-finaliser après une édition non observée.** C'est la faille la plus sérieuse. Dans le
-prototype, rien ne lie les faits à l'état final autrement que par l'instant de la
-finalisation : on édite hors observation, on re-finalise, la preuve est VALIDE. En
-production, le volet scelle puis **ferme** le document, ce qui referme cette fenêtre. Un
-chemin par fichier de preuve doit reproduire cette fermeture — **à traiter avant tout
-usage réel**.
+### P1 · Le volume préexistant
+
+Tout ce qui existe avant la première période est figé dans un bloc `preexistant` —
+octets, unités, empreinte, et `observe: false`. Un fichier vide donne une baseline de zéro
+octet, déclarée : c'est un cas normal, pas une absence. `ce_qui_reste_inconnu` nomme
+désormais explicitement l'origine de ce contenu.
+
+Le point qui comptait : 1 000 caractères importés produisent **un seul** événement observé
+pour 1 023 octets. Rien dans la preuve ne laisse croire que ce volume a été créé sous
+observation.
+
+### P2 · Les signaux de capture
+
+Cadence, rafales, taille médiane et maximale des insertions, répartition des sources, et
+deux coefficients de variation — sur les intervalles et sur les tailles.
+
+**C'est le coefficient de variation qui attrape le collage fractionné**, là où un seuil par
+quantité ne voit rien : 40 blocs de 100 caractères à cadence métronomique donnent
+`cv = 0` sur les deux axes, et le signal passe à `inhabituelle`. Une frappe irrégulière
+donne `cv ≈ 1.0` et `≈ 0.6`, et reste `ordinaire`. Sous huit événements, le signal répond
+`indeterminee` plutôt que de juger sur rien.
+
+**Ces signaux ne sont pas des preuves d'auteur.** Chaque signal transporte sa propre portée
+dans le champ `portee_du_signal`, pour qu'ils ne puissent pas se séparer : une suite
+régulière peut venir d'une saisie régulière, et un collage à intervalles volontairement
+irréguliers passerait. Aucun libellé de production n'est touché.
 
 ---
 
+## 5 · Red-team — 9 détectées sur 9
+
+Les trois attaques que le V0 ne tenait pas sont désormais tenues, et chacune garde sa
+limite écrite.
+
+**Le collage fractionné sous le seuil** — vu par la régularité, pas par la quantité. Limite :
+le signal décrit une forme, il n'établit rien.
+
+**L'import de contenu préexistant** — 1 000 octets déclarés non observés pour un événement.
+Limite : la preuve dit combien préexistait, jamais d'où cela venait.
+
+**L'édition par une application non observée** — `non_concordant`, verdict INVALIDE, et le
+mode strict refuse. Limite : l'aller-retour aux octets exacts reste indétectable.
+
+Les six autres tiennent comme avant : modification externe, remplacement du fichier, preuve
+recopiée d'un autre Record, collage massif, reprise en deux périodes visibles, et
+surveillance de fichier qui n'attribue jamais rien à la frappe.
+
+**Banc V0.1 : 21 contrôles, 0 échec** (`node tests.mjs`).
+
 ## 6 · Recommandation
 
-**GO**, sur le wedge ci-dessus, avec une réserve nommée.
+**GO** pour adapter un éditeur.
 
 Ce qui est acquis : le transport hors conteneur fonctionne, l'engagement est le même qu'en
 production et croisé avec elle, Verify n'a besoin d'aucun changement, et la promesse tient
 mot pour mot sur un artefact qui n'est pas un `.docx`.
 
-La réserve : **la fenêtre entre dernière observation et finalisation doit être fermée**
-avant qu'un fichier de preuve ne sorte d'un prototype. Sans cela, le modèle est plus
-faible que celui de Word, et il serait malhonnête de le présenter autrement.
+La réserve du V0 est levée : **la fenêtre est fermée**, et le red-team ne la rouvre plus.
+
+Ce qui reste su, et qui ne doit pas disparaître dans l'enthousiasme : l'aller-retour aux
+octets exacts est indétectable ; l'intervalle entre deux périodes reste inconnu ; l'origine
+du contenu préexistant n'est pas établie ; et les signaux de régularité décrivent une forme
+sans rien prouver de l'auteur. Ces quatre limites sont dans la preuve elle-même, pas
+seulement dans ce document.
 
 **NO-GO** sur la surveillance de fichier comme chemin principal, et sur l'image, l'audio
 et la vidéo à ce stade.
@@ -172,16 +216,15 @@ et la vidéo à ce stade.
 
 ## 7 · Prochain sprint
 
-1. **Fermer la fenêtre de finalisation.** Un fait de clôture scellé, et un engagement pris
-   sur l'artefact **au moment où l'observation s'arrête**, pas au moment où l'on finalise.
-   C'est le préalable à tout le reste.
-2. **Exposer le volume initial** comme un fait, pour que la part non observée soit lisible
-   dans la preuve plutôt que déduite.
-3. **Mesurer le rythme, pas seulement la quantité** — une réponse au collage fractionné,
-   qui bénéficierait aussi au volet Word.
-4. **Une extension d'éditeur de code**, source de capture réelle branchée sur cette même
-   couche.
-5. **Ensuite seulement**, décider si le fichier de preuve devient un format de production
-   — ce qui demandera son propre ticket, HO-JSON étant hors périmètre ici.
+1. **Une extension d'éditeur de code**, branchée sur cette couche. Le contrat dont elle a
+   besoin existe : ouvrir une période, annoncer les unités changées, fermer en prenant
+   l'engagement.
+2. **Éprouver les signaux sur de la frappe réelle**, pas simulée. Les seuils — `RAFALE_MS`,
+   `REGULARITE_SUSPECTE`, `MIN_POUR_JUGER` — sont posés sur des hypothèses et doivent être
+   calibrés sur des sessions authentiques avant de signifier quoi que ce soit.
+3. **Décider du sort de l'intervalle entre périodes** : le combler, ou le déclarer plus
+   fortement qu'aujourd'hui.
+4. **Ensuite seulement**, la question du format de production — ticket séparé, HO-JSON hors
+   périmètre.
 
 Rien de tout cela ne touche Registry, HO-JSON, Verify ni la cryptographie.

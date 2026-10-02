@@ -1,0 +1,63 @@
+{
+  "schema": "ho-prototype-sidecar/0",
+  "record_id": "HO-nE_5hm4z9Wk",
+  "artefact": {
+    "nom": "p1_1000.md",
+    "octets": 1023,
+    "commitment": "1865fe31d19d3a8e81bdb01596d8bebfa8a043c1f8c5642c6593533bfb34ec6d",
+    "commitment_algorithm": "sha256-over-base64-bytes"
+  },
+  "concordance": {
+    "etat": "concordant",
+    "engagement_a_l_arret": "1865fe31d19d3a8e81bdb01596d8bebfa8a043c1f8c5642c6593533bfb34ec6d",
+    "arret_at": "2026-10-02T12:23:43.147Z",
+    "explication": "les octets presents sont ceux engages a l'arret de l'observation"
+  },
+  "preexistant": {
+    "octets": 1000,
+    "unites": 1,
+    "empreinte": "44f8354494a5ba03ba1792a8d3e9c534c47a9181980fde7a3f44b06ef2ae7c7f",
+    "observe": false,
+    "mention": "ce volume etait present avant la premiere periode d'observation ; il n'a pas ete observe"
+  },
+  "observation": {
+    "periodes": 1,
+    "evenements": 1,
+    "evenements_attribues_a_la_frappe": 1,
+    "source_de_capture": "editeur",
+    "ce_qui_est_etabli": "des modifications ont ete annoncees par l'editeur pendant les periodes observees",
+    "signaux": {
+      "evenements": 1,
+      "duree_ms": 0,
+      "cadence_par_minute": null,
+      "rafales": {
+        "nombre": 0,
+        "plus_longue": 0
+      },
+      "insertions": {
+        "nombre": 1,
+        "mediane": 22,
+        "maximum": 22
+      },
+      "regularite": {
+        "intervalles": null,
+        "tailles": null,
+        "lecture": "coefficient de variation ; une valeur basse signale une regularite inhabituelle"
+      },
+      "repartition_source": {
+        "local_editing": 1
+      },
+      "signal_regularite": "indeterminee",
+      "portee_du_signal": "signal descriptif sur la forme des evenements. N'etablit ni l'auteur, ni l'absence d'outil, ni la presence d'un collage : une suite reguliere peut venir d'une saisie reguliere."
+    },
+    "ce_qui_reste_inconnu": [
+      "ce qui s'est passe hors des periodes observees",
+      "l'identite reelle de la personne",
+      "l'usage ou non d'outils d'aide a la redaction",
+      "l'origine du contenu present avant la premiere periode d'observation"
+    ]
+  },
+  "faits_scelles": "WCH/rfEXInU8iA4pCOAI8TXI/Gt1uaIazuItTjSw1LJQza72hFp1P5d0W/NFjom63cXyJK6ZgUH4Ra34g2zp+4cLovTQojLOgk3U99yR9a+Uu671syZhLkAGBCMt0cEo/imddlhiAlfkermH72aadW4gawfSH85ec+YljgviMbOG0byuJq5YTTTGMRZYZAe3xBk35wPhF9z3qWlkSgtDZtCG/e/x8k6z5zLyahWfm64mVyiWHEFsaFJ7iqcB1Wd3CUS8",
+  "integrite_simulee": "a185a611cdf920de214c7576cb55fd065177d3c039135d0b3cce255889746d7f",
+  "avertissement": "PROTOTYPE — ni HO-JSON, ni Registry, ni Verify de production."
+}

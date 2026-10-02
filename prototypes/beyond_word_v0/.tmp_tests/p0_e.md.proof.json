@@ -1,0 +1,61 @@
+{
+  "schema": "ho-prototype-sidecar/0",
+  "record_id": "HO-vSTdtwTIqHo",
+  "artefact": {
+    "nom": "p0_e.md",
+    "octets": 15,
+    "commitment": "2fbe39ed8d22cf4966c06f07f75f9a0c124aa780b9659dfe0903d1b61fb828f4",
+    "commitment_algorithm": "sha256-over-base64-bytes"
+  },
+  "concordance": {
+    "etat": "sans_engagement_d_arret",
+    "explication": "l'observation s'est arretee sans prendre d'engagement : la fenetre entre l'arret et la finalisation n'est pas couverte"
+  },
+  "preexistant": {
+    "octets": 0,
+    "unites": 0,
+    "empreinte": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "observe": false,
+    "mention": "ce volume etait present avant la premiere periode d'observation ; il n'a pas ete observe"
+  },
+  "observation": {
+    "periodes": 1,
+    "evenements": 1,
+    "evenements_attribues_a_la_frappe": 1,
+    "source_de_capture": "editeur",
+    "ce_qui_est_etabli": "des modifications ont ete annoncees par l'editeur pendant les periodes observees",
+    "signaux": {
+      "evenements": 1,
+      "duree_ms": 0,
+      "cadence_par_minute": null,
+      "rafales": {
+        "nombre": 0,
+        "plus_longue": 0
+      },
+      "insertions": {
+        "nombre": 1,
+        "mediane": 15,
+        "maximum": 15
+      },
+      "regularite": {
+        "intervalles": null,
+        "tailles": null,
+        "lecture": "coefficient de variation ; une valeur basse signale une regularite inhabituelle"
+      },
+      "repartition_source": {
+        "local_editing": 1
+      },
+      "signal_regularite": "indeterminee",
+      "portee_du_signal": "signal descriptif sur la forme des evenements. N'etablit ni l'auteur, ni l'absence d'outil, ni la presence d'un collage : une suite reguliere peut venir d'une saisie reguliere."
+    },
+    "ce_qui_reste_inconnu": [
+      "ce qui s'est passe hors des periodes observees",
+      "l'identite reelle de la personne",
+      "l'usage ou non d'outils d'aide a la redaction",
+      "l'origine du contenu present avant la premiere periode d'observation"
+    ]
+  },
+  "faits_scelles": "Ld54P+zQaBZ3IAejq87nOMM+PZXXyWhRqyGVqMnC09sDKDp5QjFQRo4QZntiP8ozdhBmfFdxNDfCoJvv506yQjD/S030T0a+qSyHw8NUCW4PoBMVhvgcPa3wzzr5ZZwJ6YOUGJ4kuhFYsDjRLjtrfDJWOG0DhrQaVr2EtU45oCNyugVJcbF6Q48HzLvr+RKm7fYs3i01oD+JiezmF+qigvXlrTt4yp2NKUrnzb5p1yaBCgIZjOsbsL/3V++zTNjYoLfC",
+  "integrite_simulee": "7fa0bba1b38b17f8ca98f34952d96cde44a97aafa6f5595cfa1e927a55b636d6",
+  "avertissement": "PROTOTYPE — ni HO-JSON, ni Registry, ni Verify de production."
+}

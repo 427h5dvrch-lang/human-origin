@@ -1,0 +1,66 @@
+{
+  "schema": "ho-prototype-sidecar/0",
+  "record_id": "HO-laTqxiSqJpg",
+  "artefact": {
+    "nom": "p0_b.md",
+    "octets": 29,
+    "commitment": "dbed69392137f41f30bef6251aef74cb1d6fc5da14be64db3d968cfdd1b3d201",
+    "commitment_algorithm": "sha256-over-base64-bytes"
+  },
+  "concordance": {
+    "etat": "non_concordant",
+    "engagement_a_l_arret": "73ca4e35e0bf27df49e215597329c036f33db23c9d9022b303e7f1becf35a9f1",
+    "engagement_a_la_finalisation": "dbed69392137f41f30bef6251aef74cb1d6fc5da14be64db3d968cfdd1b3d201",
+    "arret_at": "2026-10-02T12:23:43.146Z",
+    "octets_a_l_arret": 8,
+    "octets_a_la_finalisation": 29,
+    "explication": "l'artefact a change entre l'arret de l'observation et la finalisation ; ce changement n'a pas ete observe"
+  },
+  "preexistant": {
+    "octets": 0,
+    "unites": 0,
+    "empreinte": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "observe": false,
+    "mention": "ce volume etait present avant la premiere periode d'observation ; il n'a pas ete observe"
+  },
+  "observation": {
+    "periodes": 1,
+    "evenements": 1,
+    "evenements_attribues_a_la_frappe": 1,
+    "source_de_capture": "editeur",
+    "ce_qui_est_etabli": "des modifications ont ete annoncees par l'editeur pendant les periodes observees",
+    "signaux": {
+      "evenements": 1,
+      "duree_ms": 0,
+      "cadence_par_minute": null,
+      "rafales": {
+        "nombre": 0,
+        "plus_longue": 0
+      },
+      "insertions": {
+        "nombre": 1,
+        "mediane": 8,
+        "maximum": 8
+      },
+      "regularite": {
+        "intervalles": null,
+        "tailles": null,
+        "lecture": "coefficient de variation ; une valeur basse signale une regularite inhabituelle"
+      },
+      "repartition_source": {
+        "local_editing": 1
+      },
+      "signal_regularite": "indeterminee",
+      "portee_du_signal": "signal descriptif sur la forme des evenements. N'etablit ni l'auteur, ni l'absence d'outil, ni la presence d'un collage : une suite reguliere peut venir d'une saisie reguliere."
+    },
+    "ce_qui_reste_inconnu": [
+      "ce qui s'est passe hors des periodes observees",
+      "l'identite reelle de la personne",
+      "l'usage ou non d'outils d'aide a la redaction",
+      "l'origine du contenu present avant la premiere periode d'observation"
+    ]
+  },
+  "faits_scelles": "XQe8QPPxW43cAa6nDFHcw87BrURfIG2h6MLjENEGQb5WIshziXDv8xb9IYltwXbfGg3p7HLO6X7jfHrZ/muD3qvO833QbKPeMLcaK+EOr86XdeGAMmhg+Vlx6aWUvmobreOoYCNlcONhXB4yrkUKF7Yoa5jFD8N3H2arawC0Udjd1950XsuHFe0MVQBarcX3PyVr2vbh5T10LkiMAUFlm5Mqmj3Ms+4ECTr3dMUHBxz9rD0LPBVmnB8ShPgNmimEOOQ=",
+  "integrite_simulee": "57dd756b3f7f1a58116f31cf56fc53e490a8a000a3297f282739315bcb416522",
+  "avertissement": "PROTOTYPE — ni HO-JSON, ni Registry, ni Verify de production."
+}
