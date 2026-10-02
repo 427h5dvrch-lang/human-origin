@@ -44,10 +44,11 @@
 // écart, dans un champ distinct des faits.
 
 import fs from "node:fs";
+import path from "node:path";
 import crypto from "node:crypto";
 
 export const ETAT = {
-  CONTINUE: "observation_continue",
+  AUCUN_ECART: "aucun_ecart_detecte_aux_controles",
   ECART: "changement_non_attribuable_detecte",
   INDETERMINE: "integrite_non_surveillee",
 };
@@ -69,6 +70,7 @@ export class SondeIntegrite {
     this.verifications = 0;
     this.ancrages = 0;
     this.etatConnu = null;
+    this.enEcriture = false;
     // Délai de stabilisation. Trop court : on surprend les écritures. Trop long : on
     // aveugle d'autant la surveillance.
     this.stabilisation_ms = 200;
@@ -154,18 +156,38 @@ export class SondeIntegrite {
   }
 
   /**
-   * Surveillance continue. Elle sert UNIQUEMENT à déclencher des vérifications : c'est la
+   * FENÊTRE D'ÉCRITURE DE L'ÉDITEUR.
+   *
+   * Entre `onWillSaveTextDocument` et `onDidSaveTextDocument`, l'éditeur écrit. Toute
+   * divergence constatée dans cet intervalle vient de son écriture, pas d'un tiers : on
+   * suspend le jugement. En dehors, aucune écriture légitime n'est attendue, et une
+   * divergence — même fugace — est enregistrée.
+   *
+   * C'est cette suspension qui permet de contrôler à CHAQUE événement de fichier sans
+   * produire le faux positif de la sauvegarde atomique. Sans elle, il fallait attendre
+   * une stabilisation, et l'attente laissait passer les modifications annulées avant.
+   */
+  ouvrirFenetreEcriture() { this.enEcriture = true; }
+  fermerFenetreEcriture() { this.enEcriture = false; this.ancrer("sauvegarde_observee"); }
+
+  /**
+   * Surveillance. Elle sert UNIQUEMENT à déclencher des vérifications : c'est la
    * comparaison qui décide, jamais l'événement de fichier.
    */
   demarrer() {
     try {
-      this._w = fs.watch(this.chemin, { persistent: false }, () => {
-        // Relevé brut immédiat : il renseigne, il ne conclut pas.
-        this.verifier("ecriture", { confirme: false });
-        // Puis un relevé après stabilisation, le seul qui puisse retenir un écart.
-        clearTimeout(this._t);
-        this._t = setTimeout(() => this.verifier("ecriture_stabilisee"), this.stabilisation_ms);
-      });
+      const surEcriture = () => {
+        if (this.enEcriture) { this.divergences_transitoires++; return; }  // l'éditeur écrit
+        this.verifierDepuisAncrage("ecriture_hors_fenetre");
+      };
+      this._w = fs.watch(this.chemin, { persistent: false }, surEcriture);
+      // Le fichier peut être remplacé par renommage : la veille sur le fichier est alors
+      // perdue. Celle du dossier survit, et sert de filet.
+      try {
+        this._wp = fs.watch(path.dirname(this.chemin), { persistent: false }, (t, f) => {
+          if (f === path.basename(this.chemin)) surEcriture();
+        });
+      } catch (e) { /* le dossier peut ne pas être surveillable */ }
       this.surveille = true;
     } catch (e) { this.surveille = false; }
     return this.surveille;
@@ -178,7 +200,9 @@ export class SondeIntegrite {
     return this.verifier(contexte);
   }
 
-  arreter() { clearTimeout(this._t); if (this._w) { this._w.close(); this._w = null; } }
+  arreter() { clearTimeout(this._t);
+    if (this._w) { this._w.close(); this._w = null; }
+    if (this._wp) { this._wp.close(); this._wp = null; } }
 
   /**
    * Un changement est arrivé à l'artefact SANS passer par la chaîne observée — par
@@ -198,7 +222,7 @@ export class SondeIntegrite {
   /** Le verdict, et sa portée. */
   bilan() {
     const etat = this.verifications === 0 || this.ancrages === 0 ? ETAT.INDETERMINE
-      : this.ecarts.length ? ETAT.ECART : ETAT.CONTINUE;
+      : this.ecarts.length ? ETAT.ECART : ETAT.AUCUN_ECART;
     return {
       etat,
       verifications: this.verifications,
@@ -207,8 +231,8 @@ export class SondeIntegrite {
       surveillance_continue: this.surveille,
       ecarts: this.ecarts,
       ce_que_cela_dit: {
-        [ETAT.CONTINUE]:
-          "a chaque verification, l'etat du fichier s'expliquait par la chaine d'evenements observee",
+        [ETAT.AUCUN_ECART]:
+          "a chacun des controles effectues, l'etat du fichier s'expliquait par les sauvegardes observees. Le mecanisme ne surveille pas en continu : il controle a des instants precis",
         [ETAT.ECART]:
           "a au moins une verification, l'etat du fichier ne s'expliquait pas par la chaine observee",
         [ETAT.INDETERMINE]:

@@ -422,3 +422,92 @@ On ne peut pas garantir : *« aucune modification non observée n'a eu lieu »* 
 
 Et rien de tout cela ne s'approche de *« chaque octet vient d'une frappe humaine »*, qui
 reste hors de portée de cette API et le restera.
+
+---
+
+# V0.4 — red-team final
+
+## 1 · Le blanchiment était réel
+
+Écriture externe → rechargement VS Code → sauvegarde par l'utilisateur. Le mécanisme V0.3
+rendait `aucun écart`, et **le contenu étranger se retrouvait dans l'artefact final sans
+qu'aucun écart ne soit enregistré**. La sauvegarde suivante ré-ancrait sur un état déjà
+pollué : elle blanchissait ce qui l'avait précédée.
+
+**Correctif** : contrôler **avant** d'ancrer. `onWillSaveTextDocument` arrive avant
+l'écriture ; un contrôle à ce moment voit l'écriture externe qui précède. Avec lui, le même
+scénario rend `changement_non_attribuable_detecte`, contexte `avant_sauvegarde`.
+
+## 2 · Finalisation avec un tampon non enregistré
+
+Constaté : disque = `"partie A\n"`, tampon = `"partie A\npartie B non sauvegardee\n"`.
+**C'est l'état DISQUE qui est engagé**, et les deux faits enregistrés décrivent B, absent
+de l'artefact engagé. La preuve se contredit elle-même.
+
+**Comportement retenu : REFUSER.** Enregistrer à la place de l'utilisateur modifierait son
+document, ce qui n'est pas le rôle d'un observateur. La finalisation lève
+`tampon_non_sauvegarde` et invite à enregistrer puis finaliser.
+
+## 3 · Watcher sur le dossier parent
+
+Mesuré : `parent = 6`, `fichier = 8` événements. **Le watcher de dossier ne voit pas plus
+que celui de fichier** — il en voit moins. Aucun gain à l'utiliser seul. Il est conservé
+comme filet, parce qu'un remplacement par renommage fait perdre la veille sur le fichier,
+jamais celle du dossier.
+
+Ce que la mesure a révélé en revanche : **le watcher voit bien l'aller-retour** (2
+événements). Ce qui manquait en V0.3 n'était pas la détection, c'était le moment du
+contrôle — la stabilisation arrivait après l'annulation.
+
+**La composition qui en découle** : contrôler à **chaque** événement de fichier, et
+suspendre le jugement entre `onWillSaveTextDocument` et `onDidSaveTextDocument`, intervalle
+pendant lequel l'éditeur écrit. Résultat : l'aller-retour est détecté (2 écarts), et six
+sauvegardes atomiques ne produisent **aucun** faux positif — 12 divergences transitoires
+correctement ignorées.
+
+Un événement de système de fichiers n'attribue **jamais** l'auteur ni la source. Il dit
+qu'une écriture a eu lieu, rien d'autre.
+
+## 4 · Sémantique corrigée
+
+`observation_continue` est remplacé par **`aucun_ecart_detecte_aux_controles`**. Le
+mécanisme ne surveille pas en continu : il contrôle à des instants précis — à chaque
+événement de fichier hors fenêtre d'écriture, avant chaque sauvegarde, et à la fermeture.
+Le nom doit dire cela, et pas davantage.
+
+Les trois états sont donc : `aucun_ecart_detecte_aux_controles`,
+`changement_non_attribuable_detecte`, `integrite_non_surveillee`.
+
+## Verdict
+
+### Ce que nous savons garantir
+
+L'artefact engagé correspond au dernier état enregistré par l'éditeur. La finalisation est
+refusée si le tampon contient des modifications non enregistrées. Une écriture étrangère
+qui précède une sauvegarde ne peut plus être blanchie par elle. Le fonctionnement normal de
+sauvegarde ne produit aucun faux positif.
+
+### Ce que nous détectons parfois
+
+Une écriture étrangère pendant une période active, y compris annulée ensuite — **à condition
+que la veille du système de fichiers ait émis son événement**. C'est le cas sur un système
+de fichiers local ordinaire ; ce ne l'est pas nécessairement sur un volume réseau, ni si le
+nombre d'événements dépasse ce que la veille peut suivre.
+
+### Ce qui reste indétectable
+
+Une écriture étrangère **pendant la fenêtre d'écriture de l'éditeur** : le jugement y est
+suspendu, et c'est le prix de l'absence de faux positif. Toute modification sur un système
+où la veille n'émet rien. L'origine, l'auteur et la nature de ce qui a été écrit — jamais
+observés, jamais déduits.
+
+Et, toujours : rien de ceci ne s'approche de « chaque octet vient d'une frappe humaine ».
+
+### Comportement de finalisation sûr
+
+1. Si le tampon a des modifications non enregistrées → **refuser**, demander un
+   enregistrement explicite.
+2. Si des écarts ont été enregistrés → finaliser **en les portant dans la preuve**, jamais
+   en les taisant. Un écart n'invalide pas : il se déclare.
+3. Si aucun contrôle n'a eu lieu → `integrite_non_surveillee`, jamais un état qui se
+   lirait comme un contrôle réussi.

@@ -28,9 +28,28 @@ export function identifiantLocal() {
 /// `strict` fait lever plutot que produire une preuve non concordante. Les deux chemins
 /// sont offerts a dessein : refuser est le comportement attendu d'un produit, mais une
 /// preuve qui DIT son desaccord est plus utile a un banc qu'une exception.
-export function finaliser({ cheminArtefact, capture, recordId, cle, strict = false }) {
+export function finaliser({ cheminArtefact, capture, recordId, cle, strict = false,
+                            tamponNonSauvegarde = false }) {
   const octets = fs.readFileSync(cheminArtefact);
   const engagement = commitBytes(octets);
+
+  // ------------------------------------------------------------------ tampon non sauvegardé
+  // Constaté au banc : si l'éditeur a des modifications non enregistrées, l'engagement
+  // porte sur le DISQUE, pas sur ce que l'utilisateur voit. Les faits décrivent alors du
+  // contenu absent de l'artefact engagé — la preuve se contredit elle-même.
+  //
+  // Comportement retenu : REFUSER. Enregistrer à la place de l'utilisateur modifierait son
+  // document, ce qui n'est pas le rôle d'un observateur. La seule issue sûre est qu'il
+  // enregistre lui-même, puis finalise.
+  if (tamponNonSauvegarde) {
+    const e = new Error("finalisation refusee : l'editeur a des modifications non enregistrees");
+    e.concordance = {
+      etat: "tampon_non_sauvegarde",
+      explication: "l'engagement porterait sur l'etat du disque, alors que les faits decrivent " +
+                   "l'etat du tampon. Enregistrez le document, puis finalisez.",
+    };
+    throw e;
+  }
 
   // ------------------------------------------------------------------ P0 · concordance
   // L'engagement pris a l'arret de l'observation est compare a celui des octets presents

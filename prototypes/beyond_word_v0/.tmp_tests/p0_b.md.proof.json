@@ -1,6 +1,6 @@
 {
   "schema": "ho-prototype-sidecar/0",
-  "record_id": "HO-JXYRO83ak3s",
+  "record_id": "HO-Dw2ULixfmz4",
   "artefact": {
     "nom": "p0_b.md",
     "octets": 29,
@@ -11,7 +11,7 @@
     "etat": "non_concordant",
     "engagement_a_l_arret": "73ca4e35e0bf27df49e215597329c036f33db23c9d9022b303e7f1becf35a9f1",
     "engagement_a_la_finalisation": "dbed69392137f41f30bef6251aef74cb1d6fc5da14be64db3d968cfdd1b3d201",
-    "arret_at": "2026-10-02T12:38:47.946Z",
+    "arret_at": "2026-10-02T13:42:01.978Z",
     "octets_a_l_arret": 8,
     "octets_a_la_finalisation": 29,
     "explication": "l'artefact a change entre l'arret de l'observation et la finalisation ; ce changement n'a pas ete observe"
@@ -61,7 +61,7 @@
       "l'origine du contenu present avant la premiere periode d'observation"
     ]
   },
-  "faits_scelles": "cZ/+JnI9UAxg1VvblhRakm8QwVNbcz9+rLcb9tRm9GlKjIbUJswMsF/iMHZkD63OAfnv7Drr8Lr3FUhb2iablb5Ckggl5Hj6XuSxlvy+B9xafkkcjZTgJhpiTRLNtecDK4a0JbAyMOWbYp8f0HkwhnWskx9ldwSdMi5/jJEjNlHAa0DzPq3H+Qv4d6boeWBZPbRqYo8JNNWnkXYtxfg5QAoO9qkQr7qiAH1UrSTt1BbVy2G8lQS2FsFL1R4OAHUgj4I=",
-  "integrite_simulee": "67c3613a70d2ace98f54c8ac0c97e1a8989b2af6797d3cb30f5778113af9643b",
+  "faits_scelles": "Wjxa2iHqgZc1LoP1OLxsEm6AQsN6MK8+MZwHO4+VGWFOKtdq2t8Eantz1Vj3bfwD36tr5zCmSUESa41sp+my7QUSlrNrSBPaE2eMuxTZo7RV68oVG33lXm3Ro0asoAJmdvgXqU4eRe2ytMrCuiT9j/l0i62CF4kuE+j8+pJIwDwuaP2Jvz0ZFbuLWTNAO9pqjklt1Q6JQug592rj57aW9d8fmlruhJSSj1RbfRoWyvWadgPrcvn45T/f4p33GHNlFQ4=",
+  "integrite_simulee": "a075d6a5d7662a47ef9b936aa63b391f8026187bd2c7b37db515501efc2a9840",
   "avertissement": "PROTOTYPE — ni HO-JSON, ni Registry, ni Verify de production."
 }
