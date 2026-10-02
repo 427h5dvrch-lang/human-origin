@@ -8,13 +8,19 @@ name: Windows RC — validation non mutante
 # dependent sont donc hors d'atteinte : elles sont consignees comme limites, pas comme
 # echecs, et le job continue.
 
+# workflow_dispatch n'apparait qu'une fois le workflow present sur la branche par defaut,
+# et aucune fusion n'est autorisee ici. Le declencheur est donc le push sur cette branche,
+# restreint au seul fichier de ce workflow pour ne pas se relancer a chaque commit.
 on:
   workflow_dispatch:
     inputs:
       run_id:
         description: "Run ayant produit l'artefact humanorigin-windows-rc"
-        required: true
+        required: false
         default: "36840343986"
+  push:
+    branches: [windows-private-beta-v1]
+    paths: ['.github/workflows/windows-rc-validation.yml']
 
 permissions:
   contents: read
@@ -33,7 +39,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: humanorigin-windows-rc
-          run-id: ${{ inputs.run_id }}
+          run-id: ${{ inputs.run_id || '36840343986' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           path: rc
 
