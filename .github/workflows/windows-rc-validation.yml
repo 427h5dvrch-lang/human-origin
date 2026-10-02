@@ -1,0 +1,210 @@
+name: Windows RC — validation non mutante
+
+# Installe le RC DEJA CONSTRUIT sur un runner Windows propre et observe ce qui se passe.
+# Ne construit rien, ne corrige rien, ne publie rien. Le RC n'est pas touche : l'artefact
+# est telecharge tel quel et son empreinte verifiee avant toute execution.
+#
+# Un runner GitHub n'a ni Microsoft Word ni session interactive. Les etapes qui en
+# dependent sont donc hors d'atteinte : elles sont consignees comme limites, pas comme
+# echecs, et le job continue.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run ayant produit l'artefact humanorigin-windows-rc"
+        required: true
+        default: "36840343986"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SHA_ATTENDU: EB161389C5683EF7357BCD2D49C62427BD1657B2FD96AF2DEDDD5B09F05C1255
+
+jobs:
+  valider:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Recuperer le RC deja construit
+        uses: actions/download-artifact@v4
+        with:
+          name: humanorigin-windows-rc
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: rc
+
+      - name: Empreinte
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem rc/*.exe | Select-Object -First 1
+          if (-not $exe) { throw "Aucun installateur dans l'artefact." }
+          $h = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash
+          Write-Host "Fichier   : $($exe.Name)  $($exe.Length) octets"
+          Write-Host "Empreinte : $h"
+          if ($h -ne $env:SHA_ATTENDU) { throw "Empreinte differente de celle qualifiee — ce n'est pas le RC." }
+          Write-Host "PASS  l'empreinte correspond au RC qualifie."
+          "INSTALLER=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Etat de la machine avant installation
+        shell: pwsh
+        run: |
+          $cat = 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs'
+          Write-Host "Catalogue Word avant : $(if (Test-Path $cat) { (Get-ChildItem $cat).Count } else { 'cle absente' })"
+          Write-Host "LOCALAPPDATA\HumanOrigin avant : $(Test-Path "$env:LOCALAPPDATA\HumanOrigin")"
+          $word = Get-Command WINWORD.EXE -ErrorAction SilentlyContinue
+          Write-Host "Microsoft Word : $(if ($word) { $word.Source } else { 'ABSENT — limite du runner, attendu' })"
+
+      - name: Installer en silencieux
+        shell: pwsh
+        run: |
+          # L'installateur NSIS de Tauri accepte /S pour une installation silencieuse.
+          # Sans cela, aucun runner sans session interactive ne pourrait l'installer.
+          Write-Host "Lancement : $env:INSTALLER /S"
+          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList '/S' -PassThru -Wait
+          Write-Host "Code de sortie : $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "L'installateur a rendu $($p.ExitCode)" }
+          Write-Host "PASS  installation silencieuse terminee."
+
+      - name: Ce qui a ete installe
+        shell: pwsh
+        run: |
+          $racines = @("$env:LOCALAPPDATA\Programs\HumanOrigin", "$env:ProgramFiles\HumanOrigin",
+                       "${env:ProgramFiles(x86)}\HumanOrigin")
+          $dossier = $racines | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $dossier) { throw "Aucun dossier d'installation trouve." }
+          Write-Host "Dossier : $dossier"
+          Get-ChildItem $dossier -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+
+          $attendus = @('HumanOrigin.exe','pdfium.dll','humanorigin-publisher.exe','humanorigin-converter.exe','uninstall.exe')
+          $manquants = @()
+          foreach ($f in $attendus) {
+            $t = Get-ChildItem $dossier -Recurse -Filter $f -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($t) { Write-Host ("PASS  {0,-28} {1} octets" -f $f, $t.Length) }
+            else    { Write-Host "FAIL  $f ABSENT"; $manquants += $f }
+          }
+          if ($manquants) { throw "Fichiers manquants : $($manquants -join ', ')" }
+
+          # pdfium.dll doit etre SOEUR de l'executable : le code la cherche a cote de lui.
+          $exe = Get-ChildItem $dossier -Recurse -Filter 'HumanOrigin.exe' | Select-Object -First 1
+          $dll = Join-Path $exe.DirectoryName 'pdfium.dll'
+          if (Test-Path $dll) { Write-Host "PASS  pdfium.dll est bien a cote de HumanOrigin.exe" }
+          else { throw "pdfium.dll n'est pas dans le meme dossier que l'executable." }
+          "DOSSIER=$dossier" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Entree de desinstallation
+        shell: pwsh
+        run: |
+          $trouve = $false
+          foreach ($r in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+                           'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall')) {
+            if (Test-Path $r) {
+              foreach ($c in Get-ChildItem $r -ErrorAction SilentlyContinue) {
+                $p = Get-ItemProperty $c.PSPath -ErrorAction SilentlyContinue
+                if ($p.DisplayName -like '*HumanOrigin*') {
+                  Write-Host "PASS  $($p.DisplayName) v$($p.DisplayVersion)"
+                  Write-Host "      $($p.UninstallString)"
+                  $trouve = $true
+                }
+              }
+            }
+          }
+          if (-not $trouve) { throw "Aucune entree de desinstallation." }
+
+      - name: Catalogue Word — limite attendue
+        shell: pwsh
+        run: |
+          # La cle n'est ecrite que lorsque l'UTILISATEUR demande l'installation du
+          # complement depuis l'application. Elle ne peut donc pas exister ici : aucune
+          # session interactive, aucun Word. C'est une limite du runner, pas un echec.
+          $cat = 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs'
+          if (Test-Path $cat) {
+            Write-Host "Catalogues declares : $((Get-ChildItem $cat).Count)"
+            Get-ChildItem $cat | ForEach-Object {
+              $p = Get-ItemProperty $_.PSPath
+              Write-Host "  $($_.PSChildName)  Url=$($p.Url)  Flags=$($p.Flags)"
+            }
+          } else {
+            Write-Host "LIMITE  Cle TrustedCatalogs absente — attendu : le complement n'est declare"
+            Write-Host "        que sur geste explicite de l'utilisateur dans l'application."
+          }
+
+      - name: Lancer l'application — limite attendue
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          # Sans session interactive, WebView2 ne peut pas afficher de fenetre. On observe
+          # seulement si le processus demarre et survit quelques secondes.
+          $exe = Join-Path $env:DOSSIER 'HumanOrigin.exe'
+          Write-Host "Tentative : $exe"
+          $p = Start-Process -FilePath $exe -PassThru -ErrorAction SilentlyContinue
+          if (-not $p) { Write-Host "LIMITE  Le processus n'a pas pu demarrer (pas de session interactive)."; exit 0 }
+          Start-Sleep -Seconds 12
+          $vivant = Get-Process -Id $p.Id -ErrorAction SilentlyContinue
+          if ($vivant) {
+            Write-Host "OBSERVE  Le processus tourne encore apres 12 s (PID $($p.Id))."
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          } else {
+            Write-Host "OBSERVE  Le processus s'est termine avant 12 s. Code : $($p.ExitCode)"
+            Write-Host "LIMITE   Sans affichage, cela ne prouve ni ne refute un demarrage correct."
+          }
+
+      - name: Desinstaller
+        shell: pwsh
+        run: |
+          $u = Get-ChildItem $env:DOSSIER -Recurse -Filter 'uninstall.exe' | Select-Object -First 1
+          if (-not $u) { throw "uninstall.exe introuvable." }
+          $p = Start-Process -FilePath $u.FullName -ArgumentList '/S' -PassThru -Wait
+          Write-Host "Code de sortie : $($p.ExitCode)"
+          Start-Sleep -Seconds 5
+
+      - name: Ce qui reste apres desinstallation
+        shell: pwsh
+        run: |
+          if (Test-Path $env:DOSSIER) {
+            Write-Host "RESTE  Le dossier d'installation existe encore :"
+            Get-ChildItem $env:DOSSIER -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+          } else {
+            Write-Host "PASS   Le dossier d'installation a disparu."
+          }
+          $donnees = "$env:LOCALAPPDATA\HumanOrigin"
+          if (Test-Path $donnees) {
+            Write-Host "RESTE  Les donnees utilisateur survivent (attendu) :"
+            Get-ChildItem $donnees -Recurse -File -ErrorAction SilentlyContinue | Select-Object FullName | Format-Table -AutoSize
+          } else {
+            Write-Host "OBSERVE  Aucune donnee utilisateur (aucune n'avait ete creee)."
+          }
+          $reste = $false
+          foreach ($r in @('HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+                           'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall')) {
+            if (Test-Path $r) {
+              foreach ($c in Get-ChildItem $r -ErrorAction SilentlyContinue) {
+                $p = Get-ItemProperty $c.PSPath -ErrorAction SilentlyContinue
+                if ($p.DisplayName -like '*HumanOrigin*') { Write-Host "RESTE  entree : $($p.DisplayName)"; $reste = $true }
+              }
+            }
+          }
+          if (-not $reste) { Write-Host "PASS   Plus d'entree de desinstallation." }
+
+      - name: Reinstaller
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath $env:INSTALLER -ArgumentList '/S' -PassThru -Wait
+          Write-Host "Code de sortie : $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "La reinstallation a rendu $($p.ExitCode)" }
+          $exe = Get-ChildItem $env:DOSSIER -Recurse -Filter 'HumanOrigin.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { throw "HumanOrigin.exe absent apres reinstallation." }
+          Write-Host "PASS  reinstallation par-dessus reussie."
+
+          # Le point que la cle de registre fixe est censee garantir : pas de doublon.
+          $cat = 'HKCU:\Software\Microsoft\Office\16.0\WEF\TrustedCatalogs'
+          if (Test-Path $cat) {
+            $n = (Get-ChildItem $cat).Count
+            Write-Host "Catalogues declares apres reinstallation : $n"
+            if ($n -gt 1) { Write-Host "ATTENTION  plus d'un catalogue — a examiner." }
+          } else {
+            Write-Host "LIMITE  Toujours aucun catalogue : le complement n'a jamais ete installe ici."
+          }
