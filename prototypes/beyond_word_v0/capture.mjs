@@ -53,9 +53,35 @@ export class Capture {
     this.baseline = null;
     // P0 — engagement pris a l'instant exact ou l'observation s'arrete.
     this.arret = null;
+    // Ce qui s'est passe ENTRE les periodes : constate a la reouverture, jamais masque.
+    this.intervalles = [];
   }
 
-  ouvrirPeriode(texteInitial = "") {
+  /// `cheminArtefact` permet de constater l'etat reel au moment d'ouvrir. Sans lui, on ne
+  /// peut rien dire de l'intervalle qui precede — et c'est alors dit aussi.
+  ouvrirPeriode(texteInitial = "", cheminArtefact = null) {
+    // --- intervalle entre deux periodes ---
+    // Si une periode precedente s'est fermee en prenant un engagement, on compare l'etat
+    // d'ouverture a cet engagement. Une divergence signifie que l'artefact a change hors
+    // de toute observation. Elle est ENREGISTREE, jamais absorbee.
+    if (this.arret) {
+      const octets = cheminArtefact ? fs.readFileSync(cheminArtefact) : Buffer.from(texteInitial, "utf8");
+      const maintenant = commitBytes(octets);
+      this.intervalles.push({
+        entre_periodes: [this.periode - 1, this.periode],
+        ferme_a: this.arret.at,
+        rouvert_a: new Date().toISOString(),
+        engagement_a_la_fermeture: this.arret.commitment,
+        engagement_a_la_reouverture: maintenant,
+        etat: maintenant === this.arret.commitment ? "inchange" : "modifie_hors_observation",
+        octets_a_la_fermeture: this.arret.octets,
+        octets_a_la_reouverture: octets.length,
+        constate_sur: cheminArtefact ? "les octets du fichier" : "le texte fourni a l'ouverture",
+        mention: maintenant === this.arret.commitment
+          ? "l'artefact est identique a ce qu'il etait a la fermeture ; ce qui a pu se passer entre-temps reste inconnu"
+          : "l'artefact a change entre la fermeture et la reouverture, hors de toute observation",
+      });
+    }
     if (this.baseline === null) {
       // Premiere ouverture : on fige ce qui preexiste. Un fichier vide donne une baseline
       // vide — c'est un cas normal, pas une absence de baseline.
@@ -89,6 +115,19 @@ export class Capture {
         octets: octets.length,
       };
     }
+  }
+
+  /// Voie d'entrée des adapters : un fait déjà formé, que la Capture horodate, numérote
+  /// et rattache à la période courante. Le modèle générique ne connaît pas l'éditeur qui
+  /// l'a produit — c'est précisément ce qui le rend partageable.
+  changementAnnonceBrut({ unites, length_delta, kind = "edited", source, capture_assurance, detail_adapter }) {
+    if (!this.ouverte) return;
+    this.faits.push({
+      sequence: this.seq++, period: this.periode, kind, at: new Date().toISOString(),
+      paragraphs: (unites || []).slice(0, 20), length_delta,
+      source, capture_assurance,
+      ...(detail_adapter ? { detail_adapter } : {}),
+    });
   }
 
   // L'éditeur annonce : « ces unités ont changé ». C'est le contrat du volet Word.

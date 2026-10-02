@@ -1,6 +1,6 @@
 {
   "schema": "ho-prototype-sidecar/0",
-  "record_id": "HO-nE_5hm4z9Wk",
+  "record_id": "HO-65M-GnxKxQA",
   "artefact": {
     "nom": "p1_1000.md",
     "octets": 1023,
@@ -10,9 +10,10 @@
   "concordance": {
     "etat": "concordant",
     "engagement_a_l_arret": "1865fe31d19d3a8e81bdb01596d8bebfa8a043c1f8c5642c6593533bfb34ec6d",
-    "arret_at": "2026-10-02T12:23:43.147Z",
+    "arret_at": "2026-10-02T12:38:47.948Z",
     "explication": "les octets presents sont ceux engages a l'arret de l'observation"
   },
+  "intervalles_non_observes": [],
   "preexistant": {
     "octets": 1000,
     "unites": 1,
@@ -57,7 +58,7 @@
       "l'origine du contenu present avant la premiere periode d'observation"
     ]
   },
-  "faits_scelles": "WCH/rfEXInU8iA4pCOAI8TXI/Gt1uaIazuItTjSw1LJQza72hFp1P5d0W/NFjom63cXyJK6ZgUH4Ra34g2zp+4cLovTQojLOgk3U99yR9a+Uu671syZhLkAGBCMt0cEo/imddlhiAlfkermH72aadW4gawfSH85ec+YljgviMbOG0byuJq5YTTTGMRZYZAe3xBk35wPhF9z3qWlkSgtDZtCG/e/x8k6z5zLyahWfm64mVyiWHEFsaFJ7iqcB1Wd3CUS8",
-  "integrite_simulee": "a185a611cdf920de214c7576cb55fd065177d3c039135d0b3cce255889746d7f",
+  "faits_scelles": "6UEs4IBjxS+vmci8pUAEf1JuI+ZCs+3v10NWU8GxC7BIbrCaYGoWwhTdGs/CT2tIq0I6TBbUnOYvuSO0pTg4cbJ4F4mHKafMmLAIvCCix27gPjY4dEE4b0ZT/qs4gmfQxZC1Vldo71SCXrrBGnRWiVYwEnheZSfT/IYifDm4QCz2i1B+CbeDKmm1I8xcPL5PHE/0QsXy+Rnb8m0IFTdGqwDW+8sDVyrZb43X618onZmzJePhnUOiOFp36bkXEZ+F5Zz3",
+  "integrite_simulee": "f2e8296db377bd0291776521cc9f699c36fa26d77bbe436e7c5e185184e2788a",
   "avertissement": "PROTOTYPE — ni HO-JSON, ni Registry, ni Verify de production."
 }

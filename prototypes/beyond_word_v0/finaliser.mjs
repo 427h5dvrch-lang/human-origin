@@ -85,6 +85,11 @@ export function finaliser({ cheminArtefact, capture, recordId, cle, strict = fal
     },
     // ------------------------------------------------------------------ P0
     concordance,
+    // ------------------------------------------------------------------ intervalles
+    // Ce qui s'est passe entre deux periodes d'observation. Une divergence constatee ici
+    // ne rend pas la preuve invalide — elle est NORMALE et attendue — mais elle doit
+    // rester lisible : une partie de l'artefact a change sans etre observee.
+    intervalles_non_observes: capture.intervalles ?? [],
     // ------------------------------------------------------------------ P1 · preexistant
     // Ce qui etait la AVANT la premiere periode. Jamais presente comme observe.
     preexistant: capture.baseline ?? {

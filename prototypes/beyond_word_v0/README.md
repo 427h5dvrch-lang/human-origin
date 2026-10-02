@@ -228,3 +228,86 @@ et la vidéo à ce stade.
    périmètre.
 
 Rien de tout cela ne touche Registry, HO-JSON, Verify ni la cryptographie.
+
+---
+
+# V0.2 — adapter VS Code
+
+Banc technique, pas un produit. Rien n'est publiable : l'extension est `private`, sans
+commande ni contribution.
+
+## L'API réellement disponible
+
+Lue dans `vscode.d.ts` de la version installée, pas de mémoire.
+
+| Ce que l'API donne | Conséquence |
+|---|---|
+| `TextDocumentContentChangeEvent` : `range`, `rangeOffset`, `rangeLength`, `text` | insertion, suppression et remplacement se déduisent **exactement** |
+| `TextDocumentChangeEvent.reason` : `Undo = 1`, `Redo = 2`, sinon `undefined` | **annulation et rétablissement sont observables** — Word ne le permet pas |
+| `TextEditorSelectionChangeKind` : `Keyboard`, `Mouse`, `Command` | événement séparé, non rattaché au changement |
+| **aucun événement de collage** | `DocumentPasteEditProvider` existe, mais c'est une API de *participation* au collage, pas d'observation : s'en servir changerait le comportement de l'éditeur. L'adapter ne s'en sert pas. |
+| aucune information de périphérique d'entrée | **« tapé au clavier » n'est pas observable. Jamais.** |
+
+## Le mapping
+
+`insertion` / `suppression` / `remplacement` d'après `rangeLength` et `text.length`.
+`length_delta = text.length - rangeLength`. L'unité est la ligne de départ du changement,
+là où Word donne un identifiant de paragraphe.
+
+`undo` et `redo` sortent de `local_editing` pour `editor_operation` : rejouer un état
+antérieur n'est pas de la saisie.
+
+Chaque fait porte `collage_observable: false` et `frappe_clavier_observable: false`, pour
+que l'absence de ces informations ne puisse pas passer pour une négation.
+
+## Le banc
+
+VS Code **1.96.4 téléchargé et isolé**, profil séparé dans `~/.ho-vsc`. L'installation de
+Philippe et ses extensions ne sont jamais touchées.
+
+```sh
+cd vscode_adapter && npm install && npm test
+```
+
+**10 scénarios, 10 passants**, dans un vrai hôte d'extensions pilotant un vrai éditeur.
+
+## Ce que l'adapter voit, scénario par scénario
+
+| Scénario | Ce qu'il voit — rien de plus |
+|---|---|
+| Saisie normale | des insertions successives |
+| Suppression, remplacement | les deux types, distingués exactement |
+| Collage massif (4 000 car.) | **une** insertion, `source: unknown`. Jamais « un collage » |
+| Collage fractionné régulier | 25 insertions. Indiscernable d'une saisie |
+| Collage fractionné **irrégulier** | 20 insertions. **Indiscernable, et aucun signal ne le rattrape** |
+| Undo / redo | `reason` les nomme ; classés `editor_operation` |
+| Replace-all | plusieurs changements dans **un seul** événement |
+| Modification hors VS Code | **rien**. L'adapter n'invente pas ce qu'il n'a pas vu |
+| Fichier préexistant | la baseline le déclare non observé |
+| Multi-périodes | l'intervalle est nommé `modifie_hors_observation` |
+
+## Multi-périodes
+
+Session A → fermeture avec engagement → modification hors observation et hors VS Code →
+session B. À la réouverture, l'état réel est comparé à l'engagement de fermeture et
+l'écart est enregistré dans `intervalles_non_observes`, avec les deux engagements et sa
+mention.
+
+**La divergence n'invalide pas la preuve** — un intervalle non observé est normal — mais
+elle est lisible, et son silence, lui, serait une faute. C'est pourquoi le vérificateur
+échoue si le champ est absent.
+
+Observé au passage : VS Code a lui-même détecté le conflit (« File Modified Since ») en
+tentant d'enregistrer. L'éditeur sait. L'adapter ne doit pas s'y fier pour autant.
+
+## Correction du rapport V0.1
+
+J'avais écrit que le red-team « tenait » 9 attaques sur 9, collage fractionné compris.
+**C'était faux et il faut le dire clairement.**
+
+La régularité signale certaines séquences inhabituelles. Elle **ne tient pas** la classe
+d'attaque « collage fractionné » : le banc VS Code le démontre, un collage fractionné à
+intervalles irréguliers passe sans qu'aucun signal ne le distingue d'une saisie. Et elle
+ne prouve ni collage, ni frappe, ni auteur.
+
+Un signal d'assurance décrit une forme. Il ne ferme pas une classe d'attaque.

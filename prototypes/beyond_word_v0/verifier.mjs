@@ -36,6 +36,17 @@ export function verifier({ cheminPreuve, cheminArtefact, cle }) {
   ok("le volume preexistant est declare", pre.octets !== undefined && pre.observe === false,
     pre.octets === null ? "aucune periode ouverte" : `${pre.octets} octets non observes`);
 
+  // Les intervalles entre périodes : leur présence n'invalide rien, leur SILENCE si.
+  const iv = p.intervalles_non_observes;
+  ok("les intervalles entre periodes sont declares", Array.isArray(iv),
+    Array.isArray(iv) ? `${iv.length} intervalle(s)` : "champ absent");
+  if (Array.isArray(iv) && iv.length) {
+    const modifies = iv.filter(x => x.etat === "modifie_hors_observation");
+    r.intervalles_avec_modification = modifies.length;
+    ok("chaque intervalle porte son etat", iv.every(x => x.etat && x.mention),
+      `${modifies.length} avec modification hors observation`);
+  }
+
   // Les faits se descellent-ils avec cet identifiant ? Le record_id est en AAD : un blob
   // recopie depuis une autre preuve ne se descellera pas ici.
   let faits = null;
