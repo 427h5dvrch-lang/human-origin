@@ -311,3 +311,114 @@ intervalles irréguliers passe sans qu'aucun signal ne le distingue d'une saisie
 ne prouve ni collage, ni frappe, ni auteur.
 
 Un signal d'assurance décrit une forme. Il ne ferme pas une classe d'attaque.
+
+---
+
+# V0.3 — intégrité hors bande
+
+Question unique : pendant une période active, que se passe-t-il si l'artefact est modifié
+par une source extérieure à l'adapter ?
+
+## L'attaque
+
+À la fermeture, l'engagement est pris sur les octets du fichier. Si une modification
+extérieure y est encore, l'engagement la couvre : l'artefact ressort **concordant** tout
+en contenant du contenu jamais observé. C'est cette incorporation silencieuse qu'il faut
+empêcher.
+
+## Observabilité — trois constats de sonde, dans un vrai VS Code
+
+**1. `createFileSystemWatcher` ne voit rien hors workspace.** Zéro événement, y compris
+pour une sauvegarde normale. Comme capteur d'intégrité, il est inutilisable tel quel.
+L'hypothèse de départ tombe ici.
+
+**2. Un rechargement émet un événement de changement ORDINAIRE.** Quand le fichier change
+hors de l'éditeur, VS Code recharge et émet un `onDidChangeTextDocument` avec `reason`
+indéfini et un changement qui remplace tout — `@0 -30 +29`. **Rien dans l'événement ne le
+distingue d'une édition.** Sans discriminant, un changement extérieur entre dans la chaîne
+observée comme s'il avait été observé.
+
+**3. `TextDocumentChangeReason` ne couvre que Undo et Redo.** Il n'existe aucune raison
+« rechargement ».
+
+## Faux positifs — deux conceptions qui ont échoué
+
+Je les consigne parce qu'elles disent où sont les pièges.
+
+**Réconciliation tampon ↔ disque.** J'ai cru qu'elle ne pouvait pas produire de faux
+positif sur une sauvegarde. Le banc a montré l'inverse : une sauvegarde normale produit un
+instant où le disque diffère du tampon, l'écriture étant surprise en cours. Six
+sauvegardes ont produit un écart. Ajouter une fenêtre de stabilisation a supprimé le faux
+positif — et a fait disparaître la détection des cas 2 et 3, parce que le tampon suit le
+rechargement.
+
+**Discriminant `isDirty` au moment de l'événement.** Une sonde montrait qu'une édition
+laisse le tampon modifié et un rechargement le laisse propre. En conditions réelles, le
+drapeau n'est pas encore posé quand l'événement arrive : 18 écarts pour 6 sauvegardes.
+**Non fiable.**
+
+## Le mécanisme minimal retenu : l'ancrage sur les sauvegardes observées
+
+L'adapter n'écrit jamais dans l'artefact. Les seules écritures légitimes sont celles de
+l'éditeur, et l'adapter **sait** quand l'éditeur enregistre : `onDidSaveTextDocument` est
+non ambigu, là où l'événement de changement ne l'est pas.
+
+> Après chaque sauvegarde observée, relever l'état du fichier et le retenir. Toute
+> divergence ultérieure, en l'absence de nouvelle sauvegarde observée, est une écriture qui
+> n'est pas venue de l'éditeur.
+
+La sauvegarde atomique ne produit plus de faux positif, quel que soit le nombre d'écritures
+intermédiaires, puisque l'état connu est repris **après** la sauvegarde. Et un rechargement
+ne peut plus se faire passer pour une édition, puisqu'on ne compare plus au tampon.
+
+### Les trois états
+
+| État | Ce qu'il dit |
+|---|---|
+| `observation_continue` | à chaque vérification, l'état du fichier s'expliquait par les sauvegardes observées |
+| `changement_non_attribuable_detecte` | au moins une fois, non |
+| `integrite_non_surveillee` | aucune vérification n'a eu lieu — **rien n'est affirmé** |
+
+Le troisième terme est délibérément « non surveillée » et non « incomplète » : l'absence de
+contrôle ne doit jamais pouvoir se lire comme un contrôle réussi. Un écart détecté n'est
+jamais converti en événement observé ; il vit dans un champ distinct des faits.
+
+## Tests — 8 sur 8 dans un vrai VS Code
+
+| Scénario | Résultat |
+|---|---|
+| 1 · changement uniquement via VS Code | `observation_continue`, 0 écart |
+| 2 · modification externe sur disque | **écart détecté** |
+| 3 · remplacement complet | **écart détecté** |
+| 4 · modification externe puis retour aux octets précédents | `observation_continue` — **non détecté** |
+| 5 · modification externe, tampon non sauvegardé | **écart détecté** |
+| 6 · écriture fugace entre deux événements | `observation_continue` — **non détecté** |
+| 7 · six sauvegardes atomiques | 0 écart — **aucun faux positif** |
+| sans ancrage ni vérification | `integrite_non_surveillee` |
+
+## Limites
+
+**Une modification extérieure annulée avant toute vérification est invisible** (cas 4 et 6).
+L'ancrage compare des états, pas une histoire. Une surveillance continue aurait pu les
+voir ; celle de VS Code ne voit rien hors workspace, et `fs.watch` perd sa cible dès qu'une
+sauvegarde atomique remplace le fichier — ce que les compteurs de vérifications montrent.
+
+**L'ancrage dépend de l'arrivée des événements de sauvegarde.** Un éditeur qui écrirait
+sans émettre cet événement casserait le mécanisme.
+
+**La comparaison porte sur des octets.** Un changement d'encodage ou de fins de ligne
+produirait un écart sans qu'il y ait eu modification de contenu.
+
+## Verdict
+
+**GO** pour le mécanisme d'ancrage.
+
+On peut raisonnablement garantir : *« pendant cette période, aucune modification non
+observée n'a été détectée aux instants où l'intégrité a été vérifiée, et l'artefact final
+correspond au dernier état enregistré par l'éditeur »*.
+
+On ne peut pas garantir : *« aucune modification non observée n'a eu lieu »* — les cas 4 et
+6 le démontrent.
+
+Et rien de tout cela ne s'approche de *« chaque octet vient d'une frappe humaine »*, qui
+reste hors de portée de cette API et le restera.

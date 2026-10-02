@@ -31,6 +31,31 @@ function classer(c) {
 }
 
 /**
+ * Un rechargement depuis le disque est-il distinguable d'une édition ?
+ *
+ * Constaté dans un vrai VS Code : quand le fichier change hors de l'éditeur, VS Code
+ * recharge le document et émet un `onDidChangeTextDocument` ORDINAIRE — `reason` indéfini,
+ * un changement qui remplace tout. Rien dans l'événement ne le distingue d'une édition.
+ * Sans discriminant, un changement extérieur entrerait dans la chaîne observée comme s'il
+ * avait été observé. C'est exactement l'incorporation silencieuse à empêcher.
+ *
+ * Le seul discriminant trouvé : l'état « modifié » du tampon AU MOMENT de l'événement.
+ * Une édition dans l'éditeur salit le tampon ; un rechargement le laisse propre.
+ *
+ *   edition interne  → isDirty = true
+ *   rechargement     → isDirty = false
+ *
+ * Ce n'est pas une preuve, c'est un discriminant observé, et il a ses angles morts :
+ * un document en sauvegarde automatique très agressive, ou une édition programmatique
+ * suivie d'une sauvegarde dans le même tour, pourraient le mettre en défaut. Il est donc
+ * doublé par la réconciliation à la fermeture, qui ne dépend pas de lui.
+ */
+function estEditionInterne(e) {
+  if (e.reason === 1 || e.reason === 2) return true;  // undo/redo : opérations de l'éditeur
+  return e.document.isDirty === true;
+}
+
+/**
  * Traduit un TextDocumentChangeEvent en faits du modèle générique.
  * `seuilGrand` reprend le seuil du volet de production.
  */
@@ -81,4 +106,4 @@ function brancher(vscode, capture, { document, seuilGrand = 120 } = {}) {
   });
 }
 
-module.exports = { TYPE, classer, evenementVersFaits, brancher };
+module.exports = { TYPE, classer, estEditionInterne, evenementVersFaits, brancher };
