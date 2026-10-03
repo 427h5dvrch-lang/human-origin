@@ -13,6 +13,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 
+import { t } from "./ho_i18n.js";
 const supabaseUrl = "https://bhlisgvozsgqxugrfsiu.supabase.co";
 const supabaseAnonKey =
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJobGlzZ3ZvenNncXh1Z3Jmc2l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjgxNTI5NDEsImV4cCI6MjA4MzcyODk0MX0.L43rUuDFtg-QH7lVCFTFkJzMTjNUX7BWVXqmVMvIwZ0";
@@ -39,7 +40,7 @@ export async function reserveRecordId() {
   const { data } = await supabase.auth.getSession();
   const jeton = data?.session?.access_token;
   if (!jeton) {
-    throw new Error("Connectez-vous pour créer un document HumanOrigin publiable.");
+    throw new Error(t("reserve.signInNeeded"));
   }
   let r;
   try {
@@ -50,19 +51,19 @@ export async function reserveRecordId() {
       body: "{}",
     });
   } catch (e) {
-    throw new Error("Le service HumanOrigin est injoignable. Réessayez une fois connecté au réseau.");
+    throw new Error(t("reserve.offline"));
   }
   if (r.status === 429) {
-    throw new Error("Trop de documents créés récemment. Réessayez plus tard.");
+    throw new Error(t("reserve.tooMany"));
   }
   if (!r.ok) {
     // Le détail du service ne remonte pas à l'interface : il peut porter des informations
     // qui ne regardent pas cet écran.
-    throw new Error("La réservation n’a pas abouti. Aucun document n’a été créé.");
+    throw new Error(t("reserve.failed"));
   }
   const b = await r.json();
   if (!b?.record_id || !b?.capability) {
-    throw new Error("Réponse inattendue du service. Aucun document n’a été créé.");
+    throw new Error(t("reserve.unexpected"));
   }
   return { record_id: b.record_id, capability: b.capability };
 }

@@ -10,6 +10,7 @@ import { put } from "./ho_ui.js";
 import MOT_SYMBOLE_MARINE from "./brand/HumanOrigin_wordmark_navy.png";
 import MOT_SYMBOLE_BLANC from "./brand/HumanOrigin_wordmark_white.png";
 
+import { t } from "./ho_i18n.js";
 // ---------------------------------------------------------------- jetons
 export const PAPIER = "#FBFAF7";   // ivoire, jamais le blanc clinique
 export const CARTE = "#FFFFFF";
@@ -279,7 +280,7 @@ export function entete({ connecte, onReglages }) {
   etat.appendChild(el("span", { width: "7px", height: "7px", "border-radius": "50%",
     background: connecte ? "#3E8E5A" : "#B3392F", display: "inline-block",
     "flex-shrink": "0" }));
-  etat.appendChild(el("span", null, connecte ? "Connecté" : "Non connecté"));
+  etat.appendChild(el("span", null, connecte ? t("account.signedInAs") : t("account.signedOut")));
   d.appendChild(etat);
 
   if (onReglages) {
@@ -287,8 +288,8 @@ export function entete({ connecte, onReglages }) {
       cursor: "pointer", display: "inline-flex", "align-items": "center",
       "border-radius": "6px", appearance: "none", "pointer-events": "auto" });
     b.type = "button";
-    b.title = "Réglages";
-    b.setAttribute("aria-label", "Réglages");
+    b.title = t("settings.title");
+    b.setAttribute("aria-label", t("settings.title"));
     b.appendChild(ICONES.engrenage(17, ATONE));
     b.onclick = onReglages;
     d.appendChild(b);

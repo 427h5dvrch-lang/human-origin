@@ -2,12 +2,13 @@
 //
 //     choix explicite de la personne  >  locale de l'hôte  >  anglais
 //
-// Aucun repli vers une chaîne française codée en dur : une clé absente de la langue demandée est
-// cherchée en anglais, et nulle part ailleurs. Si elle manque aussi en anglais, la clé elle-même
-// est rendue — visible, donc corrigeable, plutôt que silencieusement remplacée.
+// Repli : la clé est cherchée dans la langue demandée, puis en français, et la clé elle-même
+// n'est rendue qu'en dernier recours. Le français sert de filet parce que sa complétude est
+// la seule qui soit garantie par le contrôle ci-dessous : une clé oubliée doit donner une
+// phrase lisible, jamais un identifiant technique à l'écran.
 //
-// Les clés sont sémantiques et stables : elles décrivent l'endroit et le rôle du texte, jamais son
-// contenu. Une reformulation ne change donc pas de clé.
+// Les clés sont sémantiques et stables : elles décrivent l'endroit et le rôle du texte, jamais
+// son contenu. Une reformulation ne change donc pas de clé.
 
 const CHOIX = "ho.langue";                 // mémorisé localement, par surface, sans compte ni suivi
 
@@ -25,21 +26,17 @@ export const CATALOGUE = {
     "account.signOut": "Se déconnecter",
     "account.signOutFailed": "La déconnexion a échoué.",
     "account.linkRefused": "Ce lien de connexion n’est pas valide.",
-
     "setup.word.explain": "HumanOrigin doit préparer Microsoft Word. macOS va vous demander l’autorisation d’accéder aux données de Word.",
     "setup.word.progress": "Préparation de Word… Répondez à la demande de macOS si elle s’affiche.",
     "setup.word.failed": "La préparation de Word a échoué.",
-
     "document.creating": "Préparation de l’emplacement et création du document…",
     "document.failed": "Le document n’a pas pu être créé.",
-
     "location.title": "Emplacement de vos documents HumanOrigin",
     "location.none": "aucun emplacement proposé",
     "location.explain": "HumanOrigin crée ce dossier s’il n’existe pas, y enregistre vos documents HumanOrigin et ne surveille que lui. Vous pourrez le changer plus tard. macOS peut vous demander d’autoriser HumanOrigin à accéder à cet emplacement.",
     "location.confirm": "Créer le document ici",
     "location.other": "Choisir un autre emplacement…",
     "location.failed": "L’emplacement n’a pas pu être choisi.",
-
     "word.outdated": "L’intégration Word doit être mise à jour.",
     "word.notReady": "Word n’est pas encore prêt pour HumanOrigin.",
     "word.update": "Mettre à jour l’intégration Word",
@@ -48,7 +45,6 @@ export const CATALOGUE = {
     "word.newDocument": "Nouveau document HumanOrigin",
     "word.keepAppOpen": "Gardez l’application HumanOrigin ouverte pendant votre travail.",
     "word.repair": "Réparer l’intégration Word",
-
     "panel.title": "HumanOrigin est prêt",
     "panel.subtitle": "HumanOrigin fonctionne en arrière-plan lorsque vous finalisez un document depuis Word.",
     "panel.section.word": "Microsoft Word",
@@ -59,21 +55,125 @@ export const CATALOGUE = {
     "panel.section.activity": "Dernière activité",
     "panel.activity.lastProof": "Dernière preuve finalisée",
     "panel.activity.none": "Aucune preuve finalisée pour le moment.",
-
     "fatal.title": "HumanOrigin n'a pas pu démarrer",
     "fatal.body": "L'application n'a pas pu lire sa configuration. Relancez-la ; si le problème persiste, ce message aidera à l'identifier.",
     "fatal.unknown": "erreur inconnue",
-
     "onboarding.folders.title": "Choisissez les dossiers dans lesquels HumanOrigin peut finaliser vos documents.",
     "onboarding.folders.explain": "HumanOrigin n'ouvrira que les documents qu'il a lui-même marqués, et seulement dans ces dossiers. Rien d'autre n'est lu.",
     "onboarding.folders.add": "Ajouter un dossier",
     "onboarding.folders.none": "aucun dossier pour l'instant",
+    "doc.createdOpened": "Document créé et ouvert dans Word.",
+    "doc.createdOpenIt": "Document créé. Ouvrez-le dans Word.",
+    "version.preparing": "Préparation de la nouvelle version…",
+    "version.failed": "La nouvelle version n’a pas pu être créée.",
+    "doc.finalized": "Document finalisé",
+    "version.create": "Créer une nouvelle version",
+    "version.createThis": "Créer la nouvelle version",
+    "doc.stateUnchecked": "L’état de ce document n’a pas pu être vérifié.",
+    "doc.modifiedSince": "Ce document a été modifié depuis sa finalisation.",
+    "doc.priorProofValid": "La preuve précédente reste valable pour l’état qui avait été scellé. ",
+    "doc.sinceNotObserved": "Les modifications intervenues depuis ne seront pas considérées comme observées.",
+    "docs.listFailed": "Les documents finalisés n’ont pas pu être consultés. ",
+    "docs.listFailedHint": "Si HumanOrigin vient d’être mis à jour, quittez l’application et rouvrez-la.",
+    "docs.severalOpen": "Plusieurs documents finalisés sont ouverts.",
+    "date.today": "Aujourd’hui",
+    "word.connectTitle": "Connecter HumanOrigin à Word",
+    "word.updateAvailable": "Une nouvelle version de l’intégration est disponible.",
+    "word.updateWhy": "Sans elle, la finalisation peut échouer.",
+    "word.worksFromWord": "HumanOrigin travaille depuis Word.",
+    "word.installOnce": "Une seule installation, et vous n’y revenez plus.",
+    "word.updateShort": "Mettre à jour",
+    "word.installInWord": "Installer dans Word",
+    "word.updating": "Mise à jour…",
+    "word.installFailed": "L’intégration Word n’a pas pu être installée.",
+    "word.restartWord": "Relancez Word après l’installation.",
+    "word.repairShort": "Réparer",
+    "word.integrationOk": "Intégration opérationnelle",
+    "word.integrationTodo": "Intégration à installer",
+    "word.responds": "Word répond",
+    "word.noResponse": "Word ne répond pas",
+    "next.title": "Créez votre prochain document HumanOrigin",
+    "next.l1": "Travaillez normalement dans Word.",
+    "next.l2": "HumanOrigin se charge de la preuve.",
+    "status.ready": "Prêt",
+    "status.lastProofCreated": "Dernière preuve créée",
+    "status.noneYet": "Aucune pour l’instant",
+    "continue.title": "Continuer ce document ?",
+    "continue.l1": "Ce document a déjà une preuve.",
+    "continue.l2": "Sa preuve actuelle restera inchangée.",
+    "continue.l3": "HumanOrigin peut créer une nouvelle version pour poursuivre votre travail.",
+    "continue.checking": "Vérification du document…",
+    "changed.title": "Ce document a changé depuis sa finalisation",
+    "changed.l1": "La preuve précédente reste valable",
+    "changed.l2": "pour l’état qui avait été scellé.",
+    "changed.l3": "Les modifications réalisées depuis n’ont",
+    "changed.l4": "pas été observées par HumanOrigin.",
+    "changed.hint": "Vous pouvez continuer à partir de l’état actuel dans une nouvelle version.",
+    "ready.title": "Nouvelle version prête",
+    "ready.l1": "Votre contenu a été conservé.",
+    "ready.l2": "HumanOrigin observe les modifications",
+    "ready.l3": "à partir de maintenant.",
+    "ready.pill": "Le contenu déjà présent dans ce document n’a pas été observé dans cette version.",
+    "ready.open": "Ouvrir dans Word",
+    "ready.openFailed": "Le document n’a pas pu être ouvert.",
+    "signin.required": "Connexion nécessaire",
+    "signin.l1": "Vous devez être connecté pour créer,",
+    "signin.l2": "finaliser ou consulter une preuve.",
+    "help.problem": "Un problème ?",
+    "help.need": "Besoin d’aide ?",
+    "welcome.title": "Bienvenue dans HumanOrigin",
+    "welcome.l1": "Produisez des documents accompagnés",
+    "welcome.l2": "d’une preuve vérifiable de leur processus observé.",
+    "welcome.step1": "Créez un document HumanOrigin",
+    "welcome.step2": "Travaillez normalement dans Word",
+    "welcome.step3": "HumanOrigin se charge de la preuve",
+    "signin.withEmail": "Continuer avec mon email",
+    "signin.emailRequired": "Indiquez votre adresse email.",
+    "signin.sendingLink": "Envoi du lien…",
+    "signin.linkSentDevice": "Lien envoyé. Ouvrez-le depuis cet appareil.",
+    "signin.secureLink": "Vous recevrez un lien de connexion sécurisé.",
+    "settings.about": "À propos",
+    "account.signedOut": "Non connecté",
+    "settings.title": "Réglages",
+    "settings.noFolder": "Aucun dossier choisi",
+    "settings.docFolder": "Dossier de vos documents",
+    "about.tagline": "Une preuve vérifiable du processus observé.",
+    "action.verify": "Vérifier",
+    "status.watchOn": "Surveillance de vos documents active",
+    "status.watchOff": "Aucun dossier surveillé",
+    "err.noCapability": "Autorisation de dépôt introuvable — reconnectez-vous, puis rouvrez le document",
+    "err.folderGone": "Un dossier surveillé n'est plus accessible",
+    "err.docUnread": "Un document n'a pas pu être lu",
+    "err.factsUnread": "Les faits d'un document n'ont pas pu être ouverts",
+    "err.bindPrep": "Un document n'a pas pu être préparé pour sa liaison",
+    "err.registryRefused": "Le registre a refusé un dépôt",
+    "err.registryUnreachable": "Le registre n'a pas pu être joint",
+    "err.depositFailed": "Un dépôt a échoué, sans cause identifiée",
+    "reserve.signInNeeded": "Connectez-vous pour créer un document HumanOrigin publiable.",
+    "reserve.offline": "Le service HumanOrigin est injoignable. Réessayez une fois connecté au réseau.",
+    "reserve.tooMany": "Trop de documents créés récemment. Réessayez plus tard.",
+    "reserve.failed": "La réservation n’a pas abouti. Aucun document n’a été créé.",
+    "reserve.unexpected": "Réponse inattendue du service. Aucun document n’a été créé.",
+    "settings.language.fr": "Français",
+    "settings.language.en": "Anglais",
+    "action.continue": "Continuer",
+    "badge.newVersion": "NOUVELLE VERSION",
+    "date.at": " à ",
+    "word.installing": "Installation…",
+    "action.newDocument": "Nouveau document",
+    "action.cancel": "Annuler",
+    "action.signIn": "Se connecter",
+    "action.close": "Fermer",
+    "word.installShort": "Installer",
+    "action.edit": "Modifier",
+    "signin.emailPlaceholder": "vous@exemple.com",
+    "label.account": "Compte",
+    "label.documents": "Documents",
+    "label.word": "Microsoft Word",
+    "label.language": "Langue",
+    "label.diagnostic": "Diagnostic",
   },
-  // Phase 2 : l'anglais est rédigé puis soumis à revue avant d'être figé. Les clés marquées
-  // « revue doctrinale » dans le glossaire ne seront pas intégrées sans cette revue.
   en: {
-    // Le catalogue anglais est incomplet de longue date : seules les clés du compte y sont,
-    // parce qu'elles viennent d'être écrites. Les autres restent à traduire (phase 3).
     "account.section": "ACCOUNT",
     "account.signedOutHint": "Sign in to create publishable HumanOrigin documents.",
     "account.emailPlaceholder": "you@example.com",
@@ -86,11 +186,159 @@ export const CATALOGUE = {
     "account.signOut": "Sign out",
     "account.signOutFailed": "Sign-out failed.",
     "account.linkRefused": "This sign-in link is not valid.",
+    "setup.word.explain": "HumanOrigin needs to set up Microsoft Word. macOS will ask for permission to access Word’s data.",
+    "setup.word.progress": "Setting up Word… Approve the macOS request if it appears.",
+    "setup.word.failed": "Setting up Word failed.",
+    "document.creating": "Preparing the location and creating the document…",
+    "document.failed": "The document could not be created.",
+    "location.title": "Location for your HumanOrigin documents",
+    "location.none": "no location suggested",
+    "location.explain": "HumanOrigin creates this folder if it does not exist, saves your HumanOrigin documents there, and watches only it. You can change it later. macOS may ask you to allow HumanOrigin to access this location.",
+    "location.confirm": "Create the document here",
+    "location.other": "Choose another location…",
+    "location.failed": "The location could not be chosen.",
+    "word.outdated": "The Word integration needs to be updated.",
+    "word.notReady": "Word is not ready for HumanOrigin yet.",
+    "word.update": "Update the Word integration",
+    "word.install": "Install the Word integration",
+    "word.ready": "Microsoft Word is ready.",
+    "word.newDocument": "New HumanOrigin document",
+    "word.keepAppOpen": "Keep the HumanOrigin application open while you work.",
+    "word.repair": "Repair the Word integration",
+    "panel.title": "HumanOrigin is ready",
+    "panel.subtitle": "HumanOrigin runs in the background when you finalize a document from Word.",
+    "panel.section.word": "Microsoft Word",
+    "panel.section.folders": "Watched folders",
+    "panel.folders.none": "None for now. A location will be suggested when you create your first document.",
+    "panel.folders.edit": "Edit folders",
+    "panel.folders.saveFailed": "The change could not be saved.",
+    "panel.section.activity": "Last activity",
+    "panel.activity.lastProof": "Last finalized proof",
+    "panel.activity.none": "No finalized proof yet.",
+    "fatal.title": "HumanOrigin could not start",
+    "fatal.body": "The application could not read its configuration. Relaunch it; if the problem persists, this message will help identify it.",
+    "fatal.unknown": "unknown error",
+    "onboarding.folders.title": "Choose the folders in which HumanOrigin may finalize your documents.",
+    "onboarding.folders.explain": "HumanOrigin will only open documents it has marked itself, and only in these folders. Nothing else is read.",
+    "onboarding.folders.add": "Add a folder",
+    "onboarding.folders.none": "no folder for now",
+    "doc.createdOpened": "Document created and opened in Word.",
+    "doc.createdOpenIt": "Document created. Open it in Word.",
+    "version.preparing": "Preparing the new version…",
+    "version.failed": "The new version could not be created.",
+    "doc.finalized": "Document finalized",
+    "version.create": "Create a new version",
+    "version.createThis": "Create the new version",
+    "doc.stateUnchecked": "This document’s state could not be checked.",
+    "doc.modifiedSince": "This document has been modified since it was finalized.",
+    "doc.priorProofValid": "The previous proof remains valid for the state that was sealed. ",
+    "doc.sinceNotObserved": "Changes made since then will not be treated as observed.",
+    "docs.listFailed": "Finalized documents could not be read. ",
+    "docs.listFailedHint": "If HumanOrigin was just updated, quit the application and reopen it.",
+    "docs.severalOpen": "Several finalized documents are open.",
+    "date.today": "Today",
+    "word.connectTitle": "Connect HumanOrigin to Word",
+    "word.updateAvailable": "A new version of the integration is available.",
+    "word.updateWhy": "Without it, finalization may fail.",
+    "word.worksFromWord": "HumanOrigin works from inside Word.",
+    "word.installOnce": "A single installation, and you never come back to it.",
+    "word.updateShort": "Update",
+    "word.installInWord": "Install in Word",
+    "word.updating": "Updating…",
+    "word.installFailed": "The Word integration could not be installed.",
+    "word.restartWord": "Restart Word after installation.",
+    "word.repairShort": "Repair",
+    "word.integrationOk": "Integration working",
+    "word.integrationTodo": "Integration to install",
+    "word.responds": "Word responds",
+    "word.noResponse": "Word is not responding",
+    "next.title": "Create your next HumanOrigin document",
+    "next.l1": "Work normally in Word.",
+    "next.l2": "HumanOrigin takes care of the proof.",
+    "status.ready": "Ready",
+    "status.lastProofCreated": "Last proof created",
+    "status.noneYet": "None yet",
+    "continue.title": "Continue this document?",
+    "continue.l1": "This document already has a proof.",
+    "continue.l2": "Its current proof will remain unchanged.",
+    "continue.l3": "HumanOrigin can create a new version so you can carry on working.",
+    "continue.checking": "Checking the document…",
+    "changed.title": "This document has changed since it was finalized",
+    "changed.l1": "The previous proof remains valid",
+    "changed.l2": "for the state that was sealed.",
+    "changed.l3": "Changes made since then have not",
+    "changed.l4": "been observed by HumanOrigin.",
+    "changed.hint": "You can continue from the current state in a new version.",
+    "ready.title": "New version ready",
+    "ready.l1": "Your content has been kept.",
+    "ready.l2": "HumanOrigin observes changes",
+    "ready.l3": "from now on.",
+    "ready.pill": "Content already present in this document was not observed in this version.",
+    "ready.open": "Open in Word",
+    "ready.openFailed": "The document could not be opened.",
+    "signin.required": "Sign-in required",
+    "signin.l1": "You must be signed in to create,",
+    "signin.l2": "finalize or view a proof.",
+    "help.problem": "A problem?",
+    "help.need": "Need help?",
+    "welcome.title": "Welcome to HumanOrigin",
+    "welcome.l1": "Produce documents that come with",
+    "welcome.l2": "a verifiable proof of their observed process.",
+    "welcome.step1": "Create a HumanOrigin document",
+    "welcome.step2": "Work normally in Word",
+    "welcome.step3": "HumanOrigin takes care of the proof",
+    "signin.withEmail": "Continue with my email",
+    "signin.emailRequired": "Enter your email address.",
+    "signin.sendingLink": "Sending the link…",
+    "signin.linkSentDevice": "Link sent. Open it on this device.",
+    "signin.secureLink": "You will receive a secure sign-in link.",
+    "settings.about": "About",
+    "account.signedOut": "Not signed in",
+    "settings.title": "Settings",
+    "settings.noFolder": "No folder chosen",
+    "settings.docFolder": "Your documents folder",
+    "about.tagline": "A verifiable proof of the observed process.",
+    "action.verify": "Verify",
+    "status.watchOn": "Watching your documents",
+    "status.watchOff": "No folder watched",
+    "err.noCapability": "Deposit authorization not found — sign in again, then reopen the document",
+    "err.folderGone": "A watched folder is no longer accessible",
+    "err.docUnread": "A document could not be read",
+    "err.factsUnread": "A document’s facts could not be opened",
+    "err.bindPrep": "A document could not be prepared for binding",
+    "err.registryRefused": "The registry refused a deposit",
+    "err.registryUnreachable": "The registry could not be reached",
+    "err.depositFailed": "A deposit failed, with no identified cause",
+    "reserve.signInNeeded": "Sign in to create a publishable HumanOrigin document.",
+    "reserve.offline": "The HumanOrigin service is unreachable. Try again once you are on the network.",
+    "reserve.tooMany": "Too many documents created recently. Try again later.",
+    "reserve.failed": "The reservation did not go through. No document was created.",
+    "reserve.unexpected": "Unexpected response from the service. No document was created.",
+    "settings.language.fr": "French",
+    "settings.language.en": "English",
+    "action.continue": "Continue",
+    "badge.newVersion": "NEW VERSION",
+    "date.at": " at ",
+    "word.installing": "Installing…",
+    "action.newDocument": "New document",
+    "action.cancel": "Cancel",
+    "action.signIn": "Sign in",
+    "action.close": "Close",
+    "word.installShort": "Install",
+    "action.edit": "Edit",
+    "signin.emailPlaceholder": "you@example.com",
+    "label.account": "Account",
+    "label.documents": "Documents",
+    "label.word": "Microsoft Word",
+    "label.language": "Language",
+    "label.diagnostic": "Diagnostics",
   },
 };
 
 let choisie = null;
 try { choisie = localStorage.getItem(CHOIX); } catch (e) { choisie = null; }
+
+const ECOUTEURS = [];
 
 /** Locale de l'hôte : celle du système, telle que la vue la reçoit. */
 function hote() {
@@ -103,17 +351,33 @@ export function langue() {
   return hote().toLowerCase().startsWith("fr") ? "fr" : "en";
 }
 
-export function setLangue(l) {
-  if (l !== "fr" && l !== "en") return;
-  choisie = l;
-  try { localStorage.setItem(CHOIX, l); } catch (e) { /* refus de stockage : la session reste valide */ }
+/** Locale de formatage des dates et des heures, alignée sur la langue rendue. */
+export function locale() {
+  return langue() === "fr" ? "fr-FR" : "en-GB";
 }
 
-/** Rend le texte d'une clé. Anglais en repli, jamais le français. */
+/**
+ * Change la langue et prévient les vues. Le choix est persisté ; un refus de stockage
+ * (navigation privée) laisse la session valide, seule la mémoire du choix est perdue.
+ */
+export function setLangue(l) {
+  if (l !== "fr" && l !== "en") return;
+  if (l === langue() && choisie === l) return;
+  choisie = l;
+  try { localStorage.setItem(CHOIX, l); } catch (e) { /* refus de stockage : la session reste valide */ }
+  for (const fn of ECOUTEURS) { try { fn(l); } catch (e) { /* une vue qui échoue n'arrête pas les autres */ } }
+}
+
+/** S'abonner au changement de langue, pour redessiner l'écran courant sans le quitter. */
+export function onLangueChange(fn) {
+  if (typeof fn === "function") ECOUTEURS.push(fn);
+}
+
+/** Rend le texte d'une clé. Repli français, puis la clé en dernier recours. */
 export function t(cle, vars) {
   const l = langue();
   let s = CATALOGUE[l] && CATALOGUE[l][cle];
-  if (s === undefined) s = CATALOGUE.en[cle];
+  if (s === undefined) s = CATALOGUE.fr[cle];
   if (s === undefined) return cle;
   if (vars) for (const k of Object.keys(vars)) s = s.split("{" + k + "}").join(String(vars[k]));
   return s;
@@ -121,6 +385,7 @@ export function t(cle, vars) {
 
 /** Clés absentes d'une langue : sert au contrôle de complétude, pas au produit. */
 export function manquantes(l) {
-  const ref = Object.keys(CATALOGUE.fr);
-  return ref.filter((k) => !(CATALOGUE[l] || {})[k]);
+  const dedans = CATALOGUE[l] || {};
+  return Object.keys(CATALOGUE.fr).filter(
+    (k) => !Object.prototype.hasOwnProperty.call(dedans, k));
 }

@@ -4,7 +4,7 @@
 // Cet écran répond à une seule question — HumanOrigin est-il prêt et que surveille-t-il ?
 // Il ne propose donc AUCUNE action de création de preuve.
 import { invoke } from "@tauri-apps/api/tauri";
-import { t } from "./ho_i18n.js";
+import { t, locale, setLangue, langue, onLangueChange } from "./ho_i18n.js";
 import { open } from "@tauri-apps/api/dialog";
 import { readTextFile } from "@tauri-apps/api/fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
@@ -98,8 +98,8 @@ async function createDocument(button, msg, folder, proposalBox) {
     if (proposalBox) proposalBox.textContent = "";
     // Aucun chemin système : ce n'est jamais un concept d'interface ici.
     say(msg, r.opened_in_word
-      ? "Document créé et ouvert dans Word."
-      : "Document créé. Ouvrez-le dans Word.");
+      ? t("doc.createdOpened")
+      : t("doc.createdOpenIt"));
     await refreshFolderList();
   } catch (e) {
     say(msg, errorText(e, t("document.failed")), true);
@@ -116,7 +116,7 @@ async function createDocument(button, msg, folder, proposalBox) {
  */
 async function creerNouvelleVersion(bouton, msg, fromRecordId) {
   bouton.disabled = true;
-  say(msg, "Préparation de la nouvelle version…");
+  say(msg, t("version.preparing"));
   try {
     // Réservation APRÈS l'avertissement éventuel, jamais avant : une réservation
     // consommée pour une création abandonnée serait un identifiant perdu.
@@ -128,7 +128,7 @@ async function creerNouvelleVersion(bouton, msg, fromRecordId) {
       ? `« ${r.name} » a été créé et s’ouvre dans Word.`
       : `« ${r.name} » a été créé. Ouvrez-le dans Word.`);
   } catch (e) {
-    say(msg, errorText(e, "La nouvelle version n’a pas pu être créée."), true);
+    say(msg, errorText(e, t("version.failed")), true);
   } finally { bouton.disabled = false; }
 }
 
@@ -139,12 +139,12 @@ function ligneVersionnable(doc, plusieurs) {
     bloc.appendChild(el("p", { margin: "0 0 6px", color: INK }, doc.name));
   } else {
     bloc.appendChild(el("p", { margin: "0 0 2px", color: MUTED, font: "500 13px/1.4 inherit" },
-      "Document finalisé"));
+      t("doc.finalized")));
     bloc.appendChild(el("h4", { font: "600 17px/1.35 inherit", margin: "0 0 10px", color: INK },
       doc.name));
   }
   const msg = el("p", { margin: "8px 0 0", font: "13px/1.5 inherit", color: MUTED }, "");
-  const bouton = secondaryButton("Créer une nouvelle version");
+  const bouton = secondaryButton(t("version.create"));
   bouton.onclick = async () => {
     bouton.disabled = true;
     let etat = null;
@@ -152,7 +152,7 @@ function ligneVersionnable(doc, plusieurs) {
       const r = await invoke("ho_version_source_state", { fromRecordId: doc.record_id });
       etat = r.source_matches_predecessor_final_state;
     } catch (e) {
-      say(msg, errorText(e, "L’état de ce document n’a pas pu être vérifié."), true);
+      say(msg, errorText(e, t("doc.stateUnchecked")), true);
       bouton.disabled = false;
       return;
     }
@@ -161,11 +161,11 @@ function ligneVersionnable(doc, plusieurs) {
       bouton.remove();
       const avert = el("div", { margin: "10px 0 0" });
       avert.appendChild(el("p", { margin: "0 0 6px", color: INK },
-        "Ce document a été modifié depuis sa finalisation."));
+        t("doc.modifiedSince")));
       avert.appendChild(el("p", { margin: "0 0 10px", color: MUTED, font: "13px/1.5 inherit" },
-        "La preuve précédente reste valable pour l’état qui avait été scellé. "
-        + "Les modifications intervenues depuis ne seront pas considérées comme observées."));
-      const confirmer = secondaryButton("Créer la nouvelle version");
+        t("doc.priorProofValid")
+        + t("doc.sinceNotObserved")));
+      const confirmer = secondaryButton(t("version.createThis"));
       confirmer.onclick = () => creerNouvelleVersion(confirmer, msg, doc.record_id);
       avert.appendChild(confirmer);
       bloc.insertBefore(avert, msg);
@@ -193,14 +193,14 @@ async function renderVersioning(box) {
     docs = (await invoke("ho_versionable_documents")) || [];
   } catch (e) {
     box.appendChild(el("p", { margin: "0", color: MUTED, font: "13px/1.5 inherit" },
-      "Les documents finalisés n’ont pas pu être consultés. "
-      + "Si HumanOrigin vient d’être mis à jour, quittez l’application et rouvrez-la."));
+      t("docs.listFailed")
+      + t("docs.listFailedHint")));
     return true;
   }
   if (!docs.length) return false;
   if (docs.length > 1) {
     box.appendChild(el("p", { margin: "0 0 14px", color: MUTED, font: "13px/1.5 inherit" },
-      "Plusieurs documents finalisés sont ouverts."));
+      t("docs.severalOpen")));
   }
   docs.forEach((d) => box.appendChild(ligneVersionnable(d, docs.length > 1)));
   return true;
@@ -283,7 +283,7 @@ async function renderWord(box) {
   repair.addEventListener("click", () => {
     confirmBox.textContent = "";
     confirmBox.appendChild(el("p", { margin: "0 0 12px", color: MUTED, font: "14px/1.5 inherit" }, SETUP_EXPLAIN()));
-    const go = mkButton("Continuer", true);
+    const go = mkButton(t("action.continue"), true);
     go.addEventListener("click", () => runSetup(box, go, msg));
     confirmBox.appendChild(go);
   });
@@ -426,8 +426,8 @@ async function renderAccount(box, session) {
 }
 
 const frenchDate = (d) =>
-  d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
-  + " · " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  d.toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" })
+  + " · " + d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 
 async function panel() {
   document.body.textContent = "";
@@ -464,7 +464,7 @@ async function panel() {
 
   // --- nouvelle version : la section n'existe que s'il y a de quoi la proposer.
   const titreVersions = el("h3", { font: "600 12px/1 inherit", margin: "0 0 12px",
-    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, "NOUVELLE VERSION");
+    "letter-spacing": ".12em", "text-transform": "uppercase", color: MUTED }, t("badge.newVersion"));
   const versionsBox = el("div", { margin: "0 0 38px" });
   wrap.appendChild(titreVersions);
   wrap.appendChild(versionsBox);
@@ -562,14 +562,26 @@ async function panel() {
 // états métier existants : aucune donnée n'est simulée, aucune commande n'est ajoutée.
 
 /** Mémoire d'écran : ce que l'utilisateur vient de faire, pour l'état suivant. */
+// Rubriques de reglages. L'identifiant est stable et technique ; le libelle est traduit a
+// l'affichage. Les deux ne se confondent plus : changer de langue ne change pas la navigation.
+const RUBRIQUES = ["account", "word", "documents", "language", "about", "diagnostic"];
+const TITRE_RUBRIQUE = {
+  account: "label.account",
+  word: "label.word",
+  documents: "label.documents",
+  language: "label.language",
+  about: "settings.about",
+  diagnostic: "label.diagnostic",
+};
+
 const VUE = { ecran: null, doc: null, message: "" };
 
 const quandDate = (d) => {
   const a = new Date();
   const meme = d.toDateString() === a.toDateString();
-  const jour = meme ? "Aujourd’hui"
-    : d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
-  return jour + " à " + d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const jour = meme ? t("date.today")
+    : d.toLocaleDateString(locale(), { day: "numeric", month: "long", year: "numeric" });
+  return jour + t("date.at") + d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 };
 
 /** Zone de message d'un écran : un seul endroit, discret, sous les actions. */
@@ -597,30 +609,30 @@ async function ecranInstallerWord(ctx) {
   p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
   const c = colonne({ padding: "40px 24px 0", "flex-grow": "1" });
   c.appendChild(medaillon("alerte", "ambre"));
-  c.appendChild(titre(aMettreAJour ? "Mettre à jour l’intégration Word"
-                                   : "Connecter HumanOrigin à Word"));
+  c.appendChild(titre(aMettreAJour ? t("word.update")
+                                   : t("word.connectTitle")));
   c.appendChild(corps(aMettreAJour
-    ? ["Une nouvelle version de l’intégration est disponible.",
-       "Sans elle, la finalisation peut échouer."]
-    : ["HumanOrigin travaille depuis Word.",
-       "Une seule installation, et vous n’y revenez plus."]));
+    ? [t("word.updateAvailable"),
+       t("word.updateWhy")]
+    : [t("word.worksFromWord"),
+       t("word.installOnce")]));
 
   const msg = zoneMessage();
-  const b = ctaPrincipal(aMettreAJour ? "Mettre à jour" : "Installer dans Word");
+  const b = ctaPrincipal(aMettreAJour ? t("word.updateShort") : t("word.installInWord"));
   b.onclick = async () => {
     b.disabled = true;
-    say(msg, aMettreAJour ? "Mise à jour…" : "Installation…");
+    say(msg, aMettreAJour ? t("word.updating") : t("word.installing"));
     try {
       await installerWord();
       await router();                     // l'état réel reprend la main : Prêt suit
     } catch (e) {
-      say(msg, errorText(e, "L’intégration Word n’a pas pu être installée."), true);
+      say(msg, errorText(e, t("word.installFailed")), true);
       b.disabled = false;
     }
   };
   c.appendChild(b);
   c.appendChild(msg);
-  c.appendChild(mention("info", "Relancez Word après l’installation."));
+  c.appendChild(mention("info", t("word.restartWord")));
   p.appendChild(c);
 }
 
@@ -634,11 +646,11 @@ async function ecranPret(ctx) {
   // ne dépende pas de la largeur exacte de la fenêtre.
   c.appendChild(sh("h1", { font: "400 28px/1.24 " + SERIF, color: MARINE, margin: "0 0 13px",
     "letter-spacing": "-.012em", "max-width": "250px" },
-    "Créez votre prochain document HumanOrigin"));
-  c.appendChild(corps(["Travaillez normalement dans Word.",
-                       "HumanOrigin se charge de la preuve."], "left"));
+    t("next.title")));
+  c.appendChild(corps([t("next.l1"),
+                       t("next.l2")], "left"));
 
-  const cta = ctaPrincipal("Nouveau document", "feuille");
+  const cta = ctaPrincipal(t("action.newDocument"), "feuille");
   const msg = zoneMessage();
   const proposition = sh("div", { margin: "14px 0 0" });
   cta.onclick = async () => {
@@ -654,8 +666,8 @@ async function ecranPret(ctx) {
 
   const cartes = sh("div", { display: "grid", "grid-template-columns": "1fr 1fr",
     gap: "9px", margin: "11px 0 0" });
-  cartes.appendChild(carteEtat(pastilleWord(19), "Microsoft Word", "Prêt"));
-  cartes.appendChild(carteEtat(ICONES.personne(19, ATONE), "Compte", "Connecté"));
+  cartes.appendChild(carteEtat(pastilleWord(19), t("label.word"), t("status.ready")));
+  cartes.appendChild(carteEtat(ICONES.personne(19, ATONE), t("label.account"), t("account.signedInAs")));
   c.appendChild(cartes);
   p.appendChild(c);
 
@@ -663,9 +675,9 @@ async function ecranPret(ctx) {
   const pied = colonne({ padding: "22px 24px", "margin-top": "26px" });
   pied.appendChild(sh("div", { height: "1px", background: LIGNE, margin: "0 0 15px" }));
   pied.appendChild(sh("p", { margin: "0 0 2px", font: "500 13px/1.4 " + SANS, color: ENCRE },
-    "Dernière preuve créée"));
+    t("status.lastProofCreated")));
   pied.appendChild(sh("p", { margin: "0", font: "12.5px/1.4 " + SANS, color: ATONE },
-    d ? quandDate(d) : "Aucune pour l’instant"));
+    d ? quandDate(d) : t("status.noneYet")));
   p.appendChild(pied);
 }
 
@@ -676,24 +688,24 @@ async function ecranContinuer(ctx) {
   p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
   const c = colonne({ padding: "46px 24px 0", "flex-grow": "1" });
   c.appendChild(medaillon("copie", "bleu"));
-  c.appendChild(titre("Continuer ce document ?"));
+  c.appendChild(titre(t("continue.title")));
   c.appendChild(sousTitre(doc.name));
   c.appendChild(corps([
-    "Ce document a déjà une preuve.",
-    "Sa preuve actuelle restera inchangée.",
-    "HumanOrigin peut créer une nouvelle version pour poursuivre votre travail."]));
+    t("continue.l1"),
+    t("continue.l2"),
+    t("continue.l3")]));
 
   const msg = zoneMessage();
-  const creer = ctaPrincipal("Créer une nouvelle version", "feuille");
+  const creer = ctaPrincipal(t("version.create"), "feuille");
   creer.onclick = async () => {
     creer.disabled = true;
-    say(msg, "Vérification du document…");
+    say(msg, t("continue.checking"));
     let etat = null;
     try {
       const r = await invoke("ho_version_source_state", { fromRecordId: doc.record_id });
       etat = r.source_matches_predecessor_final_state;
     } catch (e) {
-      say(msg, errorText(e, "L’état de ce document n’a pas pu être vérifié."), true);
+      say(msg, errorText(e, t("doc.stateUnchecked")), true);
       creer.disabled = false;
       return;
     }
@@ -702,7 +714,7 @@ async function ecranContinuer(ctx) {
     await lancerNouvelleVersion(doc, msg, creer);
   };
   c.appendChild(creer);
-  const annuler = ctaSecondaire("Annuler");
+  const annuler = ctaSecondaire(t("action.cancel"));
   put(annuler, { margin: "9px 0 0" });
   annuler.onclick = () => router({ ecran: "pret" });
   c.appendChild(annuler);
@@ -725,22 +737,22 @@ async function ecranSourceModifiee(ctx) {
   rondAmbre.appendChild(ICONES.alerte(22, "#A9762B"));
   tete.appendChild(rondAmbre);
   tete.appendChild(sh("h1", { font: "400 24px/1.25 " + SERIF, color: MARINE, margin: "4px 0 0",
-    "letter-spacing": "-.012em" }, "Ce document a changé depuis sa finalisation"));
+    "letter-spacing": "-.012em" }, t("changed.title")));
   c.appendChild(tete);
 
   c.appendChild(corps([
-    "La preuve précédente reste valable",
-    "pour l’état qui avait été scellé.",
-    "Les modifications réalisées depuis n’ont",
-    "pas été observées par HumanOrigin."], "left"));
-  c.appendChild(pilule("Vous pouvez continuer à partir de l’état actuel dans une nouvelle version.",
+    t("changed.l1"),
+    t("changed.l2"),
+    t("changed.l3"),
+    t("changed.l4")], "left"));
+  c.appendChild(pilule(t("changed.hint"),
     "ambre"));
 
   const msg = zoneMessage();
-  const creer = ctaPrincipal("Créer une nouvelle version", "feuille");
+  const creer = ctaPrincipal(t("version.create"), "feuille");
   creer.onclick = () => lancerNouvelleVersion(doc, msg, creer);
   c.appendChild(creer);
-  const annuler = ctaSecondaire("Annuler");
+  const annuler = ctaSecondaire(t("action.cancel"));
   put(annuler, { margin: "9px 0 0" });
   annuler.onclick = () => router({ ecran: "pret" });
   c.appendChild(annuler);
@@ -751,7 +763,7 @@ async function ecranSourceModifiee(ctx) {
 /** Action commune aux écrans 4 et 6 : réserver, puis créer. Aucune logique nouvelle. */
 async function lancerNouvelleVersion(doc, msg, bouton) {
   bouton.disabled = true;
-  say(msg, "Préparation de la nouvelle version…");
+  say(msg, t("version.preparing"));
   try {
     // Réservation APRÈS l'avertissement éventuel : une réservation consommée pour une
     // création abandonnée serait un identifiant perdu.
@@ -761,7 +773,7 @@ async function lancerNouvelleVersion(doc, msg, bouton) {
     });
     router({ ecran: "version-prete", doc: { name: r.name, path: r.path } });
   } catch (e) {
-    say(msg, errorText(e, "La nouvelle version n’a pas pu être créée."), true);
+    say(msg, errorText(e, t("version.failed")), true);
     bouton.disabled = false;
   }
 }
@@ -773,18 +785,18 @@ async function ecranVersionPrete(ctx) {
   p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
   const c = colonne({ padding: "46px 24px 0", "flex-grow": "1" });
   c.appendChild(medaillon("etincelle", "bleu"));
-  c.appendChild(titre("Nouvelle version prête"));
-  c.appendChild(corps(["Votre contenu a été conservé.",
-                       "HumanOrigin observe les modifications",
-                       "à partir de maintenant."]));
-  c.appendChild(pilule("Le contenu déjà présent dans ce document n’a pas été observé dans cette version.",
+  c.appendChild(titre(t("ready.title")));
+  c.appendChild(corps([t("ready.l1"),
+                       t("ready.l2"),
+                       t("ready.l3")]));
+  c.appendChild(pilule(t("ready.pill"),
     "bleu"));
 
   const msg = zoneMessage();
-  const ouvrir = ctaWord("Ouvrir dans Word");
+  const ouvrir = ctaWord(t("ready.open"));
   ouvrir.onclick = async () => {
     try { await invoke("open_file", { path: doc.path }); }
-    catch (e) { say(msg, errorText(e, "Le document n’a pas pu être ouvert."), true); }
+    catch (e) { say(msg, errorText(e, t("ready.openFailed")), true); }
   };
   // Une seule action, comme la planche. Ouvrir le document EST la suite naturelle ;
   // un second bouton de même poids ferait deux intentions sur un écran qui n'en a qu'une.
@@ -799,20 +811,20 @@ async function ecranConnexion(ctx) {
   p.appendChild(entete({ connecte: false }));
   const c = colonne({ padding: "56px 24px 0", "flex-grow": "1" });
   c.appendChild(medaillon("exclamation", "rouge"));
-  c.appendChild(titre("Connexion nécessaire"));
-  c.appendChild(corps(["Vous devez être connecté pour créer,",
-                       "finaliser ou consulter une preuve."]));
+  c.appendChild(titre(t("signin.required")));
+  c.appendChild(corps([t("signin.l1"),
+                       t("signin.l2")]));
   const msg = zoneMessage();
-  const b = ctaPrincipal("Se connecter");
+  const b = ctaPrincipal(t("action.signIn"));
   b.onclick = () => router({ ecran: "premiere" });
   c.appendChild(b);
   c.appendChild(msg);
   c.appendChild(sh("p", { margin: "22px 0 0", "text-align": "center",
-    font: "12.5px/1.5 " + SANS, color: ATONE }, "Un problème ?"));
+    font: "12.5px/1.5 " + SANS, color: ATONE }, t("help.problem")));
   const aide = sh("p", { margin: "2px 0 0", "text-align": "center",
     font: "12.5px/1.5 " + SANS });
   const lien = sh("a", { color: MARINE, "text-decoration": "underline", cursor: "pointer" },
-    "Besoin d’aide ?");
+    t("help.need"));
   lien.onclick = () => router({ ecran: "premiere" });
   aide.appendChild(lien);
   c.appendChild(aide);
@@ -826,9 +838,9 @@ async function ecranPremiere(ctx) {
   p.appendChild(h);
   const c = colonne({ padding: "44px 24px 0", "flex-grow": "1" });
   c.appendChild(sh("h1", { font: "400 27px/1.26 " + SERIF, color: MARINE, margin: "0 0 12px",
-    "letter-spacing": "-.012em", "text-align": "center" }, "Bienvenue dans HumanOrigin"));
-  c.appendChild(corps(["Produisez des documents accompagnés",
-                       "d’une preuve vérifiable de leur processus observé."]));
+    "letter-spacing": "-.012em", "text-align": "center" }, t("welcome.title")));
+  c.appendChild(corps([t("welcome.l1"),
+                       t("welcome.l2")]));
 
   const liste = sh("div", { display: "flex", "flex-direction": "column", gap: "11px",
     margin: "0 0 24px" });
@@ -840,40 +852,40 @@ async function ecranPremiere(ctx) {
     r.appendChild(sh("span", { font: "14px/1.45 " + SANS, color: ENCRE }, texte));
     return r;
   };
-  liste.appendChild(rang(ICONES.feuilleLignes(19, ATONE), "Créez un document HumanOrigin"));
-  liste.appendChild(rang(pastilleWord(19), "Travaillez normalement dans Word"));
-  liste.appendChild(rang(ICONES.bouclier(19, ATONE), "HumanOrigin se charge de la preuve"));
+  liste.appendChild(rang(ICONES.feuilleLignes(19, ATONE), t("welcome.step1")));
+  liste.appendChild(rang(pastilleWord(19), t("welcome.step2")));
+  liste.appendChild(rang(ICONES.bouclier(19, ATONE), t("welcome.step3")));
   c.appendChild(liste);
 
   const msg = zoneMessage();
   const champ = document.createElement("input");
   champ.type = "email";
-  champ.placeholder = "vous@exemple.com";
+  champ.placeholder = t("signin.emailPlaceholder");
   put(champ, { width: "100%", "box-sizing": "border-box", padding: "13px 14px",
     "border-radius": "10px", border: "1px solid " + LIGNE, background: CARTE,
     font: "15px/1.2 " + SANS, color: ENCRE, margin: "0 0 9px", appearance: "none" });
   c.appendChild(champ);
 
-  const b = ctaPrincipal("Continuer avec mon email");
+  const b = ctaPrincipal(t("signin.withEmail"));
   b.onclick = async () => {
     const email = String(champ.value || "").trim();
-    if (!email) { say(msg, "Indiquez votre adresse email.", true); return; }
+    if (!email) { say(msg, t("signin.emailRequired"), true); return; }
     b.disabled = true;
-    say(msg, "Envoi du lien…");
+    say(msg, t("signin.sendingLink"));
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email, options: { emailRedirectTo: REDIRECTION },
       });
       if (error) throw error;
-      say(msg, "Lien envoyé. Ouvrez-le depuis cet appareil.");
+      say(msg, t("signin.linkSentDevice"));
     } catch (e) {
-      say(msg, errorText(e, "Le lien n’a pas pu être envoyé."), true);
+      say(msg, errorText(e, t("account.sendFailed")), true);
     } finally { b.disabled = false; }
   };
   c.appendChild(b);
   c.appendChild(msg);
   c.appendChild(sh("p", { margin: "12px 0 0", "text-align": "center",
-    font: "12.5px/1.5 " + SANS, color: ATONE }, "Vous recevrez un lien de connexion sécurisé."));
+    font: "12.5px/1.5 " + SANS, color: ATONE }, t("signin.secureLink")));
   p.appendChild(c);
 }
 
@@ -895,17 +907,17 @@ async function ecranReglages(ctx) {
   const fermer = sh("button", { background: "transparent", border: "0", padding: "4px",
     cursor: "pointer", display: "inline-flex", appearance: "none", "pointer-events": "auto" });
   fermer.type = "button";
-  fermer.setAttribute("aria-label", "Fermer");
+  fermer.setAttribute("aria-label", t("action.close"));
   fermer.appendChild(ICONES.croix(17, ATONE));
   fermer.onclick = () => router({ ecran: null });
   h.appendChild(fermer);
   cadre.appendChild(h);
 
   const c = colonne({ padding: "20px 24px 28px", "flex-grow": "1" });
-  for (const nom of ["Compte", "Microsoft Word", "Documents", "Langue", "À propos", "Diagnostic"]) {
+  for (const nom of RUBRIQUES) {
     const bloc = sh("section", { margin: "0 0 20px" });
     bloc.appendChild(sh("h2", { font: "600 12.5px/1.3 " + SANS, color: ATONE,
-      margin: "0 0 8px" }, nom));
+      margin: "0 0 8px" }, t(TITRE_RUBRIQUE[nom])));
     const dedans = sh("div");
     bloc.appendChild(dedans);
     c.appendChild(bloc);
@@ -972,61 +984,81 @@ const nomDeDossier = (p) => {
 async function rubrique(nom, hote) {
   const msg = sh("p", { margin: "8px 0 0", font: "12.5px/1.5 " + SANS, color: ATONE });
 
-  if (nom === "Compte") {
+  if (nom === "account") {
     const session = await sessionCourante();
     let action = null;
     if (session) {
-      action = ctaSecondaire("Se déconnecter");
+      action = ctaSecondaire(t("account.signOut"));
       action.onclick = async () => {
         action.disabled = true;
         try { await supabase.auth.signOut(); router({ ecran: null }); }
-        catch (e) { say(msg, errorText(e, "La déconnexion a échoué."), true); action.disabled = false; }
+        catch (e) { say(msg, errorText(e, t("account.signOutFailed")), true); action.disabled = false; }
       };
     }
     hote.appendChild(carteReglage(ICONES.personne(17, ATONE),
-      (session && session.user && session.user.email) || "Non connecté", null, action));
+      (session && session.user && session.user.email) || t("account.signedOut"), null, action));
     hote.appendChild(msg);
     return;
   }
 
-  if (nom === "Microsoft Word") {
+  if (nom === "word") {
     let st = null;
     try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
     const pret = st && st.state === "installed";
-    const action = ctaSecondaire(pret ? "Réparer" : "Installer");
+    const action = ctaSecondaire(pret ? t("word.repairShort") : t("word.installShort"));
     action.onclick = () => runSetup(hote, action, msg);
     hote.appendChild(carteReglage(pastilleEtat(pret),
-      pret ? "Intégration opérationnelle" : "Intégration à installer", null, action));
+      pret ? t("word.integrationOk") : t("word.integrationTodo"), null, action));
     hote.appendChild(msg);
     return;
   }
 
-  if (nom === "Documents") {
+  if (nom === "documents") {
     let folders = [];
     try { folders = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { folders = []; }
-    const action = ctaSecondaire("Modifier");
+    const action = ctaSecondaire(t("action.edit"));
     action.onclick = async () => {
       const choisi = await open({ directory: true, multiple: false });
       if (!choisi) return;
       const refus = await invoke("ho_check_work_folder", { folder: choisi });
       if (refus) { say(msg, refus, true); return; }
       await invoke("ho_finalizer_set_folders", { folders: [choisi], registry: null });
-      hote.textContent = ""; rubrique("Documents", hote);
+      hote.textContent = ""; rubrique(t("label.documents"), hote);
     };
     hote.appendChild(carteReglage(ICONES.dossier(17, ATONE),
-      nomDeDossier(folders[0]) || "Aucun dossier choisi", "Dossier de vos documents", action));
+      nomDeDossier(folders[0]) || t("settings.noFolder"), t("settings.docFolder"), action));
     hote.appendChild(msg);
     return;
   }
 
-  if (nom === "Langue") {
-    hote.appendChild(carteReglage(ICONES.globe(17, ATONE), "Français", null, null));
+  if (nom === "language") {
+    // Deux boutons, pas un menu : le choix est visible, et l'état courant se lit sans l'ouvrir.
+    // « FR » et « EN » ne se traduisent pas — c'est ce qui les rend lisibles dans l'autre langue.
+    const choix = sh("div", { display: "flex", gap: "6px", "flex-shrink": "0" });
+    for (const l of ["fr", "en"]) {
+      const actif = langue() === l;
+      const b = sh("button", {
+        font: "600 12.5px/1 " + SANS,
+        color: actif ? PAPIER : ENCRE,
+        background: actif ? MARINE : CARTE,
+        border: "1px solid " + (actif ? MARINE : LIGNE),
+        "border-radius": "8px", padding: "8px 12px", cursor: "pointer",
+        appearance: "none", "pointer-events": "auto",
+      }, l === "fr" ? "FR" : "EN");
+      b.type = "button";
+      b.setAttribute("aria-pressed", actif ? "true" : "false");
+      b.setAttribute("aria-label", t("settings.language." + l));
+      b.onclick = () => setLangue(l);
+      choix.appendChild(b);
+    }
+    hote.appendChild(carteReglage(ICONES.globe(17, ATONE),
+      t("settings.language." + langue()), null, choix));
     return;
   }
 
-  if (nom === "À propos") {
+  if (nom === "about") {
     hote.appendChild(carteReglage(ICONES.bouclier(17, ATONE), "HumanOrigin",
-      "Une preuve vérifiable du processus observé.", null));
+      t("about.tagline"), null));
     return;
   }
 
@@ -1038,14 +1070,14 @@ async function rubrique(nom, hote) {
  */
 const CAUSES = {
   deposit_authorization_unavailable:
-    "Autorisation de dépôt introuvable — reconnectez-vous, puis rouvrez le document",
-  folder_not_allowed: "Un dossier surveillé n'est plus accessible",
-  document_read_failed: "Un document n'a pas pu être lu",
-  decrypt_failed: "Les faits d'un document n'ont pas pu être ouverts",
-  scrub_refused: "Un document n'a pas pu être préparé pour sa liaison",
-  registry_rejected: "Le registre a refusé un dépôt",
-  registry_unavailable: "Le registre n'a pas pu être joint",
-  unknown_failure: "Un dépôt a échoué, sans cause identifiée",
+    t("err.noCapability"),
+  folder_not_allowed: t("err.folderGone"),
+  document_read_failed: t("err.docUnread"),
+  decrypt_failed: t("err.factsUnread"),
+  scrub_refused: t("err.bindPrep"),
+  registry_rejected: t("err.registryRefused"),
+  registry_unavailable: t("err.registryUnreachable"),
+  unknown_failure: t("err.depositFailed"),
 };
 
   // Diagnostic : relecture des contrôles déjà existants, rien de nouveau.
@@ -1055,14 +1087,14 @@ const CAUSES = {
     let st = null, actif = null;
     try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
     try { actif = await invoke("ho_finalizer_status"); } catch (e) { actif = null; }
-    const revoir = ctaSecondaire("Vérifier");
+    const revoir = ctaSecondaire(t("action.verify"));
     revoir.onclick = () => peindre();
     bloc.appendChild(carteReglage(pastilleEtat(!!(actif && actif.active)),
-      actif && actif.active ? "Surveillance de vos documents active"
-                            : "Aucun dossier surveillé", null, revoir));
+      actif && actif.active ? t("status.watchOn")
+                            : t("status.watchOff"), null, revoir));
     const d2 = sh("div", { margin: "8px 0 0" });
     d2.appendChild(carteReglage(pastilleEtat(!!(st && st.state === "installed")),
-      st && st.state === "installed" ? "Word répond" : "Word ne répond pas", null, null));
+      st && st.state === "installed" ? t("word.responds") : t("word.noResponse"), null, null));
     bloc.appendChild(d2);
 
     // Dernier incident de dépôt. L'application est la seule à connaître la cause : le volet
@@ -1081,19 +1113,32 @@ const CAUSES = {
 
 // ---------------------------------------------------------------- routage
 // UN ÉCRAN = UN ÉTAT. Le routeur choisit à partir des seules données réelles.
+const ECRANS = {
+  "pret": ecranPret, "continuer": ecranContinuer, "source-modifiee": ecranSourceModifiee,
+  "version-prete": ecranVersionPrete, "connexion": ecranConnexion,
+  "premiere": ecranPremiere, "reglages": ecranReglages,
+  "installer-word": ecranInstallerWord,
+};
+
 async function router(cible) {
   if (cible && cible.ecran) {
     VUE.ecran = cible.ecran; VUE.doc = cible.doc || null; VUE.message = "";
-    const table = {
-      "pret": ecranPret, "continuer": ecranContinuer, "source-modifiee": ecranSourceModifiee,
-      "version-prete": ecranVersionPrete, "connexion": ecranConnexion,
-      "premiere": ecranPremiere, "reglages": ecranReglages,
-      "installer-word": ecranInstallerWord,
-    };
     if (cible.ecran === "pret") return etatCourant();
-    return table[cible.ecran]({ doc: VUE.doc });
+    return ECRANS[cible.ecran]({ doc: VUE.doc });
   }
   return etatCourant();
+}
+
+/**
+ * Redessine l'écran courant sans passer par le routeur : on reste exactement où l'on est, et
+ * `VUE.message` n'est pas effacé. Changer de langue ne fait donc perdre ni la place, ni le
+ * document en cours, ni le message affiché sous les actions.
+ */
+async function redessiner() {
+  if (!VUE.ecran || VUE.ecran === "pret") return etatCourant();
+  const dessiner = ECRANS[VUE.ecran];
+  if (!dessiner) return etatCourant();
+  return dessiner({ doc: VUE.doc });
 }
 
 /** L'état réel, déduit des seules données dont l'application dispose. */
@@ -1140,8 +1185,20 @@ function fatal(e) {
   document.body.appendChild(w);
 }
 
+/**
+ * L'attribut `lang` du document suit la langue rendue : il gouverne la correction
+ * orthographique, la coupure des mots et ce qu'annoncent les lecteurs d'écran. Le marquer
+ * en dur dans index.html le laisserait faux dès que la langue n'est pas le français.
+ */
+function appliquerLangueAuDocument() {
+  try { document.documentElement.lang = langue(); } catch (e) { /* hors navigateur */ }
+}
+
+onLangueChange(() => { appliquerLangueAuDocument(); redessiner().catch(fatal); });
+
 (async () => {
   try {
+    appliquerLangueAuDocument();
     // Aucun choix de dossier au démarrage : l'emplacement est proposé au premier document.
     await router();
   } catch (e) {
