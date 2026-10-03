@@ -215,5 +215,21 @@ console.log("\n— Câblage de l'interface —");
     !/nom === "(Compte|Documents|Langue|À propos|Microsoft Word)"/.test(desk));
 }
 
+console.log("\n— -- persistance PROPRE À CETTE SURFACE --");
+{
+  // `ho.langue` est la même clé de préférence sur les quatre surfaces, mais le stockage est
+  // PAR ORIGINE : l'application, humanorigin.io, create.humanorigin.io et verify.humanorigin.io
+  // ne partagent rien. Choisir l'anglais ici ne le choisit pas ailleurs — c'est le comportement
+  // réel du navigateur, pas un défaut. Chaque surface se vérifie donc seule.
+  const { mod: un, st } = await charger({ locale: "fr-FR" });
+  un.setLangue("en");
+  ck("la clé de préférence est exactement ho.langue", st._m.get("ho.langue") === "en",
+    [...st._m.keys()].join(","));
+  const { mod: deux } = await charger({ locale: "fr-FR" });
+  ck("un stockage d'une autre origine ne voit pas ce choix", deux.langue() === "fr", deux.langue());
+  const { mod: memeOrigine } = await charger({ locale: "fr-FR", initial: { "ho.langue": "en" } });
+  ck("la même origine le retrouve après réouverture", memeOrigine.langue() === "en");
+}
+
 console.log(`\n  ${ok} réussis · ${ko} échoués  =>  I18N_LANGUE = ${ko ? "FAIL" : "PASS"}\n`);
 process.exit(ko ? 1 : 0);
