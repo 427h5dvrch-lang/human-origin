@@ -4,7 +4,7 @@
 # Exit 0 = all passed, 1 = at least one failure
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-VERIFIER_DIR="/Users/dazeasphilippe/Desktop/humanorigin-verifier-repo"
+VERIFIER_DIR="${HO_VERIFIER_REPO:-$HOME/Desktop/humanorigin-verifier-repo}"
 PROJECTS_DIR="${HOME}/Documents/HumanOrigin/Projects"
 
 GREEN="\033[0;32m"

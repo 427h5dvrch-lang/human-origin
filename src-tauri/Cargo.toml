@@ -2,7 +2,9 @@
 name = "human-origin"
 version = "0.3.1"
 description = "HumanOrigin Core V1"
-authors = ["Philippe"]
+# Le nom qui apparait dans les ressources PE Windows comme CompanyName. Il doit
+# nommer l'editeur, jamais une personne.
+authors = ["HumanOrigin"]
 edition = "2021"
 
 [build-dependencies]

@@ -109,7 +109,7 @@ Transformer le parcours visible de HumanOrigin en expérience simple : choisir �
 ### tools/post_export_latest.sh
 - `fichier de vérification` : 1
 
-### /Users/dazeasphilippe/Documents/HumanOrigin/Projects/Version2/HumanOrigin_OPEN_FIRST.html
+### ~/Documents/HumanOrigin/Projects/Version2/HumanOrigin_OPEN_FIRST.html
 - `dossier à envoyer` : 1
 - `fichier de vérification` : 4
 - `Détails avancés` : 1

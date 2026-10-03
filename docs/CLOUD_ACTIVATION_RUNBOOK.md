@@ -38,7 +38,7 @@ supabase projects list
 ## 2. Déploiement migration — table `proofs`
 
 ```bash
-cd /Users/dazeasphilippe/Desktop/human-origin
+cd $HO_REPO
 
 # Appliquer la migration sur le projet distant
 supabase db push --project-ref bhlisgvozsgqxugrfsiu
@@ -53,7 +53,7 @@ Si la migration a déjà été appliquée manuellement, vérifier que les colonn
 ## 3. Déploiement Edge Functions
 
 ```bash
-cd /Users/dazeasphilippe/Desktop/human-origin
+cd $HO_REPO
 
 # Déployer countersign-proof (authentification requise)
 supabase functions deploy countersign-proof --project-ref bhlisgvozsgqxugrfsiu
@@ -171,7 +171,7 @@ const HO_OFFICIAL_SERVER_KEYS={
 ## 8. Redéploiement du verifier
 
 ```bash
-cd /Users/dazeasphilippe/Desktop/humanorigin-verifier-repo
+cd $HO_VERIFIER_REPO
 
 git add index.html
 git commit -m "Add official server public key to verifier"

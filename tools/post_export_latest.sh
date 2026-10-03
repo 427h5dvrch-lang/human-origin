@@ -124,11 +124,11 @@ fi
 
 echo
 echo "=== ENRICHISSEMENT OPEN_FIRST — FAÇADE VALIDÉE ==="
-python3 "/Users/dazeasphilippe/Desktop/human-origin/tools/enhance_latest_open_first.py" || true
+python3 "${HO_REPO:-$HOME/Desktop/human-origin}/tools/enhance_latest_open_first.py" || true
 
 echo
 echo "=== REDIRECTION PUBLISHED.HTML VERS OPEN_FIRST ==="
-python3 "/Users/dazeasphilippe/Desktop/human-origin/tools/redirect_published_html_to_open_first.py" || true
+python3 "${HO_REPO:-$HOME/Desktop/human-origin}/tools/redirect_published_html_to_open_first.py" || true
 
 # UX final pass: Open First + message d'accompagnement + dossier destinataire
 if [ -f "./tools/ux_finalize_latest_package.py" ]; then
