@@ -38,3 +38,4 @@ src-tauri/libpdfium.dylib
 # ...mais garder les exemples sans valeurs
 !.env.example
 !**/.env.example
+docs/internal/
