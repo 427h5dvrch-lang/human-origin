@@ -9,6 +9,9 @@ on:
   push:
     branches:
       - windows-private-beta-v1
+      # Branche du blocker B1, pour que le RC prive de retry se construise sur poussee.
+      # Le workflow ne publie rien : ni tag, ni release, ni deploiement.
+      - windows-blocker-b1-deeplink
 
 permissions:
   contents: read
