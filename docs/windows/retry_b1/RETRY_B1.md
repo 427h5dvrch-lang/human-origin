@@ -25,9 +25,26 @@ sans second clic, sans fermer quoi que ce soit.
 
 | | |
 |---|---|
-| Installateur | `HumanOrigin_<version>_x64-setup.exe` |
-| SHA-256 attendu | `________` (à reporter depuis le pack livré) |
+| Installateur | `HumanOrigin_0.3.2_x64-setup.exe`, dans l'artefact `humanorigin-windows-rc` |
+| Provenance | run **Windows RC #19**, commit `3a941b8`, branche `windows-blocker-b1-deeplink` |
+| Correctif embarqué | B1 = commit `35780f5`, ancêtre vérifié de `3a941b8` |
+| SHA-256 attendu | `________` — à calculer au téléchargement (voir ci-dessous) |
 | Préalable | aucune session active : **se déconnecter** si l'application est déjà connectée |
+
+Cet artefact n'est **pas publié** : il n'existe que comme artefact de CI, et il expire le
+**2026-10-18**. Le télécharger depuis la page du run, puis relever son empreinte :
+
+```powershell
+Get-FileHash .\HumanOrigin_0.3.2_x64-setup.exe -Algorithm SHA256 | Format-List
+```
+
+Reporter la valeur obtenue dans la ligne ci-dessus **avant** de commencer, et la comparer à
+celle annoncée dans le journal du run, étape « Empreintes ».
+
+> Ce RC garde l'identité de production : même identifiant de paquet, même schéma de lien
+> `humanorigin://`, même redirection e-mail. C'est voulu — sans cela le lien magique
+> n'atteindrait pas l'application et le retry ne prouverait rien. En contrepartie, il revendique
+> le schéma `humanorigin://` sur la machine où il est installé : à réserver au PC de test.
 
 Vérifier l'empreinte avant d'installer :
 
