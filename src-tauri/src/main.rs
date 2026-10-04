@@ -1981,7 +1981,9 @@ fn get_input_status(state: State<AppState>) -> u64 {
     state.last_input_seen.load(Ordering::Relaxed)
 }
 
-#[cfg(feature = "legacy")]
+// Le lien profond mis de côté par le handler natif, pour le cas où il arrive avant que
+// l'interface n'écoute. Cette commande est le SEUL moyen de le récupérer : compilée hors du
+// produit, la mise de côté se remplissait sans que rien ne puisse jamais la vider.
 #[tauri::command]
 fn take_pending_deep_link(state: State<AppState>) -> Option<serde_json::Value> {
     match state.pending_deep_link.lock() {
@@ -2334,7 +2336,8 @@ async fn ho_new_document_inner(
             ho_word_setup_status,
             ho_word_setup_install,
             ho_default_work_folder,
-            ho_new_document
+            ho_new_document,
+            take_pending_deep_link
         ])
         .run(tauri::generate_context!())
         .expect("error");

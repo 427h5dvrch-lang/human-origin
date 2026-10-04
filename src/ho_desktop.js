@@ -351,12 +351,19 @@ function urlDuPayload(payload) {
 }
 
 let liensPrets = false;
+// Le dernier lien consommé. Un même lien peut arriver DEUX fois : par le canal natif, et par
+// la mise de côté que le natif a remplie avant que l'interface n'écoute. Un lien magique ne
+// s'emploie qu'une fois ; l'appliquer deux fois ferait échouer le second.
+let dernierLien = null;
 async function brancherLiens(onSession) {
   if (liensPrets) return;
   liensPrets = true;
   const handler = async (ev) => {
     const u = urlDuPayload(ev?.payload);
     if (!u) return;
+    // Marqué AVANT l'attente : deux canaux peuvent livrer en même temps.
+    if (u === dernierLien) return;
+    dernierLien = u;
     await onSession(await ouvrirSession(u));
   };
   for (const c of CANAUX) { try { await listen(c, handler); } catch (e) { /* canal absent */ } }
@@ -1199,6 +1206,12 @@ onLangueChange(() => { appliquerLangueAuDocument(); redessiner().catch(fatal); }
 (async () => {
   try {
     appliquerLangueAuDocument();
+    // Le retour d'authentification se branche AVANT le premier rendu, jamais après. Sur
+    // Windows le lien arrive dans un SECOND processus, qui le transmet à l'instance primaire
+    // puis s'arrête : si personne n'écoute à cet instant, le rappel est perdu sans trace.
+    // C'est le blocker B1 du premier Pass 1. Le branchement vide aussi la mise de côté du
+    // natif, pour le lien arrivé avant que la fenêtre n'existe.
+    await brancherLiens(async (ok) => { if (ok) await router(); });
     // Aucun choix de dossier au démarrage : l'emplacement est proposé au premier document.
     await router();
   } catch (e) {
