@@ -1,6 +1,6 @@
 [package]
 name = "human-origin"
-version = "0.3.2"
+version = "0.3.3"
 description = "HumanOrigin Core V1"
 # Le nom qui apparait dans les ressources PE Windows comme CompanyName. Il doit
 # nommer l'editeur, jamais une personne.
