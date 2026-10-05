@@ -141,6 +141,59 @@ jobs:
           Write-Host "--- contenu du bundle ---"
           Get-ChildItem "$base/bundle" -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
 
+      # ---------------------------------------------------------------- signature DAZEAS CORP
+      # Azure Artifact Signing (ex Trusted Signing). L'etape est INERTE tant que les secrets
+      # ne sont pas poses : la construction reste alors celle, non signee, qui sert
+      # aujourd'hui de cible de qualification. Rien ne casse avant que la chaine soit prete.
+      #
+      # On ne teste pas « secrets.X != '' » dans un if : la disponibilite du contexte secrets
+      # dans les expressions if n'est pas garantie. On passe donc par une sortie d'etape.
+      - name: La chaine de signature est-elle configuree ?
+        id: signature
+        shell: pwsh
+        env:
+          CID: ${{ secrets.AZURE_CLIENT_ID }}
+          PROFIL: ${{ vars.AZURE_CERT_PROFILE }}
+        run: |
+          $pret = -not ([string]::IsNullOrWhiteSpace($env:CID) -or [string]::IsNullOrWhiteSpace($env:PROFIL))
+          Write-Host "chaine de signature prete : $pret"
+          "prete=$($pret.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Signer l'installateur
+        if: steps.signature.outputs.prete == 'true'
+        uses: Azure/artifact-signing-action@v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://neu.codesigning.azure.net/
+          trusted-signing-account-name: humanorigin-signing
+          certificate-profile-name: ${{ vars.AZURE_CERT_PROFILE }}
+          files-folder: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verifier la signature obtenue
+        if: steps.signature.outputs.prete == 'true'
+        shell: pwsh
+        run: |
+          $base = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          $exe = Get-ChildItem "$base/*.exe" -File
+          foreach ($f in $exe) {
+            $s = Get-AuthenticodeSignature $f.FullName
+            Write-Host "$($f.Name) : $($s.Status)"
+            if ($s.Status -ne 'Valid') { throw "signature invalide : $($s.Status)" }
+            $cn = $s.SignerCertificate.Subject
+            Write-Host "  signataire : $cn"
+            if ($cn -notmatch 'DAZEAS CORP') { throw "signataire inattendu : $cn" }
+          }
+          # La signature est apposee APRES le bundling : la signature updater Windows produite
+          # par Tauri porte donc sur le binaire NON signe et ne correspond plus. Elle n'est pas
+          # utilisee pour ce RC, et aucune mise a jour Windows n'est servie publiquement.
+          Write-Host "Rappel : le .sig updater Windows de cet artefact est perime par construction."
+
       - name: Empreintes
         shell: pwsh
         run: |
