@@ -16,7 +16,14 @@
 name: Windows Release Dry Run
 
 on:
+  # workflow_dispatch exige que ce fichier soit sur la branche par defaut pour etre
+  # declenchable (GitHub repond 404 sinon). Il est conserve pour le jour ou ce workflow
+  # rejoindra main. En attendant, le declencheur est un push sur CETTE SEULE branche :
+  # manuel en pratique, et toujours incapable de publier.
   workflow_dispatch:
+  push:
+    branches:
+      - windows-release-dry-run-v1
 
 permissions:
   contents: read
