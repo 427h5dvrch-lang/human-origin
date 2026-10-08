@@ -9,7 +9,16 @@
 //   node tools/release/stage_latest_json.mjs --version 0.3.3 \
 //        --sig <chemin du .sig> --sortie <chemin de latest.json> [--date <RFC3339>] [--notes "..."]
 //
+// Windows (facultatif, et SANS AUCUN effet sur la sortie macOS quand il est absent) :
+//        --win-archive HumanOrigin_<v>_x64-setup.nsis.zip --win-sig <chemin du .sig>
+//
+// Avant d'ecrire, le manifeste est verifie sur CINQ axes : plateforme, archive, signature,
+// URL, version. latest.json decide ce que les machines deja installees telechargent et
+// executent : une entree incoherente ne se voit pas a la lecture, elle se decouvre quand une
+// mise a jour echoue — ou, pire, reussit avec le mauvais binaire.
+//
 import fs from "node:fs";
+import path from "node:path";
 
 const arg = (nom, defaut = null) => {
   const i = process.argv.indexOf(`--${nom}`);
@@ -23,6 +32,8 @@ const notes = arg("notes", "Release signed (Developer ID) and notarized.");
 const date = arg("date", new Date().toISOString().replace("Z", "000Z").replace(/(\.\d{3})000Z$/, "$1000Z"));
 const depot = arg("depot", "427h5dvrch-lang/human-origin");
 const archive = arg("archive", "HumanOrigin_aarch64.app.tar.gz");
+const winArchive = arg("win-archive");
+const winSig = arg("win-sig");
 
 if (!version || !sig || !sortie) {
   console.error("  il manque --version, --sig ou --sortie");
@@ -37,6 +48,17 @@ if (!fs.existsSync(sig)) {
   process.exit(2);
 }
 
+// Les deux options Windows vont ensemble : une archive sans signature produirait une entree
+// que l'updater refuserait, et une signature sans archive ne designerait rien.
+if ((winArchive && !winSig) || (!winArchive && winSig)) {
+  console.error("  --win-archive et --win-sig vont ensemble");
+  process.exit(2);
+}
+if (winSig && !fs.existsSync(winSig)) {
+  console.error(`  signature Windows introuvable : ${winSig}`);
+  process.exit(2);
+}
+
 const signature = fs.readFileSync(sig, "utf8").trim();
 // Une signature minisign encodée en base64 fait 420 caractères dans cette chaîne de release.
 // Un .sig vide ou tronqué produirait un latest.json que l'updater rejetterait en silence.
@@ -45,7 +67,8 @@ if (signature.length < 300 || /\s/.test(signature)) {
   process.exit(2);
 }
 
-const url = `https://github.com/${depot}/releases/download/v${version}/${archive}`;
+const lien = (nom) => `https://github.com/${depot}/releases/download/v${version}/${nom}`;
+const url = lien(archive);
 const plateforme = { signature, url };
 const doc = {
   version,
@@ -57,9 +80,83 @@ const doc = {
   },
 };
 
+// --- Windows, ajoute seulement si demande. L'ordre des cles macOS reste inchange.
+let winSignature = null;
+if (winArchive) {
+  winSignature = fs.readFileSync(winSig, "utf8").trim();
+  if (winSignature.length < 300 || /\s/.test(winSignature)) {
+    console.error(`  signature Windows suspecte : ${winSignature.length} caracteres`);
+    process.exit(2);
+  }
+  doc.platforms["windows-x86_64"] = { signature: winSignature, url: lien(winArchive) };
+}
+
+// --- Verification sur cinq axes. Rien n'est ecrit si un seul manquement subsiste.
+// Conventions constatees sur les artefacts REELS, jamais supposees :
+//   darwin  HumanOrigin_aarch64.app.tar.gz            ne porte pas la version
+//   windows HumanOrigin_<v>_x64-setup.nsis|msi.zip    porte la version
+const CONNUES = {
+  "darwin-aarch64":     { suffixes: [".app.tar.gz"], porteVersion: false },
+  "darwin-aarch64-app": { suffixes: [".app.tar.gz"], porteVersion: false },
+  "windows-x86_64":     { suffixes: [".nsis.zip", ".msi.zip"], porteVersion: true },
+};
+const PREFIXE_MINISIGN = "dW50cnVzdGVkIGNvbW1lbnQ6";   // base64 de « untrusted comment: »
+
+const attendus = { "darwin-aarch64": { nom: archive, sigPath: sig },
+                   "darwin-aarch64-app": { nom: archive, sigPath: sig } };
+if (winArchive) attendus["windows-x86_64"] = { nom: winArchive, sigPath: winSig };
+
+const manquements = [];
+const ko = (axe, m) => manquements.push(`${axe} : ${m}`);
+for (const [clef, p] of Object.entries(doc.platforms)) {
+  const spec = CONNUES[clef], att = attendus[clef];
+  if (!spec) { ko("plateforme", `cle « ${clef} » inconnue de l'updater`); continue; }
+  if (!spec.suffixes.some((x) => att.nom.endsWith(x)))
+    ko("plateforme", `« ${clef} » : archive « ${att.nom} » hors des suffixes ${spec.suffixes.join(" ou ")}`);
+  const base = String(p.url).split("/").pop();
+  if (base !== att.nom) ko("archive", `« ${clef} » : l'URL designe « ${base} », l'archive est « ${att.nom} »`);
+  if (p.url !== lien(att.nom)) ko("url", `« ${clef} » : URL inattendue — ${p.url}`);
+  if (!p.signature.startsWith(PREFIXE_MINISIGN))
+    ko("signature", `« ${clef} » : la signature n'est pas un bloc minisign`);
+  // Le .sig emis par Tauri porte le nom de son archive, suffixe de « .sig ». Un fichier de
+  // signature qui ne respecte pas cette correspondance ne designe pas cette archive.
+  //
+  // Ce controle n'est PAS une verification cryptographique : seule la cle publique de
+  // l'updater pourrait l'etablir, et c'est l'updater qui le fait a l'installation. Ce que l'on
+  // verifie ici, c'est qu'on n'a pas recopie le .sig d'un AUTRE artefact — l'erreur reelle,
+  // celle qui produit un manifeste d'apparence correcte et une mise a jour qui echoue.
+  if (path.basename(att.sigPath) !== att.nom + ".sig")
+    ko("signature", `« ${clef} » : « ${path.basename(att.sigPath)} » n'est pas le .sig de « ${att.nom} »`);
+  if (spec.porteVersion && !att.nom.includes(version))
+    ko("version", `« ${clef} » : l'archive « ${att.nom} » ne porte pas la version ${version}`);
+}
+if (doc.version !== version) ko("version", `manifeste « ${doc.version} » != attendu « ${version} »`);
+// Deux plateformes signent deux artefacts differents : une meme signature sur les deux est
+// forcement une recopie.
+const parSignature = {};
+for (const [clef, p] of Object.entries(doc.platforms)) {
+  const nom = attendus[clef] && attendus[clef].nom;
+  (parSignature[p.signature] = parSignature[p.signature] || []).push(nom);
+}
+for (const [, noms] of Object.entries(parSignature)) {
+  const distincts = [...new Set(noms)];
+  if (distincts.length > 1)
+    ko("signature", `une seule signature pour des archives differentes : ${distincts.join(" et ")}`);
+}
+if (manquements.length) {
+  console.error("  MANIFESTE REFUSE — rien n'a ete ecrit :");
+  for (const m of manquements) console.error("    " + m);
+  process.exit(3);
+}
+
 fs.writeFileSync(sortie, JSON.stringify(doc, null, 2) + "\n");
 console.log(`  écrit : ${sortie}`);
 console.log(`  version    : ${version}`);
 console.log(`  archive    : ${archive}`);
 console.log(`  signature  : ${signature.length} caractères, lue dans ${sig}`);
+if (winArchive) {
+  console.log(`  archive win: ${winArchive}`);
+  console.log(`  signature w: ${winSignature.length} caracteres, lue dans ${winSig}`);
+}
 console.log(`  plateformes: ${Object.keys(doc.platforms).join(", ")}`);
+console.log(`  verifie    : plateforme, archive, signature, URL, version — 0 manquement`);

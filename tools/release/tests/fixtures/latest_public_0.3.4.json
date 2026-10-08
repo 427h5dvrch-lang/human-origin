@@ -1,0 +1,15 @@
+{
+  "version": "0.3.4",
+  "notes": "Release signed (Developer ID) and notarized.",
+  "pub_date": "2026-10-06T10:41:50.353000Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbjRxNS9NcTJ5Q0REVlMyMVRMTFRhemRrSGx3aVhjTUdJeDJiVUNDbnd3U25BMmoxWkM0d1Y4cnNOMk5EdUc4RFp2dmtvb3VCa1lUcDYrWkZFT1FjZHJ4Y0wxaHVsQkFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxMjgzMjIyCWZpbGU6SHVtYW5PcmlnaW5fYWFyY2g2NC5hcHAudGFyLmd6Cjh5SXZiajBhMmpyVEhVWHVraEh4cWttdXNQR1I4d0h1RExGNEpZMXM2K0djcTN2WEJyVW5SazVaTzdaaytnQ3pvV0RucS8rby9iOHhWcExqNmt4R0FBPT0K",
+      "url": "https://github.com/427h5dvrch-lang/human-origin/releases/download/v0.3.4/HumanOrigin_aarch64.app.tar.gz"
+    },
+    "darwin-aarch64-app": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUbjRxNS9NcTJ5Q0REVlMyMVRMTFRhemRrSGx3aVhjTUdJeDJiVUNDbnd3U25BMmoxWkM0d1Y4cnNOMk5EdUc4RFp2dmtvb3VCa1lUcDYrWkZFT1FjZHJ4Y0wxaHVsQkFzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzkxMjgzMjIyCWZpbGU6SHVtYW5PcmlnaW5fYWFyY2g2NC5hcHAudGFyLmd6Cjh5SXZiajBhMmpyVEhVWHVraEh4cWttdXNQR1I4d0h1RExGNEpZMXM2K0djcTN2WEJyVW5SazVaTzdaaytnQ3pvV0RucS8rby9iOHhWcExqNmt4R0FBPT0K",
+      "url": "https://github.com/427h5dvrch-lang/human-origin/releases/download/v0.3.4/HumanOrigin_aarch64.app.tar.gz"
+    }
+  }
+}

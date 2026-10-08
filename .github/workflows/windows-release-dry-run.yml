@@ -1,0 +1,120 @@
+# Dry run de release Windows — MANUEL, et structurellement incapable de publier.
+#
+# Ce que ce workflow fait, et que `build-windows-app-test.yml` ne fait pas :
+#   · build en mode RELEASE (et non --debug) ;
+#   · updater LAISSÉ ACTIF, donc Tauri émet l'archive de mise à jour et sa signature ;
+#   · signature minisign avec la clé updater déjà en place (TAURI_PRIVATE_KEY).
+#
+# Ce qu'il ne fait pas, et ne peut pas faire :
+#   · aucun upload vers une Release : `permissions: contents: read` l'interdit au niveau du
+#     jeton, pas seulement par absence d'étape. Aucune étape `gh release`, aucun tauri-action ;
+#   · aucun Authenticode : la signature de l'installeur attend le déblocage Azure ;
+#   · aucune action macOS : ce workflow n'a qu'un job, sur windows-latest.
+#
+# Déclenchement manuel uniquement. Les artefacts repartent par upload-artifact, et servent à
+# faire passer le manifeste `windows-x86_64` sur des artefacts RÉELS.
+name: Windows Release Dry Run
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-release-dry-run:
+    name: Build Windows release artifacts without publishing
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Show versions
+        shell: pwsh
+        run: |
+          node --version; npm --version; rustc --version; cargo --version
+
+      - name: Verify Windows sidecars are present
+        shell: pwsh
+        run: |
+          $manquants = @()
+          foreach ($f in @(
+            "src-tauri/binaries/humanorigin-publisher-x86_64-pc-windows-msvc.exe",
+            "src-tauri/binaries/humanorigin-converter-x86_64-pc-windows-msvc.exe")) {
+            if (!(Test-Path $f)) { $manquants += $f }
+          }
+          if ($manquants.Count -gt 0) { Write-Error "Sidecars manquants : $($manquants -join ', ')" }
+          Get-ChildItem src-tauri/binaries | Format-Table Name, Length
+
+      # Garde-fou : l'updater DOIT rester actif, sinon Tauri n'émet ni archive ni signature.
+      # Et aucun Authenticode ne doit être configuré tant qu'Azure n'est pas débloqué.
+      - name: Assert updater active and no Authenticode configured
+        shell: pwsh
+        run: |
+          $json = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          if (-not $json.tauri.updater.active) { Write-Error "updater.active doit rester true pour ce dry run" }
+          if ($json.tauri.updater.pubkey.Length -lt 50) { Write-Error "updater.pubkey absente ou trop courte" }
+          $w = $json.tauri.bundle.windows
+          if ($w.certificateThumbprint) { Write-Error "certificateThumbprint configure : Authenticode interdit avant Azure" }
+          Write-Host "updater actif, pubkey presente, aucun Authenticode configure."
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build Windows release bundles
+        shell: pwsh
+        env:
+          CI: true
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          npm run tauri -- build
+
+      - name: Show generated bundles
+        shell: pwsh
+        run: |
+          Get-ChildItem src-tauri/target/release/bundle -Recurse -File |
+            Select-Object FullName, Length | Format-Table -AutoSize
+
+      # Les trois artefacts attendus. Absents, le dry run échoue bruyamment : un updater
+      # Windows sans archive signée n'a aucun chemin de mise à jour, et le découvrir en
+      # production serait le pire moment.
+      - name: Assert expected Windows artifacts
+        shell: pwsh
+        run: |
+          $racine = "src-tauri/target/release/bundle"
+          $exe = Get-ChildItem $racine -Recurse -Filter "*-setup.exe" -ErrorAction SilentlyContinue
+          $zip = Get-ChildItem $racine -Recurse -Filter "*-setup.nsis.zip" -ErrorAction SilentlyContinue
+          $sig = Get-ChildItem $racine -Recurse -Filter "*-setup.nsis.zip.sig" -ErrorAction SilentlyContinue
+          Write-Host "installeur     : $($exe.Name) $($exe.Length)"
+          Write-Host "archive maj    : $($zip.Name) $($zip.Length)"
+          Write-Host "signature      : $($sig.Name) $($sig.Length)"
+          if (-not $exe) { Write-Error "installeur *-setup.exe absent" }
+          if (-not $zip) { Write-Error "archive de mise a jour *-setup.nsis.zip absente" }
+          if (-not $sig) { Write-Error "signature *.nsis.zip.sig absente — la cle updater a-t-elle ete fournie ?" }
+          $contenu = Get-Content $sig.FullName -Raw
+          if ($contenu.Length -lt 300) { Write-Error "signature suspecte : $($contenu.Length) caracteres" }
+          if (-not $contenu.StartsWith("dW50cnVzdGVkIGNvbW1lbnQ6")) { Write-Error "la signature n'est pas un bloc minisign" }
+          Write-Host "Trois artefacts presents, signature minisign plausible."
+
+      - name: Upload Windows dry run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: humanorigin-windows-release-dry-run
+          retention-days: 14
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/nsis/*-setup.nsis.zip
+            src-tauri/target/release/bundle/nsis/*-setup.nsis.zip.sig
