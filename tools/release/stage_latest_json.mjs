@@ -102,6 +102,34 @@ const CONNUES = {
 };
 const PREFIXE_MINISIGN = "dW50cnVzdGVkIGNvbW1lbnQ6";   // base64 de « untrusted comment: »
 
+// Un .sig Tauri, decode, contient quatre lignes dont deux exploitables ici :
+//   [1] algo (2 octets) + key id (8 octets) + signature
+//   [3] « trusted comment: timestamp:... file:<nom de l archive> »
+// Le commentaire de confiance est SIGNE : il nomme le fichier reellement signe. C est le seul
+// controle non circulaire disponible sans faire de cryptographie, et il attrape exactement
+// l erreur dangereuse — recopier le .sig d un AUTRE artefact.
+function detaillerSignature(signatureBase64) {
+  let lignes;
+  try { lignes = Buffer.from(signatureBase64, "base64").toString("utf8").split(/\r?\n/); }
+  catch { return null; }
+  const corps = lignes[1];
+  const confiance = lignes.find((l) => l.startsWith("trusted comment:")) || "";
+  const m = /file:(\S+)/.exec(confiance);
+  let keyId = null;
+  try { keyId = Buffer.from(corps, "base64").subarray(2, 10).toString("hex"); } catch { /* laisse null */ }
+  return { keyId, fichierSigne: m ? m[1] : null };
+}
+
+// Key id de la cle publique de l updater, lue dans la configuration : la signature doit en venir.
+function keyIdAttendu() {
+  try {
+    const conf = JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json", "utf8"));
+    const lignes = Buffer.from(conf.tauri.updater.pubkey, "base64").toString("utf8").split(/\r?\n/);
+    return Buffer.from(lignes[1], "base64").subarray(2, 10).toString("hex");
+  } catch { return null; }
+}
+const KEY_ID = keyIdAttendu();
+
 const attendus = { "darwin-aarch64": { nom: archive, sigPath: sig },
                    "darwin-aarch64-app": { nom: archive, sigPath: sig } };
 if (winArchive) attendus["windows-x86_64"] = { nom: winArchive, sigPath: winSig };
@@ -127,6 +155,16 @@ for (const [clef, p] of Object.entries(doc.platforms)) {
   // celle qui produit un manifeste d'apparence correcte et une mise a jour qui echoue.
   if (path.basename(att.sigPath) !== att.nom + ".sig")
     ko("signature", `« ${clef} » : « ${path.basename(att.sigPath)} » n'est pas le .sig de « ${att.nom} »`);
+  const d = detaillerSignature(p.signature);
+  if (!d) ko("signature", `« ${clef} » : signature illisible`);
+  else {
+    // Le nom que la signature DECLARE avoir signe doit etre l archive du manifeste.
+    if (d.fichierSigne && d.fichierSigne !== att.nom)
+      ko("signature", `« ${clef} » : la signature a ete emise pour « ${d.fichierSigne} », pas pour « ${att.nom} »`);
+    // Et elle doit venir de la cle updater configuree, pas d une autre.
+    if (KEY_ID && d.keyId && d.keyId !== KEY_ID)
+      ko("signature", `« ${clef} » : signature emise par la cle ${d.keyId}, attendue ${KEY_ID}`);
+  }
   if (spec.porteVersion && !att.nom.includes(version))
     ko("version", `« ${clef} » : l'archive « ${att.nom} » ne porte pas la version ${version}`);
 }
