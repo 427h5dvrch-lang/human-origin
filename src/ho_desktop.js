@@ -671,6 +671,30 @@ async function ecranPret(ctx) {
   c.appendChild(proposition);
   c.appendChild(msg);
 
+  // Ouvrir un document existant était absent de l'accueil : la seule voie offerte était d'en
+  // créer un nouveau. On ne demande plus à l'utilisateur de deviner par où passer.
+  const ouvrir = ctaSecondaire(t("action.openDocument"));
+  put(ouvrir, { margin: "9px 0 0" });
+  ouvrir.onclick = () => choisirEtOuvrir(ouvrir, msg);
+  c.appendChild(ouvrir);
+
+  // Ce que l'application sait réellement : les documents HumanOrigin ouverts dans Word. Pas
+  // un historique — elle n'en tient pas — et le libellé ne prétend pas le contraire.
+  let ouverts = [];
+  try { ouverts = (await invoke("ho_versionable_documents")) || []; } catch (e) { ouverts = []; }
+  if (ouverts.length) {
+    const bloc = sh("div", { margin: "18px 0 0" });
+    bloc.appendChild(sh("p", { margin: "0 0 8px", font: "500 13px/1.4 " + SANS, color: ATONE },
+      t("docs.openInWord")));
+    ouverts.slice(0, 4).forEach((doc) => {
+      const b = ctaSecondaire(doc.name);
+      put(b, { margin: "0 0 7px" });
+      b.onclick = () => router({ ecran: "continuer", doc });
+      bloc.appendChild(b);
+    });
+    c.appendChild(bloc);
+  }
+
   const cartes = sh("div", { display: "grid", "grid-template-columns": "1fr 1fr",
     gap: "9px", margin: "11px 0 0" });
   cartes.appendChild(carteEtat(pastilleWord(19), t("label.word"), t("status.ready")));
@@ -692,7 +716,9 @@ async function ecranPret(ctx) {
 async function ecranContinuer(ctx) {
   const doc = ctx.doc;
   const p = page();
-  p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
+  p.appendChild(entete({ connecte: true,
+    onAccueil: () => router({ ecran: "pret" }),
+    onReglages: () => router({ ecran: "reglages" }) }));
   const c = colonne({ padding: "46px 24px 0", "flex-grow": "1" });
   c.appendChild(medaillon("copie", "bleu"));
   c.appendChild(titre(t("continue.title")));
@@ -721,19 +747,95 @@ async function ecranContinuer(ctx) {
     await lancerNouvelleVersion(doc, msg, creer);
   };
   c.appendChild(creer);
-  const annuler = ctaSecondaire(t("action.cancel"));
-  put(annuler, { margin: "9px 0 0" });
-  annuler.onclick = () => router({ ecran: "pret" });
-  c.appendChild(annuler);
+  // « Annuler » ne disait pas où l'on allait, et ramenait en réalité sur ce même écran tant
+  // qu'un document restait ouvert dans Word. L'action nomme maintenant sa destination.
+  const autre = ctaSecondaire(t("action.openOther"));
+  put(autre, { margin: "9px 0 0" });
+  autre.onclick = () => router({ ecran: "documents" });
+  c.appendChild(autre);
   c.appendChild(msg);
   p.appendChild(c);
+}
+
+// ------------------------------------------------- 5 bis · CHOISIR UN AUTRE DOCUMENT
+/**
+ * Sélecteur explicite. Il répond à une question que le produit laissait sans réponse :
+ * « comment je reviens et j'ouvre autre chose ? »
+ *
+ * Deux voies, parce que l'application connaît deux choses différentes. Les documents
+ * HumanOrigin OUVERTS DANS WORD, qu'elle sait énumérer sans qu'on lui donne de chemin, et
+ * n'importe quel document HumanOrigin du disque, que l'utilisateur désigne lui-même.
+ */
+async function ecranDocuments(ctx) {
+  const p = page();
+  p.appendChild(entete({ connecte: true,
+    onAccueil: () => router({ ecran: "pret" }),
+    onReglages: () => router({ ecran: "reglages" }) }));
+  const c = colonne({ padding: "46px 24px 0", "flex-grow": "1" });
+  c.appendChild(titre(t("docs.pickTitle")));
+  c.appendChild(corps([t("docs.pickLede")]));
+
+  const msg = zoneMessage();
+  const liste = sh("div", { margin: "18px 0 0" });
+  let docs = [];
+  try { docs = (await invoke("ho_versionable_documents")) || []; } catch (e) { docs = []; }
+  if (docs.length) {
+    liste.appendChild(sh("p", { margin: "0 0 8px", font: "500 13px/1.4 " + SANS, color: ATONE },
+      t("docs.openInWord")));
+    docs.forEach((doc) => {
+      const b = ctaSecondaire(doc.name);
+      put(b, { margin: "0 0 7px" });
+      b.onclick = () => router({ ecran: "continuer", doc });
+      liste.appendChild(b);
+    });
+  } else {
+    liste.appendChild(sh("p", { margin: "0", font: "13px/1.5 " + SANS, color: ATONE },
+      t("docs.noneOpen")));
+  }
+  c.appendChild(liste);
+
+  const parcourir = ctaPrincipal(t("action.openDocument"), "feuille");
+  put(parcourir, { margin: "16px 0 0" });
+  parcourir.onclick = () => choisirEtOuvrir(parcourir, msg);
+  c.appendChild(parcourir);
+  c.appendChild(msg);
+  p.appendChild(c);
+}
+
+/**
+ * Désigner un document HumanOrigin sur le disque, puis l'ouvrir dans Word.
+ *
+ * L'échec est dit, jamais avalé, et il ne bloque pas : l'écran reste navigable et l'accueil
+ * reste dans l'en-tête.
+ */
+async function choisirEtOuvrir(bouton, msg) {
+  bouton.disabled = true;
+  say(msg, "");
+  try {
+    let dossiers = [];
+    try { dossiers = (await invoke("ho_finalizer_get_folders")) || []; } catch (e) { dossiers = []; }
+    const choix = await open({
+      multiple: false,
+      directory: false,
+      defaultPath: dossiers[0] || undefined,
+      filters: [{ name: t("label.word"), extensions: ["docx"] }],
+    });
+    if (!choix) return;                      // annulation : rien à dire, rien à faire
+    await invoke("ho_open_document", { path: choix });
+  } catch (e) {
+    say(msg, errorText(e, t("ready.openFailed")), true);
+  } finally {
+    bouton.disabled = false;
+  }
 }
 
 // ---------------------------------------------------------------- 6 · SOURCE MODIFIÉE
 async function ecranSourceModifiee(ctx) {
   const doc = ctx.doc;
   const p = page();
-  p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
+  p.appendChild(entete({ connecte: true,
+    onAccueil: () => router({ ecran: "pret" }),
+    onReglages: () => router({ ecran: "reglages" }) }));
   const c = colonne({ padding: "42px 24px 0", "flex-grow": "1" });
 
   const tete = sh("div", { display: "flex", "align-items": "flex-start", gap: "14px",
@@ -1132,13 +1234,13 @@ const ECRANS = {
   "pret": ecranPret, "continuer": ecranContinuer, "source-modifiee": ecranSourceModifiee,
   "version-prete": ecranVersionPrete, "connexion": ecranConnexion,
   "premiere": ecranPremiere, "reglages": ecranReglages,
-  "installer-word": ecranInstallerWord,
+  "installer-word": ecranInstallerWord, "documents": ecranDocuments,
 };
 
 async function router(cible) {
   if (cible && cible.ecran) {
     VUE.ecran = cible.ecran; VUE.doc = cible.doc || null; VUE.message = "";
-    if (cible.ecran === "pret") return etatCourant();
+    if (cible.ecran === "pret") return etatCourant({ accueil: true });
     return ECRANS[cible.ecran]({ doc: VUE.doc });
   }
   return etatCourant();
@@ -1150,14 +1252,22 @@ async function router(cible) {
  * document en cours, ni le message affiché sous les actions.
  */
 async function redessiner() {
-  if (!VUE.ecran || VUE.ecran === "pret") return etatCourant();
+  if (!VUE.ecran || VUE.ecran === "pret") return etatCourant({ accueil: VUE.ecran === "pret" });
   const dessiner = ECRANS[VUE.ecran];
   if (!dessiner) return etatCourant();
   return dessiner({ doc: VUE.doc });
 }
 
-/** L'état réel, déduit des seules données dont l'application dispose. */
-async function etatCourant() {
+/**
+ * L'état réel, déduit des seules données dont l'application dispose.
+ *
+ * `opts.accueil` demande l'accueil EXPLICITEMENT. Sans cette option, un document finalisé
+ * ouvert dans Word renvoyait toujours vers « Continuer ce document » : « Retour à l'accueil »
+ * et « Annuler » rebondissaient donc sur l'écran qu'on venait de quitter, et l'accueil
+ * devenait inatteignable — donc impossible d'ouvrir autre chose. Les garde-fous qui précèdent
+ * (session, complément posé) restent, eux, inconditionnels.
+ */
+async function etatCourant(opts = {}) {
   const session = await sessionCourante();
   if (!session) {
     let folders = [];
@@ -1176,11 +1286,15 @@ async function etatCourant() {
     return ecranInstallerWord({ etat: st && st.state });
   }
 
+  if (opts.accueil) return ecranPret({});
+
   // Un document finalisé ouvert dans Word appelle son propre écran.
   let docs = [];
   try { docs = (await invoke("ho_versionable_documents")) || []; } catch (e) { docs = []; }
   if (docs.length === 1) return ecranContinuer({ doc: docs[0] });
-  if (docs.length > 1) return ecranContinuer({ doc: docs[0] });
+  // Plusieurs documents ouverts : on ne choisit plus à la place de l'utilisateur. Prendre
+  // `docs[0]` affichait un document sans dire qu'il y en avait d'autres, ni comment y aller.
+  if (docs.length > 1) return ecranDocuments({});
 
   return ecranPret({});
 }

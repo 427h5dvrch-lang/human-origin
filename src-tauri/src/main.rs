@@ -2430,6 +2430,59 @@ mod contrat_invoke {
         assert!(!commandes_appelees().contains(&"open_file".to_string()));
     }
 
+    /// Corps d'une fonction d'écran, du `async function` suivant jusqu'au prochain.
+    fn corps_ecran(nom: &str) -> &'static str {
+        let d = FRONT
+            .find(&format!("async function {}(", nom))
+            .unwrap_or_else(|| panic!("écran introuvable : {}", nom));
+        let suite = &FRONT[d + 10..];
+        match suite.find("\nasync function ") {
+            Some(f) => &suite[..f],
+            None => suite,
+        }
+    }
+
+    /// Aucun écran atteignable en session ouverte, complément posé, ne doit être un
+    /// cul-de-sac. « Nouvelle version prête » l'était ; « Continuer » et « source modifiée »
+    /// proposaient un retour qui, en pratique, ramenait sur eux-mêmes.
+    ///
+    /// L'accueil et les écrans hors session sont exclus : le premier EST la sortie, les
+    /// seconds mènent à la connexion. « Installer Word » l'est aussi, volontairement : tant
+    /// que le complément n'est pas posé, l'accueil y renvoie, et un bouton sans effet serait
+    /// pire que pas de bouton.
+    #[test]
+    fn aucun_ecran_n_est_un_cul_de_sac() {
+        for ecran in ["ecranContinuer", "ecranSourceModifiee", "ecranVersionPrete", "ecranDocuments"] {
+            assert!(
+                corps_ecran(ecran).contains("onAccueil"),
+                "{} n'offre aucun retour à l'accueil",
+                ecran
+            );
+        }
+        // Les réglages ont leur propre fermeture, pas un retour d'en-tête.
+        assert!(corps_ecran("ecranReglages").contains("router({ ecran: null })"));
+    }
+
+    /// Le changement de document doit être nommé, et mener quelque part. « Annuler » ne disait
+    /// ni l'un ni l'autre.
+    #[test]
+    fn changer_de_document_est_une_action_nommee() {
+        let c = corps_ecran("ecranContinuer");
+        assert!(c.contains("action.openOther"), "l'action secondaire n'est pas nommée");
+        assert!(c.contains(r#"router({ ecran: "documents" })"#), "elle ne mène pas au sélecteur");
+        assert!(!c.contains("action.cancel"), "« Annuler » subsiste");
+
+        // L'accueil doit exposer les deux gestes d'entrée, sans que l'utilisateur ait à deviner.
+        let accueil = corps_ecran("ecranPret");
+        assert!(accueil.contains("action.newDocument"), "créer un document n'est pas visible");
+        assert!(accueil.contains("action.openDocument"), "ouvrir un document n'est pas visible");
+
+        // Et l'accueil doit rester ATTEIGNABLE : sans ce passage, un document ouvert dans Word
+        // y renvoyait toujours vers « Continuer ».
+        assert!(FRONT.contains("etatCourant({ accueil: true })"));
+        assert!(FRONT.contains("if (opts.accueil) return ecranPret({});"));
+    }
+
     #[test]
     fn l_ouverture_refuse_ce_qui_n_est_pas_un_document() {
         // Chemin inexistant : refus explicite, jamais un succès silencieux.
