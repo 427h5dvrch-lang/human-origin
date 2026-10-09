@@ -264,7 +264,7 @@ export function paysage(intensite) {
 
 // ---------------------------------------------------------------- composants
 /** En-tête, identique sur tous les états normaux. */
-export function entete({ connecte, onReglages }) {
+export function entete({ connecte, onReglages, onAccueil }) {
   const h = el("header", {
     display: "flex", "align-items": "center", "justify-content": "space-between",
     padding: "13px 18px", "border-bottom": "1px solid " + LIGNE,
@@ -272,7 +272,23 @@ export function entete({ connecte, onReglages }) {
     position: "relative", "z-index": "2",
   });
   // Le mot-symbole dit déjà le nom : aucun texte ne le double.
-  h.appendChild(HumanOriginBrandMark(22));
+  const gauche = el("div", { display: "flex", "align-items": "center", gap: "12px" });
+  gauche.appendChild(HumanOriginBrandMark(22));
+
+  // Retour à l'accueil. Discret par le poids typographique, explicite par le mot : un écran
+  // ne doit jamais pouvoir devenir un cul-de-sac, et l'écran « Nouvelle version prête » en
+  // était un. Volontairement pas un second bouton d'action : l'intention principale de
+  // l'écran reste unique, seule la sortie est ajoutée.
+  if (onAccueil) {
+    const r = el("button", { background: "transparent", border: "0", padding: "4px 2px",
+      cursor: "pointer", font: "12.5px/1 " + SANS, color: ATONE });
+    r.type = "button";
+    r.textContent = "\u2190 " + t("nav.home");
+    r.setAttribute("aria-label", t("nav.home"));
+    r.onclick = onAccueil;
+    gauche.appendChild(r);
+  }
+  h.appendChild(gauche);
 
   const d = el("div", { display: "flex", "align-items": "center", gap: "13px" });
   const etat = el("span", { display: "inline-flex", "align-items": "center", gap: "6px",

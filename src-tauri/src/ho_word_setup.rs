@@ -319,6 +319,29 @@ pub fn ecrire_nouveau_document(dir: &Path, bytes: &[u8]) -> Result<serde_json::V
 
 /// Ouvre un document dans Word. Un échec n'invalide rien : le fichier existe et la preuve
 /// suivra quand l'utilisateur l'ouvrira.
+/// Ouverture demandée depuis un écran du produit, avec ses refus explicites.
+///
+/// La logique vit ICI, et non dans la commande Tauri, pour deux raisons : le reste du module
+/// suit déjà ce partage, et une commande n'est pas appelable depuis un test. Les refus sont
+/// RENDUS, jamais avalés — un écran qui n'ouvre rien et ne dit rien est un cul-de-sac.
+pub fn ouvrir_document_demande(path: &str) -> Result<(), String> {
+    let p = Path::new(path);
+    if !p.is_file() {
+        return Err("Le document est introuvable à cet emplacement.".into());
+    }
+    // Cette porte ouvre des documents, pas n'importe quoi : elle ne doit pas devenir un
+    // « ouvre ce chemin » générique exposé à la couche interface.
+    let docx = p.extension().map(|e| e.eq_ignore_ascii_case("docx")).unwrap_or(false);
+    if !docx {
+        return Err("Ce fichier n'est pas un document Word.".into());
+    }
+    if ouvrir_dans_word(path) {
+        Ok(())
+    } else {
+        Err("Word n'a pas pu ouvrir ce document. Ouvrez-le depuis le Finder.".into())
+    }
+}
+
 pub fn ouvrir_dans_word(path: &str) -> bool {
     if path.is_empty() {
         return false;

@@ -2084,6 +2084,23 @@ fn ho_default_work_folder() -> Option<String> {
     ho_word_setup::default_work_folder()
 }
 
+/// Ouvre un document HumanOrigin dans Word, depuis un écran du produit.
+///
+/// Le frontend appelait `open_file`, une commande du produit historique : elle est derrière
+/// `#[cfg(feature = "legacy")]`, feature jamais activée en production, et surtout elle n'a
+/// JAMAIS figuré dans `generate_handler!`. Aucun build ne l'a donc exposée, et l'appel ne
+/// pouvait que rendre « command open_file not found ». Constaté sur le Mac public, 0.3.4.
+///
+/// L'ouverture passe par `ho_word_setup::ouvrir_dans_word`, exactement comme après la création
+/// d'un document : un seul chemin d'ouverture dans tout le produit, qui vise explicitement
+/// Word sur macOS plutôt que l'application par défaut du type.
+///
+/// L'échec est RENDU, jamais avalé : l'écran affiche la raison et reste navigable.
+#[tauri::command]
+fn ho_open_document(path: String) -> Result<(), String> {
+    ho_word_setup::ouvrir_document_demande(&path)
+}
+
 /// Premier document : l'emplacement proposé (ou choisi) n'est enregistré qu'ici, quand
 /// l'utilisateur crée son document. Une configuration existante n'est jamais remplacée.
 ///
@@ -2337,8 +2354,93 @@ async fn ho_new_document_inner(
             ho_word_setup_install,
             ho_default_work_folder,
             ho_new_document,
+            ho_open_document,
             take_pending_deep_link
         ])
         .run(tauri::generate_context!())
         .expect("error");
+}
+// ---------------------------------------------------------------- contrat interface ↔ natif
+//
+// `open_file` était appelée par l'interface alors qu'elle n'a jamais été exposée : définie
+// derrière `#[cfg(feature = "legacy")]`, et absente de `generate_handler!`. Rien ne l'a
+// signalé — ni la compilation, qui ne connaît pas les chaînes du JavaScript, ni les tests, qui
+// ne regardaient pas de ce côté. Le défaut n'est apparu qu'à l'écran, sur le Mac public, sous
+// la forme « command open_file not found ».
+//
+// Ce banc ferme ce trou : toute commande appelée par le point d'entrée réel doit être
+// enregistrée. Il lit les DEUX sources de vérité, jamais une copie.
+#[cfg(test)]
+mod contrat_invoke {
+    /// Le seul script chargé par index.html. `main.js` ne l'est plus, et ses appels sont du
+    /// code mort : les inclure ferait échouer ce banc sur des chemins qui n'existent plus.
+    const FRONT: &str = include_str!("../../src/ho_desktop.js");
+    const NATIF: &str = include_str!("main.rs");
+
+    /// Les noms passés à `invoke("…")`, tels quels.
+    fn commandes_appelees() -> Vec<String> {
+        let mut v = vec![];
+        let mut reste = FRONT;
+        while let Some(i) = reste.find("invoke(\"") {
+            reste = &reste[i + 8..];
+            if let Some(j) = reste.find('"') {
+                v.push(reste[..j].to_string());
+            }
+        }
+        v.sort();
+        v.dedup();
+        v
+    }
+
+    /// Les noms listés dans `generate_handler!`, le seul endroit qui expose réellement.
+    fn commandes_enregistrees() -> Vec<String> {
+        let d = NATIF.find("generate_handler!").expect("generate_handler! introuvable");
+        let bloc = &NATIF[d..];
+        let fin = bloc.find("])").expect("fin de generate_handler! introuvable");
+        bloc[..fin]
+            .lines()
+            .skip(1)
+            .map(|l| l.trim().trim_end_matches(',').trim())
+            .filter(|l| !l.is_empty() && !l.starts_with("//") && !l.contains('!') && !l.contains('('))
+            .map(|l| l.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn toute_commande_appelee_par_l_interface_est_enregistree() {
+        let enregistrees = commandes_enregistrees();
+        assert!(enregistrees.len() > 5, "liste suspecte : {:?}", enregistrees);
+        let manquantes: Vec<_> = commandes_appelees()
+            .into_iter()
+            .filter(|c| !enregistrees.contains(c))
+            .collect();
+        assert!(
+            manquantes.is_empty(),
+            "l'interface appelle des commandes qui n'existent pas : {:?}",
+            manquantes
+        );
+    }
+
+    /// L'ouverture d'un document doit rester exposée : c'est elle qui manquait.
+    #[test]
+    fn l_ouverture_de_document_est_exposee() {
+        assert!(commandes_enregistrees().contains(&"ho_open_document".to_string()));
+        assert!(commandes_appelees().contains(&"ho_open_document".to_string()));
+        // Et l'ancienne, qui n'a jamais existé, ne doit pas revenir par mégarde.
+        assert!(!commandes_appelees().contains(&"open_file".to_string()));
+    }
+
+    #[test]
+    fn l_ouverture_refuse_ce_qui_n_est_pas_un_document() {
+        // Chemin inexistant : refus explicite, jamais un succès silencieux.
+        let e = super::ho_word_setup::ouvrir_document_demande("/chemin/qui/n/existe/pas.docx").unwrap_err();
+        assert!(e.contains("introuvable"), "{}", e);
+
+        // Fichier réel mais pas un .docx : refusé avant toute tentative d'ouverture.
+        let f = std::env::temp_dir().join(format!("ho-open-{}.txt", std::process::id()));
+        std::fs::write(&f, b"x").unwrap();
+        let e = super::ho_word_setup::ouvrir_document_demande(&f.to_string_lossy()).unwrap_err();
+        assert!(e.contains("document Word"), "{}", e);
+        let _ = std::fs::remove_file(&f);
+    }
 }

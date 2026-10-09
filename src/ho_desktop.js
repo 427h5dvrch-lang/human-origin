@@ -789,7 +789,11 @@ async function lancerNouvelleVersion(doc, msg, bouton) {
 async function ecranVersionPrete(ctx) {
   const doc = ctx.doc;
   const p = page();
-  p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
+  // Cet écran n'offrait AUCUNE sortie : ni retour, ni suite si l'ouverture échouait. Le retour
+  // est posé dans l'en-tête, donc il reste atteignable quoi qu'il arrive à Word.
+  p.appendChild(entete({ connecte: true,
+    onAccueil: () => router({ ecran: "pret" }),
+    onReglages: () => router({ ecran: "reglages" }) }));
   const c = colonne({ padding: "46px 24px 0", "flex-grow": "1" });
   c.appendChild(medaillon("etincelle", "bleu"));
   c.appendChild(titre(t("ready.title")));
@@ -802,7 +806,11 @@ async function ecranVersionPrete(ctx) {
   const msg = zoneMessage();
   const ouvrir = ctaWord(t("ready.open"));
   ouvrir.onclick = async () => {
-    try { await invoke("open_file", { path: doc.path }); }
+    // `open_file` n'existe pas dans ce produit : elle est restée derrière
+    // `#[cfg(feature = "legacy")]`, jamais compilée en production, et n'a jamais figuré dans
+    // `generate_handler!`. L'appel ne pouvait donc que rendre « command open_file not found ».
+    // `ho_open_document` emprunte le même chemin d'ouverture que la création de document.
+    try { await invoke("ho_open_document", { path: doc.path }); }
     catch (e) { say(msg, errorText(e, t("ready.openFailed")), true); }
   };
   // Une seule action, comme la planche. Ouvrir le document EST la suite naturelle ;
