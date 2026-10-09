@@ -424,7 +424,13 @@ pub fn ouvrir_document_demande(path: &str) -> Result<(), String> {
     if ouvrir_dans_word(path) {
         Ok(())
     } else {
-        Err("Word n'a pas pu ouvrir ce document. Ouvrez-le depuis le Finder.".into())
+        // Le recours nomme le gestionnaire de fichiers du système : W2 fait désormais passer
+        // cette même porte sur Windows, où « Finder » ne veut rien dire.
+        #[cfg(target_os = "windows")]
+        let ailleurs = "l'Explorateur";
+        #[cfg(not(target_os = "windows"))]
+        let ailleurs = "le Finder";
+        Err(format!("Word n'a pas pu ouvrir ce document. Ouvrez-le depuis {ailleurs}."))
     }
 }
 
