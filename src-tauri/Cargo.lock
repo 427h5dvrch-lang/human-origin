@@ -2084,6 +2084,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-deep-link",
  "uuid",
+ "windows-sys 0.59.0",
  "winreg 0.52.0",
  "zip",
 ]

@@ -65,6 +65,86 @@ pub fn dossier_catalogue() -> Option<PathBuf> {
 #[cfg(target_os = "windows")]
 const CATALOGUE_GUID: &str = "{6F3C9A41-2B8E-4D77-A5E1-0C94B7D2F318}";
 
+/// Clé de sideload « Developer » de Word. Le DOCX généré référence le complément par
+/// `store="developer" storeType="Registry"` : sur Windows, Word résout donc cette référence
+/// ICI, et nulle part ailleurs. Le catalogue approuvé, lui, ne sert qu'à faire apparaître le
+/// complément dans « Mes compléments » — il ne résout pas la référence d'un document.
+///
+/// Mesuré sur machine Windows réelle : avec cette seule entrée, le volet se charge, l'erreur
+/// « ce complément n'est plus disponible » disparaît, et le groupe HumanOrigin apparaît dans
+/// l'onglet Accueil.
+#[cfg(target_os = "windows")]
+const CLE_DEVELOPER: &str = r"Software\Microsoft\Office\16.0\WEF\Developer";
+
+/// Cette valeur du registre appartient-elle à HumanOrigin ?
+///
+/// Fonction PURE, et c'est délibéré : c'est la seule décision de toute la désinstallation qui
+/// puisse détruire le bien d'autrui. La clé `WEF\Developer` est partagée avec tous les
+/// compléments sideloadés de la machine ; en effacer un qui n'est pas le nôtre serait casser
+/// le travail de quelqu'un d'autre sans le savoir. Deux conditions, toutes deux nécessaires :
+/// le nom est exactement notre identifiant de manifeste, et la donnée désigne bien notre
+/// fichier de manifeste.
+pub fn valeur_developer_nous_appartient(nom: &str, donnee: &str, id_manifeste: &str) -> bool {
+    if nom != id_manifeste || id_manifeste.is_empty() {
+        return false;
+    }
+    let d = donnee.replace('\\', "/").to_lowercase();
+    d.ends_with(&format!("/{}", MANIFEST_FILE.to_lowercase())) || d == MANIFEST_FILE.to_lowercase()
+}
+
+/// Déclare le manifeste installé dans la clé « Developer ». Idempotente : le nom de la valeur
+/// est l'identifiant du manifeste, donc une réinstallation réécrit la même entrée au lieu d'en
+/// empiler une seconde. L'identifiant est LU dans le manifeste embarqué, jamais recopié — s'il
+/// change un jour, la registration suit sans qu'on y pense.
+#[cfg(target_os = "windows")]
+fn declarer_developpeur(manifeste: &Path) -> Result<(), String> {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_WRITE};
+    use winreg::RegKey;
+    let echec = |e: std::io::Error| format!("Word n'a pas pu etre prepare (cle Developer) : {}", e);
+    let (cle, _) = RegKey::predef(HKEY_CURRENT_USER)
+        .create_subkey_with_flags(CLE_DEVELOPER, KEY_WRITE)
+        .map_err(echec)?;
+    cle.set_value(manifest_id(), &manifeste.to_string_lossy().to_string())
+        .map_err(echec)?;
+    Ok(())
+}
+
+/// Retire ce que HumanOrigin a écrit dans le registre, et rien d'autre.
+///
+/// La valeur « Developer » n'est effacée que si `valeur_developer_nous_appartient` le dit. Le
+/// catalogue est identifié par notre GUID fixe, donc supprimer sa sous-clé ne touche aucun
+/// autre catalogue. Aucune clé parente n'est supprimée : `WEF`, `TrustedCatalogs` et
+/// `Developer` appartiennent à Office, pas à nous.
+#[cfg(target_os = "windows")]
+pub fn retirer_registrations() -> Result<serde_json::Value, String> {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_WRITE};
+    use winreg::RegKey;
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let id = manifest_id();
+    let mut retire_developer = false;
+
+    if let Ok(cle) = hkcu.open_subkey_with_flags(CLE_DEVELOPER, KEY_READ | KEY_WRITE) {
+        let donnee: Result<String, _> = cle.get_value(&id);
+        if let Ok(d) = donnee {
+            if valeur_developer_nous_appartient(&id, &d, &id) {
+                cle.delete_value(&id).map_err(|e| e.to_string())?;
+                retire_developer = true;
+            }
+        }
+    }
+
+    let chemin_cat = format!(
+        r"Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{}",
+        CATALOGUE_GUID
+    );
+    let retire_catalogue = hkcu.delete_subkey_all(&chemin_cat).is_ok();
+
+    Ok(serde_json::json!({
+        "developer_retire": retire_developer,
+        "catalogue_retire": retire_catalogue,
+    }))
+}
+
 /// Déclare le dossier comme catalogue approuvé. Sans cette entrée, Word ignore le
 /// manifeste même posé au bon endroit.
 #[cfg(target_os = "windows")]
@@ -167,10 +247,16 @@ pub fn install(app_dir: &Path, app_version: &str) -> Result<serde_json::Value, S
     if back != MANIFEST {
         return Err("Le complément déposé ne correspond pas à celui de HumanOrigin. Réessayez.".into());
     }
-    // Sur Windows, le fichier bien posé ne suffit pas : encore faut-il que Word ait le
-    // droit de regarder dans ce dossier.
+    // Sur Windows, le fichier bien posé ne suffit pas. Deux déclarations, qui ne font pas la
+    // même chose : le catalogue approuvé rend le complément visible dans « Mes compléments » ;
+    // la clé Developer, elle, est ce qui permet à Word de RÉSOUDRE la référence que porte le
+    // document. Sans la seconde, un DOCX HumanOrigin s'ouvre sur « ce complément n'est plus
+    // disponible », ce qui a été constaté sur machine réelle.
     #[cfg(target_os = "windows")]
-    declarer_catalogue(&dossier)?;
+    {
+        declarer_catalogue(&dossier)?;
+        declarer_developpeur(&target)?;
+    }
 
     let sentinel = serde_json::json!({
         "schema": SENTINEL_SCHEMA,
@@ -332,11 +418,37 @@ pub fn ouvrir_dans_word(path: &str) -> bool {
 fn ouvrir_document(path: &Path) -> bool {
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path.to_string_lossy()])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+        // `cmd /C start` a été retiré. Trois défauts, constatés ou structurels :
+        //   · il affiche une fenêtre de console qui apparaît et se referme — visible à l'écran ;
+        //   · il dépend de `cmd.exe` dans le PATH de l'application, pas de celui de l'utilisateur ;
+        //   · le code de sortie de `start` ne dit rien de l'ouverture réelle, alors que c'est lui
+        //     qui alimentait « Document créé et ouvert dans Word ».
+        // Sur machine réelle, le document était bien écrit mais Word ne se lançait jamais, et le
+        // double-clic dans l'Explorateur fonctionnait. `ShellExecuteW` est précisément ce que fait
+        // ce double-clic : même résolution du gestionnaire par défaut, aucun processus
+        // intermédiaire, et une valeur de retour qui a un sens.
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+        fn large(s: &str) -> Vec<u16> {
+            std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+        }
+        let operation = large("open");
+        let fichier = large(&path.to_string_lossy());
+        // Contrat documenté de ShellExecuteW : une valeur STRICTEMENT supérieure à 32 signale le
+        // succès ; tout le reste est un code d'erreur. C'est la seule lecture correcte.
+        let r = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                operation.as_ptr(),
+                fichier.as_ptr(),
+                std::ptr::null(),
+                std::ptr::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        (r as isize) > 32
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -390,6 +502,67 @@ mod tests {
         assert_eq!(manifest_id(), "7b3e1c62-4a58-4d1f-9c05-8e2f6a4b90d3");
         assert_eq!(manifest_version(), "1.0.0.0");
         assert!(String::from_utf8_lossy(MANIFEST).contains("https://create.humanorigin.io/word/taskpane.html"));
+    }
+
+    // La clé WEF\Developer est PARTAGÉE avec tous les compléments sideloadés de la machine.
+    // En effacer un qui n'est pas le nôtre casserait le travail de quelqu'un d'autre sans
+    // qu'on le sache. Ces cas-là sont donc la vraie matière du test.
+    #[test]
+    fn une_valeur_developer_nous_appartient_quand_le_nom_et_le_fichier_concordent() {
+        let id = manifest_id();
+        assert!(valeur_developer_nous_appartient(
+            &id, r"C:\Users\pcall\AppData\Local\HumanOrigin\WordAddin\humanorigin-prod.xml", &id));
+        // Chemin POSIX, et casse indifférente : le registre n'impose ni l'un ni l'autre.
+        assert!(valeur_developer_nous_appartient(
+            &id, "/Users/x/HumanOrigin/WordAddin/HumanOrigin-Prod.XML", &id));
+    }
+
+    #[test]
+    fn le_complement_d_un_autre_editeur_n_est_jamais_a_nous() {
+        let id = manifest_id();
+        // Même dossier, autre complément : le nom ne correspond pas.
+        assert!(!valeur_developer_nous_appartient(
+            "00000000-1111-2222-3333-444444444444",
+            r"C:\Autre\Editeur\manifest.xml", &id));
+        // Nom emprunté, mais la donnée ne désigne pas notre manifeste : on ne touche pas.
+        assert!(!valeur_developer_nous_appartient(
+            &id, r"C:\Autre\Editeur\manifest.xml", &id));
+        // Un fichier homonyme en préfixe ne suffit pas : la comparaison porte sur le nom entier.
+        assert!(!valeur_developer_nous_appartient(
+            &id, r"C:\x\pas-humanorigin-prod.xml.bak", &id));
+    }
+
+    #[test]
+    fn un_identifiant_vide_n_autorise_aucune_suppression() {
+        // Si le manifeste devenait illisible, `manifest_id()` rendrait une chaîne vide. Sans
+        // cette garde, toute valeur nommée « » serait réputée nôtre.
+        assert!(!valeur_developer_nous_appartient("", "humanorigin-prod.xml", ""));
+    }
+
+    // Le nom de la valeur écrite dans le registre DOIT venir du manifeste embarqué. Recopié en
+    // dur, il se désynchroniserait le jour où le manifeste change d'identifiant, et Word ne
+    // résoudrait plus la référence que portent les documents.
+    #[test]
+    fn le_nom_de_la_valeur_developer_est_celui_du_manifeste() {
+        let id = manifest_id();
+        assert_eq!(id, tag_value(&String::from_utf8_lossy(MANIFEST), "Id"));
+        assert!(valeur_developer_nous_appartient(&id, MANIFEST_FILE, &id));
+    }
+
+    // Le document référence le complément par son identifiant : si les deux divergeaient, aucun
+    // magasin ne résoudrait la référence. C'est le lien que W1 répare.
+    #[test]
+    fn le_docx_reference_exactement_l_identifiant_du_manifeste() {
+        let docx = bootstrap_docx(&["/tmp".to_string()], "HO-TestW1abc").unwrap();
+        let mut zip = zip::ZipArchive::new(Cursor::new(docx)).unwrap();
+        let mut xml = String::new();
+        {
+            use std::io::Read;
+            zip.by_name("word/webextensions/webextension1.xml").unwrap().read_to_string(&mut xml).unwrap();
+        }
+        assert!(xml.contains(&format!("id=\"{}\"", manifest_id())));
+        assert!(xml.contains("store=\"developer\""), "le magasin attendu par Windows est la cle Developer");
+        assert!(xml.contains("storeType=\"Registry\""));
     }
 
     #[test]
