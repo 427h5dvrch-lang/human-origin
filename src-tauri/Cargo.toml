@@ -64,6 +64,13 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 # complements approuve a Word sur Windows. Dependance minimale, Windows uniquement.
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.52"
+# Uniquement pour ShellExecuteW : ouvrir un document comme le fait le double-clic de
+# l'Explorateur. La version suit celle que l'arbre embarque déjà, pour ne pas en ajouter une.
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Uniquement pour l'ancien produit : la version First Run ne consulte jamais
