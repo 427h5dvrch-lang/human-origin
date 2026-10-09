@@ -55,7 +55,13 @@ function secondaryButton(label) {
 }
 
 const say = (node, text, isError) => {
-  node.textContent = text || "";
+  // Le message est aussi RETENU dans l'état de la vue. Sans cela il vivait uniquement dans le
+  // nœud : tout redessin — changement de langue, réveil au retour de Word — le faisait
+  // disparaître sans que l'utilisateur ait rien fait, et la seule réponse de l'application à
+  // son action était perdue.
+  VUE.message = text || "";
+  VUE.messageErreur = !!isError;
+  node.textContent = VUE.message;
   put(node, { color: isError ? ERROR_INK : MUTED });
 };
 
@@ -581,7 +587,10 @@ const TITRE_RUBRIQUE = {
   diagnostic: "label.diagnostic",
 };
 
-const VUE = { ecran: null, doc: null, message: "" };
+// `ctx` garde le contexte avec lequel l'écran courant a été dessiné : le redessiner sans
+// lui perdrait ce qu'il affiche. `messageErreur` accompagne `message` — un message retenu
+// sans sa nature se réaffiche dans la mauvaise couleur.
+const VUE = { ecran: null, doc: null, ctx: {}, message: "", messageErreur: false };
 
 const quandDate = (d) => {
   const a = new Date();
@@ -593,7 +602,8 @@ const quandDate = (d) => {
 
 /** Zone de message d'un écran : un seul endroit, discret, sous les actions. */
 function zoneMessage() {
-  return sh("p", { margin: "14px 0 0", font: "13px/1.5 " + SANS, color: ATONE,
+  return sh("p", { margin: "14px 0 0", font: "13px/1.5 " + SANS,
+    color: VUE.messageErreur ? ERROR_INK : ATONE,
     "text-align": "center" }, VUE.message || "");
 }
 
@@ -861,10 +871,12 @@ async function ecranSourceModifiee(ctx) {
   const creer = ctaPrincipal(t("version.create"), "feuille");
   creer.onclick = () => lancerNouvelleVersion(doc, msg, creer);
   c.appendChild(creer);
-  const annuler = ctaSecondaire(t("action.cancel"));
-  put(annuler, { margin: "9px 0 0" });
-  annuler.onclick = () => router({ ecran: "pret" });
-  c.appendChild(annuler);
+  // « Annuler » n'annulait rien : rien n'avait encore été créé à cet instant, et le bouton
+  // ramenait en réalité à l'accueil. Le libellé nomme maintenant sa destination.
+  const retour = ctaSecondaire(t("action.backHome"));
+  put(retour, { margin: "9px 0 0" });
+  retour.onclick = () => router({ ecran: "pret" });
+  c.appendChild(retour);
   c.appendChild(msg);
   p.appendChild(c);
 }
@@ -1239,7 +1251,8 @@ const ECRANS = {
 
 async function router(cible) {
   if (cible && cible.ecran) {
-    VUE.ecran = cible.ecran; VUE.doc = cible.doc || null; VUE.message = "";
+    VUE.ecran = cible.ecran; VUE.doc = cible.doc || null; VUE.ctx = { doc: VUE.doc };
+    VUE.message = ""; VUE.messageErreur = false;
     if (cible.ecran === "pret") return etatCourant({ accueil: true });
     return ECRANS[cible.ecran]({ doc: VUE.doc });
   }
@@ -1255,15 +1268,30 @@ async function redessiner() {
   if (!VUE.ecran || VUE.ecran === "pret") return etatCourant({ accueil: VUE.ecran === "pret" });
   const dessiner = ECRANS[VUE.ecran];
   if (!dessiner) return etatCourant();
-  return dessiner({ doc: VUE.doc });
+  // Le contexte d'origine, et non `{ doc }` seul : `installer-word` reçoit un `etat`, qu'un
+  // redessin amnésique transformait en « complément absent » quel que soit l'état réel.
+  return dessiner(VUE.ctx);
+}
+
+/**
+ * Dessine un écran DÉDUIT en le déclarant d'abord dans l'état de la vue.
+ *
+ * `VUE.ecran` restait `null` sur tout écran déduit — c'est-à-dire au lancement et après chaque
+ * retour d'authentification. `redessiner()` retombait alors sur une nouvelle déduction : un
+ * simple réveil pouvait déplacer l'utilisateur d'écran sans qu'il ait rien demandé. Nommer
+ * l'écran déduit rend le redessin strictement sur place.
+ */
+function poser(ecran, ctx = {}) {
+  VUE.ecran = ecran; VUE.ctx = ctx; VUE.doc = ctx.doc || null;
+  return ECRANS[ecran](ctx);
 }
 
 /**
  * L'état réel, déduit des seules données dont l'application dispose.
  *
  * `opts.accueil` demande l'accueil EXPLICITEMENT. Sans cette option, un document finalisé
- * ouvert dans Word renvoyait toujours vers « Continuer ce document » : « Retour à l'accueil »
- * et « Annuler » rebondissaient donc sur l'écran qu'on venait de quitter, et l'accueil
+ * ouvert dans Word renvoyait toujours vers « Continuer ce document » : toute sortie
+ * rebondissait donc sur l'écran qu'on venait de quitter, et l'accueil
  * devenait inatteignable — donc impossible d'ouvrir autre chose. Les garde-fous qui précèdent
  * (session, complément posé) restent, eux, inconditionnels.
  */
@@ -1276,27 +1304,64 @@ async function etatCourant(opts = {}) {
     try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
     // Rien n'est encore configuré : c'est une première utilisation, pas une déconnexion.
     const vierge = !folders.length && !(st && st.state === "installed");
-    return vierge ? ecranPremiere({}) : ecranConnexion({});
+    return vierge ? poser("premiere") : poser("connexion");
   }
   // Connecté mais sans complément posé : on mène à l'installation, jamais à l'écran de
   // connexion — il n'a pas de roue crantée, et la boucle se refermait là.
   let st = null;
   try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
   if (!st || st.state !== "installed") {
-    return ecranInstallerWord({ etat: st && st.state });
+    return poser("installer-word", { etat: st && st.state });
   }
 
-  if (opts.accueil) return ecranPret({});
+  if (opts.accueil) return poser("pret");
 
   // Un document finalisé ouvert dans Word appelle son propre écran.
   let docs = [];
   try { docs = (await invoke("ho_versionable_documents")) || []; } catch (e) { docs = []; }
-  if (docs.length === 1) return ecranContinuer({ doc: docs[0] });
+  if (docs.length === 1) return poser("continuer", { doc: docs[0] });
   // Plusieurs documents ouverts : on ne choisit plus à la place de l'utilisateur. Prendre
   // `docs[0]` affichait un document sans dire qu'il y en avait d'autres, ni comment y aller.
-  if (docs.length > 1) return ecranDocuments({});
+  if (docs.length > 1) return poser("documents");
 
-  return ecranPret({});
+  return poser("pret");
+}
+
+/**
+ * RÉVEIL AU RETOUR DE WORD.
+ *
+ * Le travail se fait dans Word, donc DEHORS. L'application lisait son état une seule fois, au
+ * moment de dessiner, et plus jamais : on finalisait un document, on revenait sur la fenêtre,
+ * et l'écran était identique — « Ouverts dans Word » ignorait le document qui venait d'être
+ * scellé, et l'accueil semblait ne rien savoir. L'application n'était pas perdue, elle était
+ * figée sur le monde tel qu'il était au dernier clic.
+ *
+ * Le focus suffit à savoir qu'on revient : aucun sondage périodique n'est installé.
+ *
+ * On REDESSINE l'écran courant avec des données fraîches. On ne redéduit pas l'écran : être
+ * déplacé d'écran au seul fait de revenir sur une fenêtre serait pire que l'affichage périmé.
+ * Les Réglages sont exclus — ils parlent de la configuration de l'application, pas de Word, et
+ * redessiner sous les doigts de quelqu'un en train de régler quelque chose n'apporte rien.
+ */
+let reveilEnCours = false;
+async function reveil() {
+  // Deux sources annoncent le même retour ; sans ce garde, le second redessin partirait sur un
+  // arbre que le premier est en train de remplacer.
+  if (reveilEnCours) return;
+  if (VUE.ecran === "reglages") return;
+  reveilEnCours = true;
+  try { await redessiner(); }
+  catch (e) { /* un réveil raté laisse l'écran tel quel : ce n'est pas un incident */ }
+  finally { reveilEnCours = false; }
+}
+
+async function brancherReveil() {
+  try { window.addEventListener("focus", () => { reveil(); }); }
+  catch (e) { /* hors navigateur */ }
+  // Sur macOS le focus de la fenêtre native n'atteint pas toujours la vue web : Tauri l'annonce
+  // sur son propre canal. Les deux voies mènent au même garde.
+  try { await listen("tauri://focus", () => { reveil(); }); }
+  catch (e) { /* canal absent */ }
 }
 
 function fatal(e) {
@@ -1336,6 +1401,9 @@ onLangueChange(() => { appliquerLangueAuDocument(); redessiner().catch(fatal); }
     await brancherLiens(async (ok) => { if (ok) await router(); });
     // Aucun choix de dossier au démarrage : l'emplacement est proposé au premier document.
     await router();
+    // Le réveil se branche APRÈS le premier rendu : un focus arrivé avant aurait redessiné un
+    // écran qui n'existait pas encore.
+    await brancherReveil();
   } catch (e) {
     fatal(e);
   }

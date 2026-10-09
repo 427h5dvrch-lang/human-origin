@@ -2480,7 +2480,11 @@ mod contrat_invoke {
         // Et l'accueil doit rester ATTEIGNABLE : sans ce passage, un document ouvert dans Word
         // y renvoyait toujours vers « Continuer ».
         assert!(FRONT.contains("etatCourant({ accueil: true })"));
-        assert!(FRONT.contains("if (opts.accueil) return ecranPret({});"));
+        // L'écran d'accueil est désormais posé par `poser()`, qui le DÉCLARE dans l'état de la
+        // vue : sans cette déclaration, un redessin redéduisait l'écran et pouvait déplacer
+        // l'utilisateur. Le comportement lui-même est éprouvé par `tests/parcours_client.mjs`,
+        // qui exécute le parcours ; ici on garde seulement le passage explicite.
+        assert!(FRONT.contains(r#"if (opts.accueil) return poser("pret");"#));
     }
 
     #[test]
