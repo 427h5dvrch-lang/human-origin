@@ -33,10 +33,21 @@ export interface Deps {
 // authorization, apikey et content-type. Sans réponse à ce préflight, le POST n'est JAMAIS
 // émis, et l'application croit le service injoignable alors qu'il répond parfaitement.
 //
-// Allowlist stricte : une seule origine, jamais « * ». Une origine inconnue n'obtient aucune
-// ouverture, et l'authentification serveur n'est en rien allégée — CORS ne protège que le
-// navigateur, il ne remplace aucun contrôle.
-const ORIGINE_AUTORISEE = "tauri://localhost";
+// Allowlist stricte : DEUX origines exactes, jamais « * ». Une origine inconnue n'obtient
+// aucune ouverture, et l'authentification serveur n'est en rien allégée — CORS ne protège que
+// le navigateur, il ne remplace aucun contrôle.
+//
+// Les deux valeurs sont les origines réelles de la WebView Tauri, et elles diffèrent selon le
+// système : macOS sert l'application depuis « tauri://localhost », Windows depuis
+// « https://tauri.localhost ». N'en connaître qu'une faisait échouer le préflight sur Windows,
+// donc le POST n'était jamais émis et l'application concluait « service injoignable » alors que
+// ce service répondait parfaitement.
+const ORIGINES_AUTORISEES = Object.freeze([
+  "tauri://localhost",        // macOS, Linux
+  "https://tauri.localhost",  // Windows (WebView2)
+]);
+const autorisee = (o: string | null): o is string =>
+  o !== null && ORIGINES_AUTORISEES.includes(o);
 // Exactement les en-têtes que reserveRecordId pose, et rien de plus.
 const ENTETES_AUTORISES = "apikey, authorization, content-type";
 
@@ -49,8 +60,8 @@ const ENTETES_AUTORISES = "apikey, authorization, content-type";
  * Authorization, pas par un cookie tiers.
  */
 const entetesCors = (origine: string | null): Record<string, string> =>
-  origine === ORIGINE_AUTORISEE
-    ? { "access-control-allow-origin": ORIGINE_AUTORISEE, "vary": "Origin" }
+  autorisee(origine)
+    ? { "access-control-allow-origin": origine, "vary": "Origin" }
     : { "vary": "Origin" };
 
 const json = (corps: unknown, statut = 200, origine: string | null = null) =>
@@ -66,13 +77,13 @@ export async function traiter(req: Request, d: Deps): Promise<Response> {
 
   // Préflight. Aucun effet de bord : rien n'est réservé, rien n'est lu.
   if (req.method === "OPTIONS") {
-    if (origine !== ORIGINE_AUTORISEE) {
+    if (!autorisee(origine)) {
       return json({ ok: false, error: "method_not_allowed" }, 405, null);
     }
     return new Response(null, {
       status: 204,
       headers: {
-        "access-control-allow-origin": ORIGINE_AUTORISEE,
+        "access-control-allow-origin": origine,
         "access-control-allow-methods": "POST, OPTIONS",
         "access-control-allow-headers": ENTETES_AUTORISES,
         "access-control-max-age": "86400",
