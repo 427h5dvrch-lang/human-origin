@@ -328,8 +328,22 @@ pub fn bootstrap_docx(work_folders: &[String], record_id: &str) -> Result<Vec<u8
 <wetp:taskpanes xmlns:wetp="http://schemas.microsoft.com/office/webextensions/taskpanes/2010/11"><wetp:taskpane dockstate="right" visibility="1" width="350" row="0"><wetp:webextensionref xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></wetp:taskpane></wetp:taskpanes>"#.to_string()),
         ("word/webextensions/_rels/taskpanes.xml.rels", r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.microsoft.com/office/2011/relationships/webextension" Target="webextension1.xml"/></Relationships>"#.to_string()),
+        // SAFE CLOSE / G7. `taskpanes.xml` demande l'ouverture du volet (`visibility="1"`), et
+        // Word honorait cette demande en inscrivant l'état du volet dans le document : le
+        // document devenait MODIFIÉ par le seul fait de s'ouvrir, et Word réclamait un
+        // enregistrement alors que l'utilisateur n'avait rien tapé. Reproduit sur Windows le
+        // 2026-10-11, puis sur macOS par la propriété `saved` de Word elle-même.
+        //
+        // `Office.AutoShowTaskpaneWithDocument` est la voie documentée pour qu'un document
+        // ouvre son volet : Word y lit une intention déclarée, non un changement. Mesuré, en
+        // alternance avec le témoin, quatre fois de suite : avec la propriété `saved` vaut
+        // true, sans elle false. `visibility="1"` est INCHANGÉ — c'est lui qui fait passer W1,
+        // et il n'avait pas à être sacrifié.
+        //
+        // Le volet est désigné par le `<TaskpaneId>HOTaskpane</TaskpaneId>` que le manifeste
+        // déclare déjà : aucune autre pièce à ajouter.
         ("word/webextensions/webextension1.xml", format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<we:webextension xmlns:we="http://schemas.microsoft.com/office/webextensions/webextension/2010/11" id="{{{id}}}"><we:reference id="{id}" version="{version}" store="developer" storeType="Registry"/><we:alternateReferences/><we:properties><we:property name="HOWorkFolders" value="{folders}"/></we:properties><we:bindings/><we:snapshot xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/></we:webextension>"#,
+<we:webextension xmlns:we="http://schemas.microsoft.com/office/webextensions/webextension/2010/11" id="{{{id}}}"><we:reference id="{id}" version="{version}" store="developer" storeType="Registry"/><we:alternateReferences/><we:properties><we:property name="Office.AutoShowTaskpaneWithDocument" value="true"/><we:property name="HOWorkFolders" value="{folders}"/></we:properties><we:bindings/><we:snapshot xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/></we:webextension>"#,
             id = manifest_id(), version = manifest_version(), folders = folders)),
     ];
     let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
@@ -693,6 +707,58 @@ mod tests {
             assert!(!s.contains(cap), "aucune trace dans {}", nom);
             assert!(!s.contains("capability"), "aucune mention de capability dans {}", nom);
         }
+    }
+
+    /// SAFE CLOSE / G7 : ouvrir le document ne doit pas le rendre modifié.
+    ///
+    /// Mesuré le 2026-10-11, sur Windows puis sur macOS via la propriété `saved` de Word :
+    /// un document qui demande l'ouverture de son volet (`visibility="1"`) SANS déclarer
+    /// `Office.AutoShowTaskpaneWithDocument` est marqué modifié par le seul fait de s'ouvrir,
+    /// et Word réclame un enregistrement alors que rien n'a été tapé. Avec la propriété,
+    /// `saved` vaut true — vérifié quatre fois en alternance avec le témoin.
+    ///
+    /// Ce banc tient les deux moitiés ensemble : la propriété DOIT être là, et
+    /// `visibility="1"` doit rester, parce que c'est lui qui ouvre le volet (W1). Corriger
+    /// l'un en cassant l'autre ferait tomber ce test.
+    /// Écrit le paquet réel sur disque pour qu'il puisse être ouvert dans Word, et mesuré.
+    /// Ignoré par défaut : il produit un artefact, il ne vérifie rien tout seul.
+    ///   cargo test --bin human-origin ecrire_paquet_pour_mesure -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn ecrire_paquet_pour_mesure() {
+        let folders = vec![format!("{}/Documents/HumanOrigin Documents",
+            std::env::var("HOME").unwrap_or_default())];
+        let bytes = bootstrap_docx(&folders, "HO-MESUREW40001").unwrap();
+        let out = std::path::Path::new("/tmp/w4/produit_par_le_code.docx");
+        std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+        std::fs::write(out, &bytes).unwrap();
+        println!("écrit : {} ({} octets)", out.display(), bytes.len());
+    }
+
+    #[test]
+    fn ouvrir_le_document_ne_le_rend_pas_modifie() {
+        let folders = vec!["/Users/x/Documents/HumanOrigin Documents".to_string()];
+        let bytes = bootstrap_docx(&folders, "HO-TESTRESERVED1").unwrap();
+        let mut z = zip::ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap();
+
+        let mut we = String::new();
+        std::io::Read::read_to_string(
+            &mut z.by_name("word/webextensions/webextension1.xml").unwrap(), &mut we).unwrap();
+        assert!(we.contains(r#"<we:property name="Office.AutoShowTaskpaneWithDocument" value="true"/>"#),
+            "sans cette propriété, Word réclame un enregistrement à la simple ouverture");
+
+        let mut tp = String::new();
+        std::io::Read::read_to_string(
+            &mut z.by_name("word/webextensions/taskpanes.xml").unwrap(), &mut tp).unwrap();
+        assert!(tp.contains(r#"visibility="1""#),
+            "le volet doit toujours s'ouvrir de lui-même : c'est W1, et le corriger par \
+             visibility=\"0\" échangerait un défaut contre un autre");
+
+        // La propriété appartient au volet désigné par le manifeste. Si le manifeste cessait
+        // de déclarer ce `TaskpaneId`, la propriété ne désignerait plus rien.
+        let manifeste = String::from_utf8_lossy(MANIFEST);
+        assert!(manifeste.contains("<TaskpaneId>HOTaskpane</TaskpaneId>"),
+            "Office.AutoShowTaskpaneWithDocument a besoin d'un TaskpaneId déclaré");
     }
 
     #[test]
