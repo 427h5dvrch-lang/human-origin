@@ -328,22 +328,22 @@ pub fn bootstrap_docx(work_folders: &[String], record_id: &str) -> Result<Vec<u8
 <wetp:taskpanes xmlns:wetp="http://schemas.microsoft.com/office/webextensions/taskpanes/2010/11"><wetp:taskpane dockstate="right" visibility="1" width="350" row="0"><wetp:webextensionref xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></wetp:taskpane></wetp:taskpanes>"#.to_string()),
         ("word/webextensions/_rels/taskpanes.xml.rels", r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.microsoft.com/office/2011/relationships/webextension" Target="webextension1.xml"/></Relationships>"#.to_string()),
-        // SAFE CLOSE / G7. `taskpanes.xml` demande l'ouverture du volet (`visibility="1"`), et
-        // Word honorait cette demande en inscrivant l'état du volet dans le document : le
-        // document devenait MODIFIÉ par le seul fait de s'ouvrir, et Word réclamait un
-        // enregistrement alors que l'utilisateur n'avait rien tapé. Reproduit sur Windows le
-        // 2026-10-11, puis sur macOS par la propriété `saved` de Word elle-même.
+        // SAFE CLOSE / G7 — et pourquoi `Office.AutoShowTaskpaneWithDocument` N'EST PAS ici.
         //
-        // `Office.AutoShowTaskpaneWithDocument` est la voie documentée pour qu'un document
-        // ouvre son volet : Word y lit une intention déclarée, non un changement. Mesuré, en
-        // alternance avec le témoin, quatre fois de suite : avec la propriété `saved` vaut
-        // true, sans elle false. `visibility="1"` est INCHANGÉ — c'est lui qui fait passer W1,
-        // et il n'avait pas à être sacrifié.
+        // Cette propriété a été ajoutée le 2026-10-11 : elle rendait `saved` vrai sur macOS, et
+        // j'en avais conclu qu'elle corrigeait W4. Le retest physique Windows a montré que non.
+        // Elle y produit un SECOND onglet HumanOrigin — `visibility="1"` ouvrait déjà le volet,
+        // la propriété en demande un autre — et le document reste modifié. Retirée.
         //
-        // Le volet est désigné par le `<TaskpaneId>HOTaskpane</TaskpaneId>` que le manifeste
-        // déclare déjà : aucune autre pièce à ajouter.
+        // Deux mécanismes d'ouverture ne doivent jamais coexister : `visibility="1"` suffit, et
+        // c'est lui qui fait passer W1 physiquement sur Windows. Le banc
+        // `un_seul_mecanisme_d_ouverture_du_volet` l'empêche de revenir.
+        //
+        // La cause réelle de W4 est ailleurs : le retest a isolé que le document devient modifié
+        // quand le CODE du volet s'exécute — sans add-in, volet caché, ou volet d'erreur avec un
+        // faux identifiant, W4 passe. Voir docs/windows/w4_init_du_volet.md.
         ("word/webextensions/webextension1.xml", format!(r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<we:webextension xmlns:we="http://schemas.microsoft.com/office/webextensions/webextension/2010/11" id="{{{id}}}"><we:reference id="{id}" version="{version}" store="developer" storeType="Registry"/><we:alternateReferences/><we:properties><we:property name="Office.AutoShowTaskpaneWithDocument" value="true"/><we:property name="HOWorkFolders" value="{folders}"/></we:properties><we:bindings/><we:snapshot xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/></we:webextension>"#,
+<we:webextension xmlns:we="http://schemas.microsoft.com/office/webextensions/webextension/2010/11" id="{{{id}}}"><we:reference id="{id}" version="{version}" store="developer" storeType="Registry"/><we:alternateReferences/><we:properties><we:property name="HOWorkFolders" value="{folders}"/></we:properties><we:bindings/><we:snapshot xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"/></we:webextension>"#,
             id = manifest_id(), version = manifest_version(), folders = folders)),
     ];
     let mut w = zip::ZipWriter::new(Cursor::new(Vec::new()));
@@ -709,6 +709,37 @@ mod tests {
         }
     }
 
+    /// Un seul mécanisme d'ouverture du volet, jamais deux.
+    ///
+    /// `visibility="1"` dans `taskpanes.xml` ouvre le volet — mesuré physiquement sur Windows,
+    /// c'est lui qui fait passer W1. `Office.AutoShowTaskpaneWithDocument` en demande un
+    /// second : sur Windows, deux onglets HumanOrigin apparaissaient. Les deux ensemble sont
+    /// donc interdits, et la propriété ne doit pas revenir seule non plus — elle n'apporte
+    /// rien que `visibility` ne fasse déjà.
+    #[test]
+    fn un_seul_mecanisme_d_ouverture_du_volet() {
+        let folders = vec!["/Users/x/Documents/HumanOrigin Documents".to_string()];
+        let bytes = bootstrap_docx(&folders, "HO-TESTRESERVED1").unwrap();
+        let mut z = zip::ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap();
+
+        let mut tp = String::new();
+        std::io::Read::read_to_string(
+            &mut z.by_name("word/webextensions/taskpanes.xml").unwrap(), &mut tp).unwrap();
+        assert!(tp.contains(r#"visibility="1""#),
+            "visibility=\"1\" est le mécanisme retenu : c'est lui qui ouvre le volet (W1)");
+        assert_eq!(tp.matches("<wetp:taskpane ").count(), 1,
+            "un seul volet déclaré : deux entrées produisent deux onglets");
+
+        let mut we = String::new();
+        std::io::Read::read_to_string(
+            &mut z.by_name("word/webextensions/webextension1.xml").unwrap(), &mut we).unwrap();
+        assert!(!we.contains("AutoShowTaskpaneWithDocument"),
+            "second mécanisme d'ouverture : sur Windows il produit un deuxième onglet \
+             HumanOrigin, et il ne corrige pas W4");
+        assert_eq!(we.matches("<we:reference ").count(), 1,
+            "une seule référence de complément par document");
+    }
+
     /// SAFE CLOSE / G7 : ouvrir le document ne doit pas le rendre modifié.
     ///
     /// Mesuré le 2026-10-11, sur Windows puis sur macOS via la propriété `saved` de Word :
@@ -735,17 +766,20 @@ mod tests {
         println!("écrit : {} ({} octets)", out.display(), bytes.len());
     }
 
+    /// Le volet déclaré dans le document est bien celui que le manifeste sait ouvrir.
+    ///
+    /// Ce banc ne garde PAS W4. Le retest physique du 2026-10-11 a établi que le document
+    /// devient modifié quand le CODE du volet s'exécute : sans complément, volet caché, ou
+    /// volet d'erreur avec un faux identifiant, W4 passe. Ce que le paquet déclare n'est donc
+    /// pas la cause, et nommer ce banc d'après W4 lui ferait promettre ce qu'il ne tient pas.
+    ///
+    /// Ce qu'il garde est plus modeste et reste utile : la déclaration du volet demeure
+    /// cohérente avec le manifeste, sans quoi aucun volet ne s'ouvrirait du tout.
     #[test]
-    fn ouvrir_le_document_ne_le_rend_pas_modifie() {
+    fn le_volet_declare_correspond_au_manifeste() {
         let folders = vec!["/Users/x/Documents/HumanOrigin Documents".to_string()];
         let bytes = bootstrap_docx(&folders, "HO-TESTRESERVED1").unwrap();
         let mut z = zip::ZipArchive::new(Cursor::new(bytes.as_slice())).unwrap();
-
-        let mut we = String::new();
-        std::io::Read::read_to_string(
-            &mut z.by_name("word/webextensions/webextension1.xml").unwrap(), &mut we).unwrap();
-        assert!(we.contains(r#"<we:property name="Office.AutoShowTaskpaneWithDocument" value="true"/>"#),
-            "sans cette propriété, Word réclame un enregistrement à la simple ouverture");
 
         let mut tp = String::new();
         std::io::Read::read_to_string(
