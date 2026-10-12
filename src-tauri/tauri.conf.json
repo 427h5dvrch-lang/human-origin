@@ -118,7 +118,8 @@
             "French"
           ],
           "displayLanguageSelector": true,
-          "installerIcon": "icons/icon.ico"
+          "installerIcon": "icons/icon.ico",
+          "template": "windows/installer.nsi"
         }
       },
       "macOS": {

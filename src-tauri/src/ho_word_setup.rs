@@ -875,6 +875,91 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// Notre copie du gabarit NSIS ne dérive pas de celle de Tauri 1.6.3.
+    ///
+    /// Le gabarit de l'installeur est forké pour une seule raison : Tauri 1.6.3 n'offre aucun
+    /// point d'extension dans sa section de désinstallation, et il faut y retirer ce que
+    /// HumanOrigin a écrit dans le registre de Word. Un fork de 767 lignes dérive en silence
+    /// dès que l'amont change, ou dès qu'on le retouche ailleurs que dans nos ajouts.
+    ///
+    /// Nos ajouts sont donc ENCADRÉS par des marqueurs, et ce banc les retire : ce qui reste
+    /// doit rendre, à l'octet, l'empreinte du gabarit 1.6.3 de référence. C'est aussi ce qui
+    /// rend le diff lisible à l'œil.
+    #[test]
+    fn le_gabarit_nsis_ne_derive_pas() {
+        const REFERENCE_1_6_3: &str =
+            "cb1f407c21ec29ea83ddb4de405c6b8c3a641f929ac842664be10745092587db";
+        const DEBUT: &str = "; >>> HumanOrigin";
+        const FIN: &str = "; <<< HumanOrigin\n";
+        let n = include_str!("../windows/installer.nsi");
+
+        // Retirer chaque bloc marqué, avec l'indentation qui le précède sur sa ligne.
+        let mut reste = String::new();
+        let mut cur = n;
+        let mut blocs = 0;
+        while let Some(d) = cur.find(DEBUT) {
+            let ligne = cur[..d].rfind('\n').map(|k| k + 1).unwrap_or(0);
+            let f = cur[d..].find(FIN).expect("bloc HumanOrigin non fermé") + d + FIN.len();
+            reste.push_str(&cur[..ligne]);
+            cur = &cur[f..];
+            blocs += 1;
+        }
+        reste.push_str(cur);
+        assert_eq!(blocs, 2, "il doit y avoir exactement deux ajouts marqués, pas {}", blocs);
+        assert_eq!(sha256_hex(reste.as_bytes()), REFERENCE_1_6_3,
+            "notre copie n'est plus « le gabarit 1.6.3 plus nos deux blocs » : soit l'amont a \
+             changé, soit la copie a été touchée ailleurs que dans les blocs marqués");
+    }
+
+    /// Le nettoyage de désinstallation ne retire que ce qui appartient à HumanOrigin.
+    ///
+    /// Ces clés de registre sont PARTAGÉES avec tous les compléments sideloadés de la machine :
+    /// supprimer une clé parente casserait le travail de quelqu'un d'autre sans le savoir. Ce
+    /// banc lit le gabarit et exige la prudence, là où elle ne se voit pas à l'exécution.
+    #[test]
+    fn la_desinstallation_ne_touche_que_ce_qui_est_a_nous() {
+        let n = include_str!("../windows/installer.nsi");
+        let i = n.find("Section Uninstall").expect("section de désinstallation absente");
+        let bloc = &n[i..n[i..].find("SectionEnd").unwrap() + i];
+        let dev = r"Software\Microsoft\Office\16.0\WEF\Developer";
+        let cat = "{6F3C9A41-2B8E-4D77-A5E1-0C94B7D2F318}";
+
+        // 1. La valeur Developer part par son NOM. La clé, jamais.
+        assert!(bloc.contains(&format!(r#"DeleteRegValue HKCU "{dev}" "7b3e1c62-4a58-4d1f-9c05-8e2f6a4b90d3""#)),
+            "la valeur Developer doit être retirée par son nom exact");
+        assert!(!bloc.contains(&format!(r#"DeleteRegKey HKCU "{dev}""#)),
+            "la clé Developer est partagée : la supprimer casserait les autres compléments");
+        assert!(!bloc.contains(r#"DeleteRegKey HKCU "Software\Microsoft\Office\16.0\WEF""#),
+            "la clé WEF appartient à Office");
+        assert!(!bloc.contains(r#"DeleteRegKey HKCU "Software\Microsoft\Office\16.0\WEF\TrustedCatalogs""#),
+            "la clé TrustedCatalogs est partagée : seule notre sous-clé peut partir");
+
+        // 2. Le catalogue n'est retiré qu'après vérification de son identifiant.
+        assert!(bloc.contains(&format!(r#""Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{cat}" "Id""#)),
+            "l'identifiant du catalogue doit être lu avant toute suppression");
+        assert!(bloc.contains(&format!(r#"$0 == "{cat}""#)),
+            "la suppression du catalogue doit être conditionnée à son identifiant exact");
+
+        // 3. Le protocole ne part que s'il désigne CETTE installation.
+        assert!(bloc.contains(r#""Software\Classes\humanorigin\shell\open\command""#),
+            "la commande du protocole doit être lue avant de décider");
+        assert!(bloc.contains(r#"${UnStrStr} $1 "$0" "$INSTDIR""#),
+            "la commande doit être comparée au dossier de CETTE installation");
+        let k = bloc.find(r#"DeleteRegKey HKCU "Software\Classes\humanorigin""#)
+            .expect("le protocole doit pouvoir être retiré");
+        assert!(bloc[..k].contains(r#"${UnStrStr} $1 "$0" "$INSTDIR""#),
+            "la vérification doit PRÉCÉDER la suppression du protocole");
+
+        // 4. Ce qui appartient à l'utilisateur n'est jamais approché.
+        for interdit in ["HumanOrigin Documents", "RMDir /r", ".docx", "MyDocuments", "$DOCUMENTS"] {
+            assert!(!bloc.contains(interdit),
+                "le nettoyage ne doit jamais approcher « {} » : une désinstallation retire une \
+                 intégration, elle ne détruit pas un travail", interdit);
+        }
+        assert!(bloc.contains(r#"RMDir "$LOCALAPPDATA\HumanOrigin""#),
+            "nos dossiers partent, mais vides seulement");
+    }
+
     /// Un seul mécanisme d'ouverture du volet, jamais deux.
     ///
     /// `visibility="1"` dans `taskpanes.xml` ouvre le volet — mesuré physiquement sur Windows,
