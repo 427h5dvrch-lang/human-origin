@@ -1,11 +1,11 @@
 {
   "build": {
-    "beforeBundleCommand": "pwsh -NoProfile -File ../tools/release/signer-binaires.ps1"
+    "beforeBundleCommand": "pwsh -NoProfile -File tools/release/signer-binaires.ps1"
   },
   "tauri": {
     "bundle": {
       "windows": {
-        "signCommand": "pwsh -NoProfile -File ../tools/release/signer-un-fichier.ps1 %1"
+        "signCommand": "pwsh -NoProfile -File C:\\ho-sign\\signer-un-fichier.ps1 %1"
       }
     }
   }
