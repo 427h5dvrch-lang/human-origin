@@ -48,7 +48,9 @@ Trace "module charge"
 $cmd = Get-Command Invoke-TrustedSigning
 Trace "parametres : $($cmd.Parameters.Keys -join ',')"
 if ($cmd.Parameters.ContainsKey("Files")) {
-  Invoke-TrustedSigning @p -Files @($cible)
+  # `-Files` attend une CHAÎNE, pas un tableau : `@($cible)` rendait « Cannot convert value
+  # to type System.String ». Relevé dans le journal du signeur au run 38249583554.
+  Invoke-TrustedSigning @p -Files $cible
 } else {
   $f = Get-Item $cible
   Invoke-TrustedSigning @p -FilesFolder $f.DirectoryName -FilesFolderFilter $f.Extension.TrimStart(".")
