@@ -145,6 +145,11 @@ function faireBackend(monde) {
           }
           return { state: etat, upgraded: false, deferred_word_open: etat === "outdated" && !!monde.wordOuvert };
         }
+        // Pose explicite de l'intégration. Elle réussit : ce qui est mesuré ici, c'est ce
+        // que l'interface fait APRÈS la réussite.
+        case "ho_word_setup_install":
+          monde.etatWord = "installed"; monde.complementInstalle = true;
+          return { state: "installed" };
         case "ho_finalizer_get_folders": return monde.dossiers;
         case "ho_finalizer_status": return { last_proof_at: monde.dernierePreuve };
         case "ho_versionable_documents": return monde.documents;
@@ -290,6 +295,31 @@ const SCENARIOS = {
       b.ecran().includes("Fermez Word pour terminer"), b.ecran().slice(0, 90));
     ck("et l'écran reste une sortie, pas un cul-de-sac", b.actions().length > 0,
       b.actions().map((x) => x.l).join(" | "));
+  },
+
+  /**
+   * Le message de progression s'efface quand l'action réussit.
+   *
+   * `say` mémorise son texte dans VUE pour qu'un redraw ne l'escamote pas — c'est voulu, et
+   * c'est ce qui rendait « Installation… » persistant : la réussite redessinait l'écran Prêt
+   * et le message y réapparaissait, jusqu'au prochain lancement de l'application.
+   */
+  async le_message_d_installation_s_effface(ck) {
+    const b = await demarrer(mondeNeuf({ complementInstalle: false, etatWord: "absent" }));
+    ck("sans intégration, l'écran d'installation s'affiche",
+      /installer dans word/i.test(b.actions().map((x) => x.l).join(" ")),
+      b.actions().map((x) => x.l).join(" | "));
+
+    await b.cliquer("Installer dans Word");
+    ck("après la réussite, on est bien sur l'accueil",
+      b.ecran().includes("Créez votre prochain document"), b.ecran().slice(0, 70));
+    ck("et le message « Installation… » a disparu",
+      !b.ecran().includes("Installation…"), b.ecran().slice(0, 120));
+
+    // Et il ne revient pas au premier redraw : c'est là qu'il réapparaissait.
+    await b.revenirDeWord();
+    ck("il ne revient pas au redraw suivant",
+      !b.ecran().includes("Installation…"), b.ecran().slice(0, 120));
   },
 
   /** Les Réglages sont exclus : rien n'est relu, rien n'est redessiné sous les doigts. */

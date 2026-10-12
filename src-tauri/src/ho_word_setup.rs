@@ -181,24 +181,143 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     res
 }
 
-// ---------------------------------------------------------------- état : sentinelle locale seule
-/// N'ouvre, ne liste ni ne vérifie JAMAIS le conteneur de Word : seule la sentinelle est lue.
+// ------------------------------------------- état : la sentinelle, corroborée sur Windows
+/// Ce que HumanOrigin a réellement posé dans le système, mesuré et non supposé.
+///
+/// Sur Windows ces trois éléments sont tous nécessaires pour que Word charge le volet : le
+/// manifeste déposé, la valeur de sideload « Developer » qui le désigne, et le catalogue
+/// approuvé. Tous trois sont dans NOTRE espace (`%LOCALAPPDATA%`, `HKCU`) : les lire ne
+/// demande aucune autorisation et ne coûte rien.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct IntegrationReelle {
+    pub manifeste_present: bool,
+    pub manifeste_conforme: bool,
+    pub developer_nous_appartient: bool,
+    pub catalogue_conforme: bool,
+}
+
+impl IntegrationReelle {
+    /// Plus rien de nous : c'est une première installation, pas une réparation.
+    pub fn rien_de_nous(&self) -> bool {
+        !self.manifeste_present && !self.developer_nous_appartient && !self.catalogue_conforme
+    }
+    pub fn complete(&self) -> bool {
+        self.manifeste_present
+            && self.manifeste_conforme
+            && self.developer_nous_appartient
+            && self.catalogue_conforme
+    }
+}
+
+/// Deux chemins Windows désignent-ils le même fichier ? Comparaison insensible à la casse et au
+/// sens des séparateurs : le registre peut porter une casse différente de la nôtre, et une
+/// simple différence de casse ne doit pas envoyer une installation saine vers la réparation.
+#[allow(dead_code)]
+pub fn meme_chemin(declare: &str, attendu: &Path) -> bool {
+    let n = |s: &str| s.replace('/', "\\").trim_matches('"').to_lowercase();
+    n(declare) == n(&attendu.to_string_lossy())
+}
+
+/// La sentinelle ne suffit JAMAIS à conclure que Word est prêt.
+///
+/// Mesuré physiquement le 2026-10-12 : `word_setup.json` survivait à la désinstallation. Après
+/// réinstallation, l'application la croyait et annonçait « Microsoft Word Prêt » alors que le
+/// manifeste, la valeur WEF et le catalogue avaient tous disparu — et Word répondait par une
+/// erreur de complément. Un faux état vert est pire qu'un état rouge : il envoie l'utilisateur
+/// vers Word au lieu de vers la réparation.
+///
+/// Fonction PURE, pour que la décision soit éprouvable sans registre ni système de fichiers.
+pub fn etat_corrobore(etat_sentinelle: &str, reelle: &IntegrationReelle) -> &'static str {
+    if reelle.rien_de_nous() {
+        return "not_installed";
+    }
+    if reelle.complete() && etat_sentinelle == "installed" {
+        return "installed";
+    }
+    // Quelque chose de nous subsiste, mais incomplet ou incohérent : à réparer, pas à poser.
+    "outdated"
+}
+
+/// Lit l'intégration telle qu'elle est, sans rien écrire.
+#[cfg(target_os = "windows")]
+fn integration_reelle() -> IntegrationReelle {
+    use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+    use winreg::RegKey;
+    let mut r = IntegrationReelle::default();
+    let dossier = match dossier_catalogue() {
+        Some(d) => d,
+        None => return r,
+    };
+    let manifeste = dossier.join(MANIFEST_FILE);
+    if let Ok(octets) = fs::read(&manifeste) {
+        r.manifeste_present = true;
+        r.manifeste_conforme = octets == MANIFEST;
+    }
+
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let id = manifest_id();
+    if let Ok(cle) = hkcu.open_subkey_with_flags(CLE_DEVELOPER, KEY_READ) {
+        if let Ok(donnee) = cle.get_value::<String, _>(&id) {
+            // Notre identifiant exact ET le manifeste que nous venons de localiser.
+            r.developer_nous_appartient = valeur_developer_nous_appartient(&id, &donnee, &id)
+                && meme_chemin(&donnee, &manifeste);
+        }
+    }
+
+    let chemin = format!(
+        r"Software\Microsoft\Office\16.0\WEF\TrustedCatalogs\{}",
+        CATALOGUE_GUID
+    );
+    if let Ok(cle) = hkcu.open_subkey_with_flags(&chemin, KEY_READ) {
+        let bon_id = cle
+            .get_value::<String, _>("Id")
+            .map(|v| v == CATALOGUE_GUID)
+            .unwrap_or(false);
+        let bonne_url = cle
+            .get_value::<String, _>("Url")
+            .map(|u| meme_chemin(&u, &dossier))
+            .unwrap_or(false);
+        r.catalogue_conforme = bon_id && bonne_url;
+    }
+    r
+}
+
 pub fn status(app_dir: &Path) -> serde_json::Value {
     let embedded = sha256_hex(MANIFEST);
     let sentinel: Option<serde_json::Value> = fs::read_to_string(app_dir.join(SENTINEL_FILE))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
         .filter(|v: &serde_json::Value| v["schema"] == SENTINEL_SCHEMA);
-    let state = match &sentinel {
+    let etat_sentinelle = match &sentinel {
         None => "not_installed",
         Some(v) if v["manifest_sha256"] == embedded.as_str() => "installed",
         Some(_) => "outdated",
     };
+
+    // Sur Windows la sentinelle est CORROBORÉE par ce que le système porte vraiment. Sur macOS
+    // elle reste seule, et c'est voulu : vérifier y reviendrait à ouvrir le conteneur de Word,
+    // ce qui déclenche la demande d'autorisation du système — précisément ce que cet écran doit
+    // éviter. Le défaut mesuré, lui, est propre à la désinstallation Windows.
+    #[cfg(target_os = "windows")]
+    let (state, reelle) = {
+        let r = integration_reelle();
+        (etat_corrobore(etat_sentinelle, &r), Some(r))
+    };
+    #[cfg(not(target_os = "windows"))]
+    let (state, reelle): (&str, Option<IntegrationReelle>) = (etat_sentinelle, None);
+
     serde_json::json!({
         "state": state,
         "manifest_version": manifest_version(),
         "installed_manifest_version": sentinel.as_ref().map(|v| v["manifest_version"].clone()),
         "installed_at": sentinel.as_ref().map(|v| v["installed_at"].clone()),
+        "sentinel_state": etat_sentinelle,
+        "integration_verifiee": reelle.map(|r| serde_json::json!({
+            "manifeste_present": r.manifeste_present,
+            "manifeste_conforme": r.manifeste_conforme,
+            "developer": r.developer_nous_appartient,
+            "catalogue": r.catalogue_conforme,
+        })),
     })
 }
 
@@ -958,6 +1077,114 @@ mod tests {
         }
         assert!(bloc.contains(r#"RMDir "$LOCALAPPDATA\HumanOrigin""#),
             "nos dossiers partent, mais vides seulement");
+
+        // Les contrôles suivants portent sur NOTRE bloc seulement : le reste de la section
+        // appartient à Tauri, qui a sa propre case « supprimer les données » et son RmDir /r.
+        let notre = {
+            let d = bloc.find("; >>> HumanOrigin").expect("bloc HumanOrigin absent");
+            let f = bloc.find("; <<< HumanOrigin").expect("fin du bloc absente");
+            &bloc[d..f]
+        };
+
+        // 5. La sentinelle d'état part AVEC l'intégration, et rien d'autre du dossier.
+        assert!(notre.contains(r#"Delete "$APPDATA\${BUNDLEID}\word_setup.json""#),
+            "sans ce retrait, la réinstallation suivante croit une sentinelle périmée et \
+             annonce « Word prêt » alors que plus rien n'est posé");
+        // Ce qui suit porte sur les INSTRUCTIONS, commentaires retirés : un commentaire doit
+        // pouvoir nommer ce qu'il protège, une instruction ne doit pas y toucher.
+        let instructions: String = notre
+            .lines()
+            .map(|l| l.split(';').next().unwrap_or(""))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!instructions.to_lowercase().contains("rmdir /r"),
+            "notre nettoyage ne récurse jamais : des fichiers nommés et des dossiers vides");
+        assert!(!instructions.contains("finalizer_config.json"),
+            "la configuration du finaliseur appartient à l'utilisateur, pas à l'intégration");
+
+        // 6. Le chemin d'installation sous le nom du fabricant, et seulement s'il est à nous.
+        assert!(notre.contains(r#"ReadRegStr $0 HKCU "${MANUPRODUCTKEY}" """#),
+            "le chemin déclaré doit être LU avant d'être retiré");
+        let m = notre.find(r#"DeleteRegKey HKCU "${MANUPRODUCTKEY}""#)
+            .expect("le chemin mort doit pouvoir être retiré");
+        assert!(notre[..m].contains(r#"${If} $0 == "$INSTDIR""#),
+            "la vérification d'appartenance doit PRÉCÉDER la suppression");
+        assert!(notre.contains(r#"DeleteRegKey /ifempty HKCU "Software\${MANUFACTURER}""#),
+            "la clé du fabricant ne part que vide : un autre produit DAZEAS CORP la garde");
+        assert!(!notre.contains(r#"DeleteRegKey HKCU "Software\${MANUFACTURER}""#),
+            "sans /ifempty, un autre produit DAZEAS CORP serait emporté");
+    }
+
+    /// Une sentinelle seule ne suffit JAMAIS à annoncer « Microsoft Word prêt ».
+    ///
+    /// Le cas est mesuré, pas imaginé : `word_setup.json` survivait à la désinstallation, et
+    /// après réinstallation l'application annonçait « Prêt » sans manifeste, sans valeur WEF et
+    /// sans catalogue — Word répondait alors par une erreur de complément. Un faux vert envoie
+    /// l'utilisateur vers Word ; un rouge l'envoie vers la réparation. Le rouge est le bon.
+    #[test]
+    fn une_sentinelle_sans_integration_ne_donne_jamais_pret() {
+        let rien = IntegrationReelle::default();
+        assert_eq!(etat_corrobore("installed", &rien), "not_installed",
+            "sentinelle périmée seule : l'intégration est absente, et c'est une première pose");
+        assert_eq!(etat_corrobore("outdated", &rien), "not_installed");
+        assert_eq!(etat_corrobore("not_installed", &rien), "not_installed");
+
+        // Partiellement supprimée, ou partiellement posée : à réparer, jamais « prêt ».
+        let partiels = [
+            ("manifeste seul", IntegrationReelle {
+                manifeste_present: true, manifeste_conforme: true, ..Default::default() }),
+            ("sans la valeur WEF", IntegrationReelle {
+                manifeste_present: true, manifeste_conforme: true,
+                developer_nous_appartient: false, catalogue_conforme: true }),
+            ("sans le catalogue", IntegrationReelle {
+                manifeste_present: true, manifeste_conforme: true,
+                developer_nous_appartient: true, catalogue_conforme: false }),
+            ("manifeste d'une autre version", IntegrationReelle {
+                manifeste_present: true, manifeste_conforme: false,
+                developer_nous_appartient: true, catalogue_conforme: true }),
+        ];
+        for (quoi, r) in partiels {
+            assert_eq!(etat_corrobore("installed", &r), "outdated",
+                "« {} » : la sentinelle dit installé, le système dit non — on répare", quoi);
+            assert_ne!(etat_corrobore("installed", &r), "installed");
+        }
+    }
+
+    /// Et l'inverse : une intégration réellement complète DOIT donner « prêt ».
+    ///
+    /// Sans ce contrôle, la garde précédente pourrait être satisfaite par un état rouge
+    /// permanent — ce qui casserait le produit tout en passant les tests.
+    #[test]
+    fn une_integration_complete_et_coherente_donne_pret() {
+        let complete = IntegrationReelle {
+            manifeste_present: true,
+            manifeste_conforme: true,
+            developer_nous_appartient: true,
+            catalogue_conforme: true,
+        };
+        assert_eq!(etat_corrobore("installed", &complete), "installed");
+        // Intégration complète mais sentinelle d'une version antérieure : mise à niveau.
+        assert_eq!(etat_corrobore("outdated", &complete), "outdated");
+        // Intégration complète et AUCUNE sentinelle : incohérent, donc à réparer — la
+        // réparation réécrit la sentinelle, sans rien demander à l'utilisateur.
+        assert_eq!(etat_corrobore("not_installed", &complete), "outdated");
+
+        // Et le chaînage réel : « outdated » + Word fermé se répare tout seul.
+        assert_eq!(decider_mise_a_niveau(etat_corrobore("installed", &IntegrationReelle {
+            manifeste_present: true, manifeste_conforme: true, ..Default::default() }), false),
+            MiseANiveau::Maintenant,
+            "une intégration à demi supprimée se répare au démarrage, sans clic");
+    }
+
+    /// Une simple différence de casse dans le registre ne doit pas condamner une installation
+    /// saine à la réparation : Word et l'installeur n'écrivent pas la même casse que nous.
+    #[test]
+    fn la_comparaison_de_chemin_tolere_la_casse_et_les_separateurs() {
+        let attendu = Path::new(r"C:\Users\P\AppData\Local\HumanOrigin\WordAddin\humanorigin-prod.xml");
+        assert!(meme_chemin(r"c:\users\p\appdata\local\humanorigin\wordaddin\humanorigin-prod.xml", attendu));
+        assert!(meme_chemin(r"C:/Users/P/AppData/Local/HumanOrigin/WordAddin/humanorigin-prod.xml", attendu));
+        assert!(!meme_chemin(r"C:\Users\P\AppData\Local\AutreAddin\humanorigin-prod.xml", attendu),
+            "un manifeste homonyme ailleurs n'est pas le nôtre");
     }
 
     /// Un seul mécanisme d'ouverture du volet, jamais deux.

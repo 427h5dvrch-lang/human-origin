@@ -771,6 +771,31 @@ Section Uninstall
     ${EndIf}
   ${EndIf}
 
+  ; 5. La sentinelle d'etat de l'integration Word. Elle doit partir AVEC l'integration : si
+  ;    elle survit, la reinstallation suivante la croit et annonce « Microsoft Word Pret »
+  ;    alors qu'aucun manifeste, aucune valeur WEF et aucun catalogue n'existent plus — Word
+  ;    repond alors par une erreur de complement. Mesure physiquement le 2026-10-12.
+  ;    On retire CE fichier, pas le dossier : finalizer_config.json et les donnees de
+  ;    l'utilisateur restent. RMDir sans /r ne part que si le dossier est vide.
+  SetShellVarContext current
+  Delete "$APPDATA\${BUNDLEID}\word_setup.json"
+  RMDir "$APPDATA\${BUNDLEID}"
+
+  ; 6. Le chemin d'installation laisse sous « DAZEAS CORP ». Le gabarit Tauri n'en retire que
+  ;    la valeur « Installer Language » (plus haut) : la valeur par defaut garde le chemin d'un
+  ;    EXE desormais supprime. On ne la retire QUE si elle designe cette installation, et on ne
+  ;    touche pas la cle du fabricant, qui peut porter d'autres produits DAZEAS CORP.
+  ReadRegStr $0 HKCU "${MANUPRODUCTKEY}" ""
+  ${If} $0 == "$INSTDIR"
+    DetailPrint "HumanOrigin : retrait du chemin d'installation dans le registre"
+    DeleteRegKey HKCU "${MANUPRODUCTKEY}"
+    ; /ifempty est l'equivalent registre de RMDir sans /r : la cle du fabricant ne part que si
+    ; elle n'a plus ni valeur ni sous-cle, donc un autre produit DAZEAS CORP la garde.
+    DeleteRegKey /ifempty HKCU "Software\${MANUFACTURER}"
+  ${Else}
+    DetailPrint "HumanOrigin : chemin d'installation laisse, il designe une autre installation"
+  ${EndIf}
+
   ; Ce qui appartient a l'utilisateur n'est PAS touche, et ce silence est voulu : ses documents
   ; et ses preuves restent. Une desinstallation retire une integration, pas un travail.
   ; <<< HumanOrigin

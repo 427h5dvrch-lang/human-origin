@@ -77,6 +77,7 @@ async function runSetup(box, button, msg) {
   say(msg, t("setup.word.progress"));
   try {
     await installerWord();
+    say(msg, "");                         // même raison qu'à l'écran d'installation
     await renderWord(box);
   } catch (e) {
     say(msg, String((e && (e.message || e)) || t("setup.word.failed")), true);
@@ -247,7 +248,10 @@ async function proposeLocation(box, msg) {
   box.appendChild(row);
 }
 
-/** Section Microsoft Word. L'état vient uniquement de la sentinelle locale de l'application. */
+/**
+ * Section Microsoft Word. L'état vient du backend : sentinelle locale sur macOS, sentinelle
+ * CORROBORÉE par le manifeste, la clé WEF et le catalogue sur Windows.
+ */
 async function renderWord(box) {
   box.textContent = "";
   let st = null;
@@ -647,6 +651,10 @@ async function ecranInstallerWord(ctx) {
     say(msg, aMettreAJour ? t("word.updating") : t("word.installing"));
     try {
       await installerWord();
+      // La réussite efface son propre message. `say` le mémorise dans VUE pour qu'un redraw
+      // ne l'escamote pas ; sans cet effacement, « Installation… » survivait a l'écran Prêt
+      // jusqu'au prochain lancement.
+      say(msg, "");
       await router();                     // l'état réel reprend la main : Prêt suit
     } catch (e) {
       say(msg, errorText(e, t("word.installFailed")), true);
