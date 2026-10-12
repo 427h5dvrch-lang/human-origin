@@ -622,17 +622,23 @@ function zoneMessage() {
  */
 async function ecranInstallerWord(ctx) {
   const aMettreAJour = !!(ctx && ctx.etat === "outdated");
+  // Mise à niveau différée parce que Word est ouvert : ce n'est pas une panne, et l'utilisateur
+  // n'a rien à réparer. Il a une seule chose à faire, et on la lui dit.
+  const wordOuvert = !!(ctx && ctx.wordOuvert);
   const p = page();
   p.appendChild(entete({ connecte: true, onReglages: () => router({ ecran: "reglages" }) }));
   const c = colonne({ padding: "40px 24px 0", "flex-grow": "1" });
   c.appendChild(medaillon("alerte", "ambre"));
   c.appendChild(titre(aMettreAJour ? t("word.update")
                                    : t("word.connectTitle")));
-  c.appendChild(corps(aMettreAJour
-    ? [t("word.updateAvailable"),
-       t("word.updateWhy")]
-    : [t("word.worksFromWord"),
-       t("word.installOnce")]));
+  c.appendChild(corps(wordOuvert
+    ? [t("word.closeWordToFinish"),
+       t("word.closeWordWhy")]
+    : aMettreAJour
+      ? [t("word.updateAvailable"),
+         t("word.updateWhy")]
+      : [t("word.worksFromWord"),
+         t("word.installOnce")]));
 
   const msg = zoneMessage();
   const b = ctaPrincipal(aMettreAJour ? t("word.updateShort") : t("word.installInWord"));
@@ -1308,10 +1314,19 @@ async function etatCourant(opts = {}) {
   }
   // Connecté mais sans complément posé : on mène à l'installation, jamais à l'écran de
   // connexion — il n'a pas de roue crantée, et la boucle se refermait là.
+  //
+  // La mise à NIVEAU, elle, ne demande plus de clic. Après une mise à jour de l'application,
+  // l'ancien manifeste Word restait actif tant que l'utilisateur n'avait pas cliqué : le
+  // correctif était livré mais inopérant, et rien ne le disait. Le natif remet le manifeste
+  // en place de lui-même quand Word est fermé, et diffère proprement quand Word est ouvert.
+  // La première installation reste un geste explicite : elle a son écran, et son sens.
   let st = null;
-  try { st = await invoke("ho_word_setup_status"); } catch (e) { st = null; }
+  try { st = await invoke("ho_word_setup_autoupgrade"); }
+  catch (e) {
+    try { st = await invoke("ho_word_setup_status"); } catch (e2) { st = null; }
+  }
   if (!st || st.state !== "installed") {
-    return poser("installer-word", { etat: st && st.state });
+    return poser("installer-word", { etat: st && st.state, wordOuvert: !!(st && st.deferred_word_open) });
   }
 
   if (opts.accueil) return poser("pret");

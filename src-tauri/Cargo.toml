@@ -70,6 +70,9 @@ windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
+  # Pour savoir si Word tourne sans ouvrir de fenêtre de console : on parcourt la liste
+  # des processus au lieu d'appeler `tasklist`.
+  "Win32_System_Diagnostics_ToolHelp",
 ] }
 
 [target.'cfg(target_os = "macos")'.dependencies]

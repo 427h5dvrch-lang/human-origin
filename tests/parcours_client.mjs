@@ -133,7 +133,18 @@ function faireBackend(monde) {
       journal.push(["invoke", cmd]);
       switch (cmd) {
         case "take_pending_deep_link": return null;
-        case "ho_word_setup_status": return { state: monde.complementInstalle ? "installed" : "absent" };
+        case "ho_word_setup_status": return { state: monde.etatWord
+          || (monde.complementInstalle ? "installed" : "absent") };
+        // Mise à niveau automatique de l'intégration Word. Le natif décide ; l'interface ne
+        // redécide rien. Ici on rejoue les deux issues qui comptent.
+        case "ho_word_setup_autoupgrade": {
+          const etat = monde.etatWord || (monde.complementInstalle ? "installed" : "absent");
+          if (etat === "outdated" && !monde.wordOuvert) {
+            monde.etatWord = "installed"; monde.complementInstalle = true;
+            return { state: "installed", upgraded: true, deferred_word_open: false };
+          }
+          return { state: etat, upgraded: false, deferred_word_open: etat === "outdated" && !!monde.wordOuvert };
+        }
         case "ho_finalizer_get_folders": return monde.dossiers;
         case "ho_finalizer_status": return { last_proof_at: monde.dernierePreuve };
         case "ho_versionable_documents": return monde.documents;
@@ -252,6 +263,33 @@ const SCENARIOS = {
       b.ecran().includes("Continuer ce document") && !b.ecran().includes("Vos documents HumanOrigin"),
       b.ecran().slice(0, 70));
     ck("et le document affiché est resté le même", b.ecran().includes("Rapport.docx"));
+  },
+
+  /**
+   * Mise à niveau de l'intégration Word après une mise à jour de l'application.
+   *
+   * Mesuré physiquement le 2026-10-12 : l'ancien manifeste restait actif tant que
+   * l'utilisateur n'avait pas cliqué. Or il porte le bouton de ruban qui faisait échouer W4,
+   * donc le correctif était livré mais inopérant. Un correctif qui attend un clic n'est pas
+   * livré, et c'est ce que ce scénario empêche de revenir.
+   */
+  async mise_a_niveau_word(ck) {
+    // Word fermé : la mise à niveau se fait seule, et l'utilisateur ne voit jamais l'écran.
+    let b = await demarrer(mondeNeuf({ etatWord: "outdated", wordOuvert: false }));
+    ck("Word fermé : aucun écran d'installation, on arrive sur l'accueil",
+      b.ecran().includes("Créez votre prochain document"), b.ecran().slice(0, 70));
+    ck("la mise à niveau a bien été demandée au natif",
+      b.back.journal.some((l) => l[1] === "ho_word_setup_autoupgrade"));
+    ck("aucun bouton « Mettre à jour » n'est présenté",
+      !b.actions().some((x) => /mettre à jour|installer dans word/i.test(x.l)),
+      b.actions().map((x) => x.l).join(" | "));
+
+    // Word ouvert : on ne touche à rien, et on dit la seule chose à faire.
+    b = await demarrer(mondeNeuf({ etatWord: "outdated", wordOuvert: true }));
+    ck("Word ouvert : la mise à niveau est différée, pas forcée",
+      b.ecran().includes("Fermez Word pour terminer"), b.ecran().slice(0, 90));
+    ck("et l'écran reste une sortie, pas un cul-de-sac", b.actions().length > 0,
+      b.actions().map((x) => x.l).join(" | "));
   },
 
   /** Les Réglages sont exclus : rien n'est relu, rien n'est redessiné sous les doigts. */

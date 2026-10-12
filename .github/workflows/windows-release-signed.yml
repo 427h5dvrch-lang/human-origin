@@ -78,8 +78,18 @@ jobs:
           if (-not $json.tauri.updater.active) { Write-Error "updater.active doit rester true" }
           if ($json.tauri.updater.pubkey.Length -lt 50) { Write-Error "updater.pubkey absente ou trop courte" }
           $w = $json.tauri.bundle.windows
-          if ($w.certificateThumbprint) { Write-Error "certificateThumbprint configure : la signature doit rester hors du bundler" }
-          Write-Host "updater actif, pubkey presente, aucune signature cote bundler."
+          if ($w.certificateThumbprint) { Write-Error "certificateThumbprint configure : aucun certificat ne doit etre stocke ici" }
+          # La signature PASSE desormais par le bundler, mais par une COMMANDE, jamais par un
+          # certificat stocke. C'est ce qui permet a Tauri de signer uninstall.exe au moment ou
+          # NSIS l'ecrit — il n'existe a aucun autre moment — via !uninstfinalize.
+          $wc = Get-Content src-tauri/tauri.windows.conf.json -Raw | ConvertFrom-Json
+          if (-not $wc.tauri.bundle.windows.signCommand) {
+            Write-Error "signCommand absente : uninstall.exe et l'installeur ne seraient pas signes"
+          }
+          if (-not $wc.build.beforeBundleCommand) {
+            Write-Error "beforeBundleCommand absente : les binaires installes ne seraient pas signes"
+          }
+          Write-Host "updater actif, pubkey presente, signature par commande, aucun certificat stocke."
 
       - name: Install frontend dependencies
         run: npm ci
@@ -88,12 +98,37 @@ jobs:
         run: npm run build
 
       # ---- 1. release Windows
+      # ---- 1bis. l'identité de signature doit exister AVANT le build.
+      # C'est PENDANT le build, par `beforeBundleCommand`, que les binaires réellement
+      # installés sont signés : HumanOrigin.exe et les deux sidecars. Les signer après
+      # l'empaquetage serait trop tard — ils sont déjà dans l'installeur — et les signer
+      # avant `tauri build` ne tiendrait pas, cargo les reliant ensuite.
+      #
+      # Mesuré sur le PC de qualification : un installeur signé ne dit rien de ce qu'il
+      # dépose. Les trois binaires installés arrivaient non signés.
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install the Trusted Signing module
+        shell: pwsh
+        run: |
+          Install-Module -Name TrustedSigning -Force -AllowClobber -Scope CurrentUser -Repository PSGallery
+          $m = Get-Module -ListAvailable TrustedSigning | Select-Object -First 1
+          if (-not $m) { Write-Error "module TrustedSigning indisponible : les binaires installes ne seraient pas signes" }
+          Write-Host "TrustedSigning $($m.Version)"
+
       - name: Build Windows release bundles
         shell: pwsh
         env:
           CI: true
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          # Sans HO_SIGN, le script de signature ne fait rien : un build local reste possible.
+          HO_SIGN: "1"
         run: npm run tauri -- build
 
       - name: Record pre-signature state
@@ -110,13 +145,6 @@ jobs:
           "$($exe.FullName)" | Out-File -FilePath exe_path.txt -Encoding ascii -NoNewline
 
       # ---- 2. Authenticode, via l'identité de CI fédérée
-      - name: Azure login (OIDC, no stored secret)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       - name: Authenticode-sign the installer
         uses: azure/trusted-signing-action@v0
         with:
@@ -197,6 +225,37 @@ jobs:
           }
 
       # ---- 6. l'EXE autonome et celui de l'archive doivent être le même binaire
+      # ---- les binaires QUE L'INSTALLEUR DÉPOSE, pas seulement l'installeur.
+      # On ouvre l'installeur NSIS et on exige une signature DAZEAS CORP valide sur chaque
+      # exécutable qu'il contient. Sans ce contrôle, la chaîne pouvait rendre un installeur
+      # impeccablement signé déposant trois binaires nus, et personne ne l'aurait vu en CI :
+      # c'est exactement ce qui est arrivé, et seule une inspection manuelle sur la machine
+      # de qualification l'a révélé.
+      - name: Assert every installed binary is signed
+        shell: pwsh
+        run: |
+          $exe = (Get-Content exe_path.txt -Raw).Trim()
+          $out = Join-Path $env:RUNNER_TEMP "payload"
+          if (Test-Path $out) { Remove-Item $out -Recurse -Force }
+          & "C:\Program Files\7-Zip\7z.exe" x $exe "-o$out" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { Write-Error "extraction de l'installeur impossible" }
+
+          $binaires = Get-ChildItem $out -Recurse -Filter "*.exe" -File |
+            Where-Object { $_.Name -notlike "*WebView2*" }
+          if ($binaires.Count -eq 0) { Write-Error "aucun binaire trouve dans l'installeur" }
+
+          $nus = @()
+          foreach ($b in $binaires) {
+            $s = Get-AuthenticodeSignature $b.FullName
+            $sujet = if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { "-" }
+            Write-Host ("{0,-44} {1,-12} {2}" -f $b.Name, $s.Status, $sujet)
+            if ($s.Status -ne "Valid" -or $sujet -notlike "*DAZEAS CORP*") { $nus += $b.Name }
+          }
+          if ($nus.Count -gt 0) {
+            Write-Error "binaires installes NON signes DAZEAS CORP : $($nus -join ', ')"
+          }
+          Write-Host "les $($binaires.Count) binaires deposes par l'installeur sont signes DAZEAS CORP"
+
       - name: Assert standalone EXE and archived EXE are byte-identical
         shell: pwsh
         run: |

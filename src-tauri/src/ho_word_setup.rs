@@ -276,6 +276,126 @@ pub fn install(app_dir: &Path, app_version: &str) -> Result<serde_json::Value, S
     Ok(status(app_dir))
 }
 
+// ------------------------------------------------- mise à niveau automatique de l'intégration
+
+/// Ce qu'il faut faire de l'intégration Word au démarrage.
+///
+/// Mesuré physiquement le 2026-10-12 : après une mise à jour 0.3.4 → 0.3.5, l'ANCIEN manifeste
+/// restait actif tant que l'utilisateur ne cliquait pas « Mettre à jour l'intégration Word ».
+/// Or l'ancien manifeste porte le bouton de ruban qui faisait échouer W4 : le correctif était
+/// livré mais inopérant, et rien ne le disait. Un correctif qui attend un clic n'est pas livré.
+#[derive(Debug, PartialEq, Eq)]
+pub enum MiseANiveau {
+    /// Rien à faire : l'intégration correspond déjà au manifeste embarqué.
+    AJour,
+    /// Jamais installée. On ne l'installe PAS en silence : la première pose est un geste
+    /// explicite, et l'écran dédié l'accompagne. Seule une mise à niveau est automatique.
+    PremiereInstallation,
+    /// À mettre à niveau, et Word est fermé : on peut remplacer le manifeste sans risque.
+    Maintenant,
+    /// À mettre à niveau, mais Word est ouvert. Remplacer le manifeste sous un Word qui l'a
+    /// chargé est une mutation risquée : on diffère, et on le dit.
+    DifféréeWordOuvert,
+}
+
+/// Décision pure, séparée de son effet pour être éprouvable sans Word ni système de fichiers.
+pub fn decider_mise_a_niveau(etat: &str, word_ouvert: bool) -> MiseANiveau {
+    match etat {
+        "installed" => MiseANiveau::AJour,
+        "not_installed" => MiseANiveau::PremiereInstallation,
+        _ if word_ouvert => MiseANiveau::DifféréeWordOuvert,
+        _ => MiseANiveau::Maintenant,
+    }
+}
+
+/// Word tourne-t-il ?
+///
+/// On ne lance aucune fenêtre de console pour le savoir : sur Windows on parcourt la liste des
+/// processus, sur macOS on interroge `pgrep`. En cas de doute — API en échec, commande
+/// introuvable — on répond `true` : différer une mise à niveau est sans conséquence, la faire
+/// sous un Word ouvert ne l'est pas.
+pub fn word_est_ouvert() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+        use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        };
+        unsafe {
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snap == INVALID_HANDLE_VALUE {
+                return true;
+            }
+            let mut e: PROCESSENTRY32W = std::mem::zeroed();
+            e.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            let mut ok = Process32FirstW(snap, &mut e) != 0;
+            while ok {
+                let n = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
+                let nom = String::from_utf16_lossy(&e.szExeFile[..n]).to_lowercase();
+                if nom == "winword.exe" {
+                    CloseHandle(snap);
+                    return true;
+                }
+                ok = Process32NextW(snap, &mut e) != 0;
+            }
+            CloseHandle(snap);
+            false
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        match std::process::Command::new("/usr/bin/pgrep").arg("-x").arg("Microsoft Word").output() {
+            Ok(o) => !o.stdout.is_empty(),
+            Err(_) => true,
+        }
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        true
+    }
+}
+
+/// Met l'intégration à niveau si c'est possible et nécessaire, puis rend l'état.
+///
+/// Le champ `upgraded` dit si quelque chose a été posé à l'instant, et `deferred_word_open`
+/// si la mise à niveau attend que Word se ferme. L'interface s'appuie sur ces deux-là ; elle
+/// ne redécide rien.
+pub fn mise_a_niveau_au_demarrage(app_dir: &Path, app_version: &str) -> serde_json::Value {
+    let avant = status(app_dir);
+    let etat = avant["state"].as_str().unwrap_or("not_installed").to_string();
+    match decider_mise_a_niveau(&etat, word_est_ouvert()) {
+        MiseANiveau::Maintenant => match install(app_dir, app_version) {
+            Ok(mut apres) => {
+                apres["upgraded"] = serde_json::json!(true);
+                apres["deferred_word_open"] = serde_json::json!(false);
+                apres
+            }
+            // Un échec de mise à niveau automatique ne doit pas empêcher l'application de
+            // démarrer : on rend l'état d'avant, et l'écran d'installation reprend la main.
+            Err(e) => {
+                let mut v = avant;
+                v["upgraded"] = serde_json::json!(false);
+                v["deferred_word_open"] = serde_json::json!(false);
+                v["upgrade_error"] = serde_json::json!(e);
+                v
+            }
+        },
+        MiseANiveau::DifféréeWordOuvert => {
+            let mut v = avant;
+            v["upgraded"] = serde_json::json!(false);
+            v["deferred_word_open"] = serde_json::json!(true);
+            v
+        }
+        _ => {
+            let mut v = avant;
+            v["upgraded"] = serde_json::json!(false);
+            v["deferred_word_open"] = serde_json::json!(false);
+            v
+        }
+    }
+}
+
 // ---------------------------------------------------------------- document d'amorçage
 fn xml_attr_escape(s: &str) -> String {
     s.replace('&', "&amp;").replace('"', "&quot;").replace('<', "&lt;").replace('>', "&gt;")
@@ -707,6 +827,52 @@ mod tests {
             assert!(!s.contains(cap), "aucune trace dans {}", nom);
             assert!(!s.contains("capability"), "aucune mention de capability dans {}", nom);
         }
+    }
+
+    /// La mise à niveau de l'intégration ne demande plus de clic — mais ne s'improvise pas.
+    ///
+    /// La décision est pure, donc éprouvable sans Word ni système de fichiers. Quatre cas, et
+    /// chacun compte : une intégration à jour ne se retouche pas ; une première installation
+    /// reste un geste explicite, accompagné de son écran ; une mise à niveau se fait tout de
+    /// suite si Word est fermé ; et si Word est ouvert elle est DIFFÉRÉE, parce que remplacer
+    /// le manifeste sous un Word qui l'a chargé est une mutation risquée.
+    #[test]
+    fn la_mise_a_niveau_se_decide_sans_rien_toucher() {
+        use super::MiseANiveau::*;
+        assert_eq!(super::decider_mise_a_niveau("installed", false), AJour);
+        assert_eq!(super::decider_mise_a_niveau("installed", true), AJour);
+        assert_eq!(super::decider_mise_a_niveau("not_installed", false), PremiereInstallation);
+        assert_eq!(super::decider_mise_a_niveau("not_installed", true), PremiereInstallation);
+        assert_eq!(super::decider_mise_a_niveau("outdated", false), Maintenant);
+        assert_eq!(super::decider_mise_a_niveau("outdated", true), DifféréeWordOuvert);
+        // Un état inconnu est traité comme une mise à niveau : mieux vaut reposer un manifeste
+        // correct que laisser vivre un état qu'on ne sait pas nommer.
+        assert_eq!(super::decider_mise_a_niveau("???", false), Maintenant);
+    }
+
+    /// Une mise à niveau différée n'écrit RIEN. C'est tout l'intérêt de différer.
+    #[test]
+    fn differer_n_ecrit_rien() {
+        let dir = std::env::temp_dir().join(format!("ho-upg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Une sentinelle d'une version antérieure : le manifeste embarqué a changé depuis.
+        std::fs::write(dir.join(super::SENTINEL_FILE), serde_json::to_vec(&serde_json::json!({
+            "schema": super::SENTINEL_SCHEMA, "manifest_sha256": "ancienne-empreinte",
+            "manifest_version": "0.0.0.0", "app_version": "0.3.4",
+        })).unwrap()).unwrap();
+        let avant = std::fs::read(dir.join(super::SENTINEL_FILE)).unwrap();
+
+        assert_eq!(super::status(&dir)["state"], "outdated");
+        assert_eq!(super::decider_mise_a_niveau("outdated", true), super::MiseANiveau::DifféréeWordOuvert);
+
+        // On ne peut pas forcer `word_est_ouvert()` ici, mais la décision ci-dessus est celle
+        // que `mise_a_niveau_au_demarrage` applique, et la branche différée ne touche à rien :
+        // la sentinelle doit être intacte après une simple lecture d'état.
+        let _ = super::status(&dir);
+        assert_eq!(std::fs::read(dir.join(super::SENTINEL_FILE)).unwrap(), avant,
+            "lire l'état ne doit jamais réécrire la sentinelle");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Un seul mécanisme d'ouverture du volet, jamais deux.

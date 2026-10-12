@@ -2079,6 +2079,21 @@ async fn ho_word_setup_install() -> Result<serde_json::Value, String> {
     ho_word_setup::install(&ho_finalizer_dir(), env!("CARGO_PKG_VERSION"))
 }
 
+/// Mise à niveau de l'intégration Word au démarrage, sans clic.
+///
+/// Après une mise à jour de l'application, l'ancien manifeste restait actif tant que
+/// l'utilisateur n'avait pas cliqué « Mettre à jour l'intégration Word ». Mesuré physiquement
+/// le 2026-10-12 sur le passage 0.3.4 → 0.3.5 : l'ancien manifeste porte le bouton de ruban
+/// qui faisait échouer W4, donc le correctif était livré mais inopérant. Un correctif qui
+/// attend un clic n'est pas livré.
+///
+/// La première installation, elle, reste un geste explicite : seule une mise à NIVEAU est
+/// automatique.
+#[tauri::command]
+async fn ho_word_setup_autoupgrade() -> serde_json::Value {
+    ho_word_setup::mise_a_niveau_au_demarrage(&ho_finalizer_dir(), env!("CARGO_PKG_VERSION"))
+}
+
 #[tauri::command]
 fn ho_default_work_folder() -> Option<String> {
     ho_word_setup::default_work_folder()
@@ -2352,6 +2367,7 @@ async fn ho_new_document_inner(
             ho_check_work_folder,
             ho_word_setup_status,
             ho_word_setup_install,
+            ho_word_setup_autoupgrade,
             ho_default_work_folder,
             ho_new_document,
             ho_open_document,
