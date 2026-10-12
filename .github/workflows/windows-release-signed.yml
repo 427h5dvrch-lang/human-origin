@@ -148,6 +148,19 @@ jobs:
           HO_SIGN: "1"
         run: npm run tauri -- build
 
+      # Le journal du signeur, lu MÊME si le build a échoué : Tauri n'affiche la sortie de
+      # `signCommand` que lorsqu'elle réussit, donc sans cela un échec ne laisse aucune trace.
+      - name: Show the signer log
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path "C:\ho-sign\journal.txt") {
+            Write-Host "--- journal du signeur ---"
+            Get-Content "C:\ho-sign\journal.txt"
+          } else {
+            Write-Host "aucun journal : signCommand n'a jamais ete appelee"
+          }
+
       - name: Record pre-signature state
         shell: pwsh
         run: |

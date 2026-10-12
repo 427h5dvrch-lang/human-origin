@@ -10,8 +10,25 @@
 $ErrorActionPreference = "Stop"
 $cible = $args[0]
 
+# Tauri n'affiche la sortie de cette commande QUE si elle réussit : `output_ok()` échoue
+# d'abord, et le message « failed to run pwsh » ne dit rien de la cause. Mesuré sur le run
+# 38248558253 — trois échecs, aucune trace. On écrit donc tout dans un journal qu'une étape
+# du workflow relit même après un échec.
+$journal = "C:\ho-sign\journal.txt"
+function Trace([string]$m) {
+  $ligne = "[{0}] {1}" -f (Get-Date -Format "HH:mm:ss"), $m
+  Write-Host $ligne
+  try { Add-Content -Path $journal -Value $ligne -Encoding utf8 } catch { }
+}
+trap {
+  Trace "ECHEC : $($_.Exception.Message)"
+  Trace "  a : $($_.InvocationInfo.PositionMessage)"
+  exit 1
+}
+Trace "appel sur : $cible"
+
 if ($env:HO_SIGN -ne "1") {
-  Write-Host "signer-un-fichier : HO_SIGN absent, $cible laisse tel quel (build local)."
+  Trace "HO_SIGN absent, $cible laisse tel quel (build local)."
   exit 0
 }
 if (-not $cible -or -not (Test-Path $cible)) { Write-Error "signer-un-fichier : fichier absent : $cible" }
@@ -27,7 +44,9 @@ $p = @{
 }
 # Le module accepte soit une liste de fichiers, soit un dossier et un filtre. On préfère la
 # liste : signer un dossier entier toucherait des fichiers que cet appel ne désigne pas.
+Trace "module charge"
 $cmd = Get-Command Invoke-TrustedSigning
+Trace "parametres : $($cmd.Parameters.Keys -join ',')"
 if ($cmd.Parameters.ContainsKey("Files")) {
   Invoke-TrustedSigning @p -Files @($cible)
 } else {
@@ -35,9 +54,11 @@ if ($cmd.Parameters.ContainsKey("Files")) {
   Invoke-TrustedSigning @p -FilesFolder $f.DirectoryName -FilesFolderFilter $f.Extension.TrimStart(".")
 }
 
+Trace "signature demandee, verification"
 $s = Get-AuthenticodeSignature $cible
+Trace "  statut : $($s.Status)  sujet : $(if ($s.SignerCertificate) { $s.SignerCertificate.Subject } else { '-' })"
 if ($s.Status -ne "Valid") { Write-Error "signature invalide sur $cible : $($s.Status)" }
 if ($s.SignerCertificate.Subject -notlike "*DAZEAS CORP*") {
   Write-Error "signataire inattendu sur $cible : $($s.SignerCertificate.Subject)"
 }
-Write-Host "signe : $(Split-Path $cible -Leaf)"
+Trace "signe : $(Split-Path $cible -Leaf)"
