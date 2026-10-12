@@ -16,9 +16,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS Apple Silicon et Windows x64. Chaque plateforme produit ses artefacts et
-        # sa ligne dans latest.json : sans Windows ici, l'updater Windows n'existe pas.
-        platform: [macos-latest, windows-latest]
+        # macOS Apple Silicon UNIQUEMENT. Windows ne se construit PAS ici, et c'est
+        # delibere : la seule chaine qui signe les quatre binaires installes est
+        # `windows-release-signed.yml` (Azure Trusted Signing, HO_SIGN=1, signeur depose
+        # en C:\ho-sign). Ce workflow n'a rien de cela, donc un job Windows y produirait
+        # un installeur NON signe — ou echouerait au bundling, puisque
+        # `tauri.windows.conf.json` declare un signCommand dont le script n'existe pas sur
+        # ce runner. Les assets Windows sont donc REPRIS tels quels du build qualifie :
+        # les reconstruire invaliderait la qualification physique.
+        platform: [macos-latest]
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -37,6 +43,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+
+      # Si quelqu'un remet `windows-latest` dans la matrice sans y porter la chaine de
+      # signature, l'erreur doit se voir ICI, pas dans un artefact livre.
+      - name: Refuse any Windows build in this workflow
+        if: runner.os == 'Windows'
+        run: |
+          echo "::error::Windows ne se construit pas dans release.yml : utiliser windows-release-signed.yml, puis joindre ses artefacts qualifies."
+          exit 1
 
       # GARDE-FOU DE RELEASE. Le tag nomme la Release, la version embarquée nomme les
       # artefacts : si les deux divergent, une Release « v0.3.2 » livre des binaires 0.3.1,
@@ -150,8 +164,11 @@ jobs:
           # Le tag poussé fait autorité, et lui seul : la version embarquée nomme les artefacts de
           # l'application, elle ne décide plus dans quelle Release GitHub ils atterrissent. Ainsi
           # v0.3.0-rc.1 va dans la release v0.3.0-rc.1, et un futur v0.3.0 dans la release v0.3.0.
-          tagName: ${{ github.ref_name }}
-          releaseName: "HumanOrigin ${{ github.ref_name }}"
+          # Vide hors tag : tauri-action construit, signe et notarise alors SANS creer ni
+          # toucher aucune release. C'est le mode de qualification — on recupere les
+          # artefacts, on les verifie, et le tag reste une decision separee.
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: ${{ github.ref_type == 'tag' && format('HumanOrigin {0}', github.ref_name) || '' }}
           releaseBody: "Release signed (Developer ID) and notarized."
           # Brouillon : rien ne devient public sans un geste explicite. Mais plus une
           # préversion : `releases/latest` les exclut par définition, et l'updater lit
@@ -175,7 +192,11 @@ jobs:
           echo "Version: $VERSION"
           xcrun notarytool submit "$DMG" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait
           xcrun stapler staple "$DMG"
-          gh release upload "${GITHUB_REF_NAME}" "$DMG" --clobber
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            gh release upload "${GITHUB_REF_NAME}" "$DMG" --clobber
+          else
+            echo "hors tag : aucune release a mettre a jour, le DMG staple part en artefact"
+          fi
 
       # Vérification post-build : échoue si Gatekeeper n'accepte pas l'app
       # (notarisation absente) ou si le DMG n'est pas staplé.
@@ -188,3 +209,25 @@ jobs:
           echo "DMG: $DMG"
           spctl -a -vvv --type exec "$APP"
           xcrun stapler validate "$DMG"
+
+      # Les empreintes, dans le journal : elles permettent de verifier plus tard que
+      # l'artefact telecharge est bien celui que la notarisation a accepte ici.
+      - name: Hashes of the macOS artefacts
+        if: matrix.platform == 'macos-latest'
+        run: |
+          shasum -a 256 \
+            src-tauri/target/release/bundle/dmg/*.dmg \
+            src-tauri/target/release/bundle/macos/*.app.tar.gz \
+            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
+
+      # Hors tag, rien n'est attache a une release : les artefacts sortent par ici.
+      - name: Upload the macOS artefacts
+        if: matrix.platform == 'macos-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: humanorigin-macos-signed-notarized
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
