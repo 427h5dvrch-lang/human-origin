@@ -31,27 +31,24 @@ Write-Host "signer-binaires : $($cibles.Count) binaire(s) a signer"
 foreach ($f in $cibles) { Write-Host "  - $($f.Name)  $($f.Length) octets" }
 
 Import-Module TrustedSigning -ErrorAction Stop
-foreach ($f in $cibles) {
+
+# Un passage PAR DOSSIER, et tous les dossiers. La première version signait le dossier du
+# premier binaire puis sautait le premier élément de la liste triée des dossiers : les deux
+# « premiers » n'étaient pas le même, donc un dossier était signé deux fois et l'autre jamais.
+# Mesuré sur le run 38247618443 — les sidecars de `src-tauri/binaries`, ceux que Tauri installe
+# réellement, ressortaient NotSigned.
+$dossiers = $cibles | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique
+foreach ($d in $dossiers) {
+  Write-Host "  dossier : $d"
   Invoke-TrustedSigning `
     -Endpoint $env:AZURE_ENDPOINT `
     -CodeSigningAccountName $env:AZURE_CODE_SIGNING_ACCOUNT `
     -CertificateProfileName $env:AZURE_CERT_PROFILE `
-    -FilesFolder $f.DirectoryName `
+    -FilesFolder $d `
     -FilesFolderFilter "exe" `
     -FileDigest "SHA256" `
     -TimestampRfc3161 "http://timestamp.acs.microsoft.com" `
     -TimestampDigest "SHA256"
-  break   # FilesFolder traite tout le dossier : un passage par dossier suffit.
-}
-# Second dossier, si les sidecars vivent ailleurs que l'exécutable principal.
-$dossiers = ($cibles | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique)
-foreach ($d in $dossiers | Select-Object -Skip 1) {
-  Invoke-TrustedSigning `
-    -Endpoint $env:AZURE_ENDPOINT `
-    -CodeSigningAccountName $env:AZURE_CODE_SIGNING_ACCOUNT `
-    -CertificateProfileName $env:AZURE_CERT_PROFILE `
-    -FilesFolder $d -FilesFolderFilter "exe" -FileDigest "SHA256" `
-    -TimestampRfc3161 "http://timestamp.acs.microsoft.com" -TimestampDigest "SHA256"
 }
 
 # Contrôle immédiat : on ne quitte pas ce script sur une promesse.
