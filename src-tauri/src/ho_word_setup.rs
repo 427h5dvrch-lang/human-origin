@@ -788,11 +788,27 @@ mod tests {
             "le volet doit toujours s'ouvrir de lui-même : c'est W1, et le corriger par \
              visibility=\"0\" échangerait un défaut contre un autre");
 
-        // La propriété appartient au volet désigné par le manifeste. Si le manifeste cessait
-        // de déclarer ce `TaskpaneId`, la propriété ne désignerait plus rien.
+        // Le manifeste n'offre PLUS de surface de ruban. Validé physiquement sur Windows le
+        // 2026-10-04 (W1 et W4 passent, un seul volet, aucun bouton fantôme) : c'est le bouton
+        // du ruban — son `ExtensionPoint`, son action `ShowTaskpane` et son `FunctionFile` —
+        // qui rendait le document modifié à l'ouverture et faisait apparaître un second volet.
+        //
+        // Le volet s'ouvre par `visibility="1"` du document, et le `Runtimes`/`SharedRuntime`
+        // du manifeste le garde en vie. Rien d'autre n'est nécessaire.
         let manifeste = String::from_utf8_lossy(MANIFEST);
-        assert!(manifeste.contains("<TaskpaneId>HOTaskpane</TaskpaneId>"),
-            "Office.AutoShowTaskpaneWithDocument a besoin d'un TaskpaneId déclaré");
+        for interdit in ["PrimaryCommandSurface", "ShowTaskpane", "FunctionFile",
+                         "HOGroup.Label", "HOOpen.Label", "HOOpen.Tip",
+                         "Icon.16", "Icon.32", "Icon.80"] {
+            assert!(!manifeste.contains(interdit),
+                "le manifeste ne doit plus porter « {} » : c'est la surface de ruban qui \
+                 cassait W4", interdit);
+        }
+        // Et ce qui doit rester, sans quoi aucun volet ne vivrait.
+        for requis in ["SharedRuntime", r#"<Runtime resid="Taskpane.Url" lifetime="long"/>"#,
+                       "<GetStarted>", r#"id="Taskpane.Url""#, "<IconUrl",
+                       "<HighResolutionIconUrl", "<AppDomains>"] {
+            assert!(manifeste.contains(requis), "le manifeste doit garder « {} »", requis);
+        }
     }
 
     #[test]
