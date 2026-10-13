@@ -342,8 +342,10 @@ const SCENARIOS = {
 
     // 1. Fichier tenu par Word : une attente explicite.
     let b = await demarrer(mondeNeuf({ incident: VERROU }));
-    ck("fichier verrouillé : on demande de fermer Word",
-      b.ecran().includes("Fermez ce document Word"), b.ecran().slice(0, 95));
+    ck("Word encore ouvert : on demande de fermer l'APPLICATION Word",
+      b.ecran().includes("Fermez Microsoft Word"), b.ecran().slice(0, 95));
+    ck("et pas seulement le document — fermer le document ne suffit pas",
+      !b.ecran().includes("Fermez ce document"), b.ecran().slice(0, 95));
     ck("et on annonce que la suite se fera seule",
       b.ecran().includes("terminera automatiquement"));
     ck("le document concerné est nommé", b.ecran().includes("R.docx"));
@@ -358,7 +360,7 @@ const SCENARIOS = {
     await b.revenirDeWord();
     ck("Word refermé : l'état devient « Preuve créée »",
       b.ecran().includes("Preuve créée"), b.ecran().slice(0, 95));
-    ck("et l'attente a disparu", !b.ecran().includes("Fermez ce document Word"));
+    ck("et l'attente a disparu", !b.ecran().includes("Fermez Microsoft Word"));
     ck("le document de la preuve est nommé", b.ecran().includes("R.docx"));
 
     // 3. FAIL-CLOSED. Sans dépôt enregistré, aucun succès ne peut s'afficher.
@@ -369,15 +371,15 @@ const SCENARIOS = {
     // 4. Les autres causes restent de vraies erreurs : la porte de l'attente ne s'élargit pas.
     b = await demarrer(mondeNeuf({ incident: { cause: "scrub_refused", document: "R.docx" } }));
     ck("un refus de structure n'est pas une attente",
-      !b.ecran().includes("Fermez ce document Word"));
+      !b.ecran().includes("Fermez Microsoft Word"));
     b = await demarrer(mondeNeuf({ incident: { cause: "scrub_retry_pending", document: "R.docx",
       detail: { etape: "ecriture", os_error: 28 } } }));
     ck("un échec d'écriture n'est pas une attente de fermeture",
-      !b.ecran().includes("Fermez ce document Word"));
+      !b.ecran().includes("Fermez Microsoft Word"));
     b = await demarrer(mondeNeuf({ incident: { cause: "scrub_retry_pending", document: "R.docx",
       detail: { etape: "remplacement", os_error: 13 } } }));
     ck("un remplacement refusé pour une autre raison n'est pas une attente",
-      !b.ecran().includes("Fermez ce document Word"));
+      !b.ecran().includes("Fermez Microsoft Word"));
   },
 
   /** Les Réglages sont exclus : rien n'est relu, rien n'est redessiné sous les doigts. */
