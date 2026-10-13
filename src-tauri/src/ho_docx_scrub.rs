@@ -37,10 +37,46 @@ pub enum Outcome {
     Scrubbed(Vec<String>),
 }
 
+/// À quelle ÉTAPE le remplacement a échoué.
+///
+/// Vocabulaire FIXE et clos : aucun chemin, aucun nom de document, aucune donnée utilisateur
+/// n'y passe. Ce code remonte jusqu'à l'incident écrit sur le disque, donc il ne doit rien
+/// porter de sensible — c'est la raison d'être d'un type plutôt que d'un message libre.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Etape {
+    Temporaire,
+    Ecriture,
+    Sync,
+    Relecture,
+    EtatDestination,
+    DocumentBouge,
+    Remplacement,
+}
+
+impl Etape {
+    pub fn code(self) -> &'static str {
+        match self {
+            Etape::Temporaire => "temporaire",
+            Etape::Ecriture => "ecriture",
+            Etape::Sync => "sync",
+            Etape::Relecture => "relecture",
+            Etape::EtatDestination => "etat_destination",
+            Etape::DocumentBouge => "document_bouge",
+            Etape::Remplacement => "remplacement",
+        }
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub enum ScrubError {
-    /// Le fichier bouge ou une écriture a échoué : on réessaiera au prochain passage.
-    Transient(String),
+    /// Rien n'est engagé, le document est intact, le prochain passage réessaiera. Porte
+    /// l'étape et, quand le système l'a donné, son code d'erreur brut.
+    ///
+    /// Mesuré nécessaire le 2026-10-13 : sur Windows la finalisation échouait
+    /// systématiquement et le finalizer étiquetait ce Transient « scrub_refused ». La vraie
+    /// cause n'atteignait jamais le disque — donc personne ne pouvait la lire, ni depuis le
+    /// PC, ni après coup.
+    Transient(Etape, Option<i32>),
     /// Structure non reconnue avec certitude : le paquet est laissé intact.
     Refused(String),
 }
@@ -533,11 +569,24 @@ pub fn scrub_bytes(input: &[u8], ids: &[&str]) -> Result<Option<(Vec<u8>, Vec<St
 
 // ---------------------------------------------------------------- remplacement atomique
 /// `bytes` et `seen` sont les octets et les métadonnées lus juste avant par l'appelant.
+/// Combien de fois retenter le remplacement de la destination, et à quel rythme.
+///
+/// Sous Unix, `rename` ne se soucie pas des descripteurs ouverts : remplacer un document que
+/// Word tient ouvert réussit. Sous Windows, non — remplacer une destination qu'un autre
+/// processus tient ouverte échoue, typiquement `ERROR_SHARING_VIOLATION` (32) ou
+/// `ERROR_ACCESS_DENIED` (5). Word relâche parfois le fichier brièvement, autour de ses
+/// propres écritures, donc on retente quelques fois et peu de temps.
+///
+/// macOS garde EXACTEMENT son comportement : une seule tentative, comme avant.
+#[cfg(target_os = "windows")]
+const ESSAIS_REMPLACEMENT: u32 = 4;
+#[cfg(not(target_os = "windows"))]
+const ESSAIS_REMPLACEMENT: u32 = 1;
+
 pub fn scrub_file_atomic(path: &Path, bytes: &[u8], seen: &fs::Metadata, ids: &[&str]) -> Result<Outcome, ScrubError> {
-    let t = |m: String| ScrubError::Transient(m);
     let Some((rebuilt, removed)) = scrub_bytes(bytes, ids)? else { return Ok(Outcome::NotPresent) };
 
-    let dir = path.parent().ok_or_else(|| t("dossier introuvable".into()))?;
+    let dir = path.parent().ok_or(ScrubError::Transient(Etape::Temporaire, None))?;
     let stem = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
     let nonce = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -545,37 +594,52 @@ pub fn scrub_file_atomic(path: &Path, bytes: &[u8], seen: &fs::Metadata, ids: &[
         .unwrap_or(0);
     // Nom caché, sans extension .docx : jamais pris pour un document par le finalizer.
     let tmp = dir.join(format!(".{}.ho-scrub.{}.{}.tmp", stem, std::process::id(), nonce));
-    let cleanup = |e: String| {
+    let echec = |etape: Etape, code: Option<i32>| {
         let _ = fs::remove_file(&tmp);
-        ScrubError::Transient(e)
+        ScrubError::Transient(etape, code)
     };
 
     {
         let mut f = fs::OpenOptions::new().write(true).create_new(true).open(&tmp)
-            .map_err(|e| t(format!("temporaire : {}", e)))?;
-        f.write_all(&rebuilt).map_err(|e| cleanup(format!("écriture : {}", e)))?;
-        f.sync_all().map_err(|e| cleanup(format!("sync : {}", e)))?;
+            .map_err(|e| ScrubError::Transient(Etape::Temporaire, e.raw_os_error()))?;
+        f.write_all(&rebuilt).map_err(|e| echec(Etape::Ecriture, e.raw_os_error()))?;
+        f.sync_all().map_err(|e| echec(Etape::Sync, e.raw_os_error()))?;
     }
     let _ = fs::set_permissions(&tmp, seen.permissions());
     match fs::read(&tmp) {
         Ok(back) if back == rebuilt => {}
-        _ => return Err(cleanup("relecture du temporaire".into())),
+        _ => return Err(echec(Etape::Relecture, None)),
     }
     if scrub_bytes(&rebuilt, ids).map(|r| r.is_none()) != Ok(true) {
         let _ = fs::remove_file(&tmp);
         return Err(ScrubError::Refused("le paquet reconstruit référence encore HumanOrigin".into()));
     }
 
-    // Word a-t-il réécrit le document entre-temps ? Alors on n'écrase rien.
-    let now = fs::metadata(path).map_err(|e| cleanup(e.to_string()))?;
-    if now.len() != seen.len() || now.modified().ok() != seen.modified().ok() {
-        return Err(cleanup("le document a changé pendant le retrait".into()));
+    // CHAQUE tentative revérifie que la destination n'a pas bougé, et c'est le point délicat :
+    // retenter sans ce contrôle ouvrirait une fenêtre pendant laquelle Word réécrit le
+    // document et où l'on écraserait son écriture. Le remède serait pire que le mal.
+    let mut dernier = None;
+    for n in 0..ESSAIS_REMPLACEMENT {
+        let now = fs::metadata(path).map_err(|e| echec(Etape::EtatDestination, e.raw_os_error()))?;
+        if now.len() != seen.len() || now.modified().ok() != seen.modified().ok() {
+            return Err(echec(Etape::DocumentBouge, None));
+        }
+        match fs::rename(&tmp, path) {
+            Ok(()) => {
+                if let Ok(d) = fs::File::open(dir) {
+                    let _ = d.sync_all();
+                }
+                return Ok(Outcome::Scrubbed(removed));
+            }
+            Err(e) => {
+                dernier = e.raw_os_error();
+                if n + 1 < ESSAIS_REMPLACEMENT {
+                    std::thread::sleep(std::time::Duration::from_millis(60 * (n as u64 + 1)));
+                }
+            }
+        }
     }
-    fs::rename(&tmp, path).map_err(|e| cleanup(format!("remplacement : {}", e)))?;
-    if let Ok(d) = fs::File::open(dir) {
-        let _ = d.sync_all();
-    }
-    Ok(Outcome::Scrubbed(removed))
+    Err(echec(Etape::Remplacement, dernier))
 }
 
 // ---------------------------------------------------------------- tests
@@ -750,8 +814,123 @@ mod tests {
         assert!(crate::ho_finalizer::binding_allowed(&Ok::<Outcome, ScrubError>(Outcome::NotPresent)));
         assert!(!crate::ho_finalizer::binding_allowed(&Ok::<Outcome, ScrubError>(Outcome::Scrubbed(vec![]))));
         assert!(!crate::ho_finalizer::binding_allowed(&Err::<Outcome, ScrubError>(
-            ScrubError::Transient("x".into())
+            ScrubError::Transient(Etape::Remplacement, None)
         )));
+    }
+
+    /// REMPLACEMENT D'UNE DESTINATION QUI EXISTE DÉJÀ.
+    ///
+    /// C'est le geste qui échouait sur Windows : `rename` y refuse une destination qu'un
+    /// autre processus tient ouverte, là où Unix l'accepte sans regarder les descripteurs.
+    /// Le contrôle porte donc sur ce que le disque contient APRÈS, pas sur le code de retour.
+    #[test]
+    fn remplacement_d_une_destination_existante() {
+        let input = docx(&[
+            ("[Content_Types].xml", ct(&format!("{}{}", OV_TP, OV_W1))),
+            ("_rels/.rels", ROOT_RELS.to_string()),
+            ("word/document.xml", DOC.to_string()),
+            ("docProps/custom.xml", CUSTOM.to_string()),
+            ("word/webextensions/taskpanes.xml", taskpanes(TP_HO)),
+            ("word/webextensions/_rels/taskpanes.xml.rels", rels(REL_W1)),
+            ("word/webextensions/webextension1.xml", webext(HO, "AAAA-HO")),
+        ]);
+        let dir = std::env::temp_dir().join(format!("ho-rempl-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("doc.docx");
+        fs::write(&p, &input).unwrap();
+        let seen = fs::metadata(&p).unwrap();
+
+        let r = scrub_file_atomic(&p, &input, &seen, HUMANORIGIN_ADDIN_IDS).unwrap();
+        assert!(matches!(r, Outcome::Scrubbed(_)), "la destination existante doit être remplacée");
+
+        // Ce qui est sur le disque ne référence plus HumanOrigin, et c'est bien un paquet.
+        let apres = fs::read(&p).unwrap();
+        assert_ne!(apres, input, "le fichier doit avoir été réécrit");
+        assert_eq!(scrub_bytes(&apres, HUMANORIGIN_ADDIN_IDS), Ok(None),
+            "le paquet remplacé ne doit plus porter de référence HumanOrigin");
+
+        // Aucun temporaire ne survit au succès.
+        let restes: Vec<_> = fs::read_dir(&dir).unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".ho-scrub."))
+            .collect();
+        assert!(restes.is_empty(), "aucun temporaire ne doit rester");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Un échec de remplacement ne doit JAMAIS abîmer l'original, ni laisser de temporaire,
+    /// ni se faire passer pour un refus de structure.
+    #[test]
+    fn un_echec_de_remplacement_laisse_tout_intact() {
+        let input = docx(&[
+            ("[Content_Types].xml", ct(&format!("{}{}", OV_TP, OV_W1))),
+            ("_rels/.rels", ROOT_RELS.to_string()),
+            ("word/document.xml", DOC.to_string()),
+            ("docProps/custom.xml", CUSTOM.to_string()),
+            ("word/webextensions/taskpanes.xml", taskpanes(TP_HO)),
+            ("word/webextensions/_rels/taskpanes.xml.rels", rels(REL_W1)),
+            ("word/webextensions/webextension1.xml", webext(HO, "AAAA-HO")),
+        ]);
+        let dir = std::env::temp_dir().join(format!("ho-echec-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("doc.docx");
+        fs::write(&p, &input).unwrap();
+        let seen = fs::metadata(&p).unwrap();
+
+        // La destination bouge entre la lecture et le remplacement : c'est le seul échec que
+        // l'on peut provoquer de façon portable, et il emprunte le même chemin de sortie.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(&p, [input.as_slice(), b" "].concat()).unwrap();
+        let r = scrub_file_atomic(&p, &input, &seen, HUMANORIGIN_ADDIN_IDS);
+        assert_eq!(r, Err(ScrubError::Transient(Etape::DocumentBouge, None)),
+            "un document qui a bougé est momentané, et nommé comme tel");
+        assert_eq!(fs::read(&p).unwrap().len(), input.len() + 1,
+            "l'écriture de Word ne doit pas avoir été écrasée");
+        let restes: Vec<_> = fs::read_dir(&dir).unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".ho-scrub."))
+            .collect();
+        assert!(restes.is_empty(), "aucun temporaire ne doit rester après un échec");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// LA CAUSE REMONTE, ET NE PORTE RIEN DE SENSIBLE.
+    ///
+    /// C'est le défaut qui a masqué l'échec Windows : toute issue autre que « rien à retirer »
+    /// devenait « scrub_refused », donc l'incident accusait la structure du paquet alors que
+    /// l'écriture échouait. Chaque issue doit maintenant se nommer, et un succès ne doit plus
+    /// s'annoncer comme une panne.
+    #[test]
+    fn chaque_issue_du_retrait_a_sa_propre_cause() {
+        use crate::ho_finalizer::incident_de_scrub;
+
+        // Rien à retirer, et retrait réussi : aucun incident.
+        assert_eq!(incident_de_scrub(&Ok(Outcome::NotPresent)), None);
+        assert_eq!(incident_de_scrub(&Ok(Outcome::Scrubbed(vec!["x".into()]))), None,
+            "un retrait réussi n'est pas un incident");
+
+        // Structure non reconnue : refus, sans détail.
+        let (c, d) = incident_de_scrub(&Err(ScrubError::Refused("peu importe".into()))).unwrap();
+        assert_eq!(c, "scrub_refused");
+        assert_eq!(d, None);
+
+        // Échec momentané : cause distincte, étape nommée, code système conservé.
+        let (c, d) = incident_de_scrub(&Err(ScrubError::Transient(Etape::Remplacement, Some(32))))
+            .unwrap();
+        assert_eq!(c, "scrub_retry_pending", "un échec momentané n'est pas un refus de structure");
+        let d = d.unwrap();
+        assert_eq!(d["etape"], "remplacement");
+        assert_eq!(d["os_error"], 32);
+
+        // Et le détail ne porte NI chemin, NI nom de document : vocabulaire fermé seulement.
+        for e in [Etape::Temporaire, Etape::Ecriture, Etape::Sync, Etape::Relecture,
+                  Etape::EtatDestination, Etape::DocumentBouge, Etape::Remplacement] {
+            let code = e.code();
+            assert!(!code.contains('/') && !code.contains('\\') && !code.contains('.'),
+                "« {} » ne doit pas ressembler à un chemin", code);
+            assert!(code.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "« {} » doit rester un code court", code);
+        }
     }
 
     #[test]
@@ -774,7 +953,7 @@ mod tests {
         let seen = fs::metadata(&p).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(20));
         fs::write(&p, [input.as_slice(), b" "].concat()).unwrap();
-        assert!(matches!(scrub_file_atomic(&p, &input, &seen, HUMANORIGIN_ADDIN_IDS), Err(ScrubError::Transient(_))));
+        assert!(matches!(scrub_file_atomic(&p, &input, &seen, HUMANORIGIN_ADDIN_IDS), Err(ScrubError::Transient(_, _))));
         assert_eq!(fs::read(&p).unwrap().len(), input.len() + 1);
 
         fs::write(&p, &input).unwrap();

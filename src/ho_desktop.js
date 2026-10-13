@@ -1236,6 +1236,7 @@ const CAUSES = {
   document_read_failed: t("err.docUnread"),
   decrypt_failed: t("err.factsUnread"),
   scrub_refused: t("err.bindPrep"),
+  scrub_retry_pending: t("err.bindRetry"),
   registry_rejected: t("err.registryRefused"),
   registry_unavailable: t("err.registryUnreachable"),
   unknown_failure: t("err.depositFailed"),

@@ -286,6 +286,32 @@ pub fn forbidden_work_folder(folder: &str) -> Option<&'static str> {
 /// objet qui dépend encore du complément : on refuse, et la finalisation s'arrête sans liaison,
 /// sans Record, sans succès, sans renommage. Un scrub RÉUSSI a réécrit le fichier : la liaison
 /// attendra le passage suivant, sur les octets réellement présents.
+/// Quel incident écrire, selon l'issue du retrait — et quand n'en écrire aucun.
+///
+/// Fonction PURE, et c'est délibéré : confondre ces issues a coûté une passe de qualification
+/// Windows entière. L'incident disait « scrub_refused », donc il accusait la structure du
+/// paquet, alors que c'était l'écriture du remplacement qui échouait. Rendre la décision
+/// éprouvable sans système de fichiers est le seul moyen que cela ne revienne pas.
+pub(crate) fn incident_de_scrub(
+    issue: &Result<crate::ho_docx_scrub::Outcome, crate::ho_docx_scrub::ScrubError>,
+) -> Option<(&'static str, Option<serde_json::Value>)> {
+    use crate::ho_docx_scrub::{Outcome, ScrubError};
+    match issue {
+        // Rien à retirer, ou retrait réussi : aucun incident. Un retrait réussi vient de
+        // réécrire le fichier, donc la liaison attend le passage suivant — ce n'est pas une
+        // panne, et l'annoncer comme telle était une fausse alerte.
+        Ok(Outcome::NotPresent) | Ok(Outcome::Scrubbed(_)) => None,
+        // Structure non reconnue avec certitude : le paquet reste intact. C'est un refus.
+        Err(ScrubError::Refused(_)) => Some(("scrub_refused", None)),
+        // Échec momentané : rien n'est engagé, le document est intact, le balayage réessaiera.
+        // L'étape et le code système sont consignés — vocabulaire fermé, aucun chemin.
+        Err(ScrubError::Transient(etape, code)) => Some((
+            "scrub_retry_pending",
+            Some(serde_json::json!({ "etape": etape.code(), "os_error": code })),
+        )),
+    }
+}
+
 pub(crate) fn binding_allowed(
     outcome: &Result<crate::ho_docx_scrub::Outcome, crate::ho_docx_scrub::ScrubError>,
 ) -> bool {
@@ -487,26 +513,42 @@ impl Finalizer {
     /// Ce qu'il contient : une cause TYPÉE et le nom du document. Jamais de capability,
     /// jamais de corps de réponse du registre, jamais de chemin complet, jamais de code HTTP.
     fn noter_incident(&self, cause: &'static str, document: &str) {
+        self.noter_incident_detail(cause, document, None)
+    }
+
+    /// La même chose, avec un détail TYPÉ. Le détail ne porte que du vocabulaire fermé et des
+    /// codes numériques rendus par le système : jamais de chemin, jamais de contenu de
+    /// document. Il existe pour qu'une cause momentanée soit LISIBLE après coup — sans lui,
+    /// l'échec de remplacement Windows ne laissait aucune trace exploitable.
+    fn noter_incident_detail(
+        &self,
+        cause: &'static str,
+        document: &str,
+        detail: Option<serde_json::Value>,
+    ) {
         let chemin = self.dir.join(INCIDENT_FILE);
         // Le balayage repasse toutes les 1,5 s : sans cette garde, un dossier refusé
         // réécrirait le fichier quarante fois par minute pour n'y rien changer.
+        let d = detail.clone().unwrap_or(serde_json::Value::Null);
         if let Ok(t) = fs::read_to_string(&chemin) {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&t) {
-                if v["cause"] == cause && v["document"] == document {
+                // Le détail entre dans la comparaison : un code d'erreur différent est une
+                // information neuve, et doit remplacer la précédente.
+                if v["cause"] == cause && v["document"] == document && v["detail"] == d {
                     return;
                 }
             }
         }
-        let _ = fs::write(
-            &chemin,
-            serde_json::json!({
-                "schema": INCIDENT_SCHEMA,
-                "cause": cause,
-                "document": document,
-                "at": now_rfc3339(),
-            })
-            .to_string(),
-        );
+        let mut o = serde_json::json!({
+            "schema": INCIDENT_SCHEMA,
+            "cause": cause,
+            "document": document,
+            "at": now_rfc3339(),
+        });
+        if let Some(x) = detail {
+            o["detail"] = x;
+        }
+        let _ = fs::write(&chemin, o.to_string());
     }
 
     /// Un dépôt réussi efface l'incident : c'est un état courant, pas une archive.
@@ -609,8 +651,11 @@ impl Finalizer {
         // disque, une fois le fichier stable.
         {
             use crate::ho_docx_scrub::{scrub_file_atomic, HUMANORIGIN_ADDIN_IDS};
-            if !binding_allowed(&scrub_file_atomic(path, &bytes, &after, HUMANORIGIN_ADDIN_IDS)) {
-                self.noter_incident("scrub_refused", &nom_doc);
+            let issue = scrub_file_atomic(path, &bytes, &after, HUMANORIGIN_ADDIN_IDS);
+            if !binding_allowed(&issue) {
+                if let Some((cause, detail)) = incident_de_scrub(&issue) {
+                    self.noter_incident_detail(cause, &nom_doc, detail);
+                }
                 return None;
             }
         }
