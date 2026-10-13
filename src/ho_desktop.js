@@ -739,6 +739,24 @@ async function ecranPret(ctx) {
 // ---------------------------------------------------------------- 4 · CONTINUER CE DOCUMENT ?
 async function ecranContinuer(ctx) {
   const doc = ctx.doc;
+  // LE CONTRÔLE A LIEU À L'ARRIVÉE, et plus seulement au clic.
+  //
+  // Mesuré physiquement le 2026-10-13 : après avoir modifié un document déjà finalisé, cet
+  // écran annonçait « Ce document a déjà une preuve » sans rien dire du changement — alors que
+  // l'application avait de quoi le savoir. La phrase restait vraie, la preuve existe bel et
+  // bien pour l'état scellé, mais elle pouvait se lire comme une couverture du contenu
+  // actuel. L'écart est désormais dit avant d'être agi.
+  //
+  // Seule une divergence CONSTATÉE détourne. `null` — indéterminé — n'en est pas une, et une
+  // erreur de lecture non plus : dans ces deux cas l'écran neutre reste, et le clic
+  // revérifiera. On n'invente jamais une divergence qu'on n'a pas mesurée.
+  try {
+    const r = await invoke("ho_version_source_state", { fromRecordId: doc.record_id });
+    if (r && r.source_matches_predecessor_final_state === false)
+      return router({ ecran: "source-modifiee", doc });
+  } catch (e) {
+    // Indéterminé : on ne dit rien de plus que ce qu'on sait.
+  }
   const p = page();
   p.appendChild(entete({ connecte: true,
     onAccueil: () => router({ ecran: "pret" }),

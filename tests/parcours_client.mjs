@@ -390,14 +390,40 @@ const SCENARIOS = {
     ck("un échec d'ouverture Word s'affiche sans bloquer la sortie",
       /n'a pas pu ouvrir/i.test(b.ecran()) && !!b.actions().find((x) => /accueil/i.test(x.l)));
 
-    b = await demarrer(mondeNeuf({ sourceIntacte: false,
-      documents: [{ name: "R.docx", record_id: "A", path: "/d/R.docx" }] }));
-    await b.cliquer("Créer une nouvelle version");
-    ck("source modifiée : l'écran d'avertissement s'affiche",
-      b.ecran().includes("Ce document a changé"));
+    // LES TROIS ÉTATS DE LA SOURCE, à l'ARRIVÉE sur « Continuer ce document ? ».
+    //
+    // Mesuré physiquement le 2026-10-13 : après modification d'un document déjà finalisé,
+    // cet écran se taisait jusqu'au clic. Il annonçait « Ce document a déjà une preuve » —
+    // vrai de l'état scellé, mais lisible comme une couverture du contenu actuel.
+    const unDoc = [{ name: "R.docx", record_id: "A", path: "/d/R.docx" }];
+
+    // false — divergence CONSTATÉE : l'avertissement s'affiche sans qu'on ait rien cliqué.
+    b = await demarrer(mondeNeuf({ sourceIntacte: false, documents: unDoc }));
+    ck("source modifiée : l'avertissement s'affiche dès l'arrivée, sans clic",
+      b.ecran().includes("Ce document a changé"), b.ecran().slice(0, 80));
+    ck("et il dit la portée de l'ancienne preuve",
+      b.ecran().includes("pour l’état qui avait été scellé"));
+    ck("et il dit que la suite n'a pas été observée",
+      b.ecran().includes("pas été observées par HumanOrigin"));
     voir(b, "source modifiée");
     ck("et sa sortie nomme sa destination",
       !!b.actions().find((x) => /retour à l’accueil|retour à l'accueil/i.test(x.l)),
+      b.actions().map((x) => x.l).join(" | "));
+
+    // true — rien n'a changé : le parcours actuel est conservé tel quel.
+    b = await demarrer(mondeNeuf({ sourceIntacte: true, documents: unDoc }));
+    ck("source intacte : on reste sur « Continuer ce document ? »",
+      b.ecran().includes("Continuer ce document") && !b.ecran().includes("Ce document a changé"),
+      b.ecran().slice(0, 80));
+
+    // null — indéterminé. Ce n'est PAS une divergence : on n'en invente pas, et l'écran
+    // neutre reste. Sans ce contrôle, un état inconnu alarmerait pour rien.
+    b = await demarrer(mondeNeuf({ sourceIntacte: null, documents: unDoc }));
+    ck("source indéterminée : aucune divergence inventée",
+      b.ecran().includes("Continuer ce document") && !b.ecran().includes("Ce document a changé"),
+      b.ecran().slice(0, 80));
+    ck("et l'action reste offerte malgré l'indétermination",
+      !!b.actions().find((x) => /créer une nouvelle version/i.test(x.l)),
       b.actions().map((x) => x.l).join(" | "));
   },
 };
