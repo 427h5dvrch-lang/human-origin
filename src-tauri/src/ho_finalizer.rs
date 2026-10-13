@@ -41,6 +41,15 @@ const SETTLE_MS: u64 = 1200;
 /// ce qui est engagé, l'autre ce qui vient d'échouer. On ne mélange pas les deux.
 const INCIDENT_FILE: &str = "finalizer_incident.json";
 const INCIDENT_SCHEMA: &str = "ho-finalizer-incident/1";
+/// Le DERNIER dépôt réussi : de quoi nommer la preuve à l'écran une fois Word refermé.
+///
+/// Il existe parce que `ho_versionable_documents` ne connaît que les documents OUVERTS dans
+/// Word. Or sur Windows le dépôt a lieu précisément quand Word vient de refermer le document
+/// — donc, sans cette note, l'écran ne pourrait pas dire DE QUEL document la preuve vient.
+/// Même discipline que le fichier d'incident : une cause typée, un nom de document, rien
+/// d'autre. Jamais de chemin, jamais de capability, jamais de contenu.
+const DEPOT_FILE: &str = "finalizer_last_deposit.json";
+const DEPOT_SCHEMA: &str = "ho-finalizer-last-deposit/1";
 
 // ---------------------------------------------------------------- état
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -551,6 +560,26 @@ impl Finalizer {
         let _ = fs::write(&chemin, o.to_string());
     }
 
+    /// Note le dernier dépôt réussi. Écrit UNIQUEMENT après un succès au registre : ce
+    /// fichier ne doit jamais pouvoir faire croire à une preuve qui n'existe pas.
+    fn noter_depot(&self, record_id: &str, document: &str) {
+        let _ = fs::write(
+            self.dir.join(DEPOT_FILE),
+            serde_json::json!({
+                "schema": DEPOT_SCHEMA,
+                "record_id": record_id,
+                "document": document,
+                "at": now_rfc3339(),
+            })
+            .to_string(),
+        );
+    }
+
+    /// Le dernier dépôt, tel quel, pour l'affichage. `None` s'il n'y en a pas.
+    pub fn dernier_depot(&self) -> Option<serde_json::Value> {
+        serde_json::from_str(&fs::read_to_string(self.dir.join(DEPOT_FILE)).ok()?).ok()
+    }
+
     /// Un dépôt réussi efface l'incident : c'est un état courant, pas une archive.
     fn oublier_incident(&self) {
         let _ = fs::remove_file(self.dir.join(INCIDENT_FILE));
@@ -724,8 +753,9 @@ impl Finalizer {
                 // Le lineage a rempli son office : il est DANS la preuve, définitivement.
                 // Le garder sur disque n'ajouterait rien et laisserait traîner un état.
                 crate::ho_version::oublier_sidecar(&self.dir, &m.record_id);
-                // L'état courant redevient sain.
+                // L'état courant redevient sain, et le dépôt est nommé pour l'écran.
                 self.oublier_incident();
+                self.noter_depot(&m.record_id, &nom_doc);
                 Some(m.record_id)
             }
             Err(e) => {

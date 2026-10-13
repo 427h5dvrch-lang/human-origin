@@ -151,7 +151,12 @@ function faireBackend(monde) {
           monde.etatWord = "installed"; monde.complementInstalle = true;
           return { state: "installed" };
         case "ho_finalizer_get_folders": return monde.dossiers;
-        case "ho_finalizer_status": return { last_proof_at: monde.dernierePreuve };
+        // L'incident porte une cause TYPÉE, et `last_deposit` n'existe qu'après un dépôt
+        // réel : l'écran se décide là-dessus, jamais sur une inférence.
+        case "ho_finalizer_status": return {
+          folders: monde.dossiers.length, active: !!monde.dossiers.length,
+          incident: monde.incident, last_deposit: monde.dernierDepot,
+          last_proof_at: monde.dernierePreuve };
         case "ho_versionable_documents": return monde.documents;
         case "ho_default_work_folder": return "/d/HumanOrigin";
         case "ho_check_work_folder": return { ok: true };
@@ -177,7 +182,8 @@ function faireBackend(monde) {
 
 const mondeNeuf = (p = {}) => ({ connecte: true, complementInstalle: true,
   dossiers: ["/d/HumanOrigin"], documents: [], crees: [], compteur: 0, dernierePreuve: null,
-  wordSOuvre: true, ouvertureMarche: true, sourceIntacte: true, choixFichier: null, ...p });
+  wordSOuvre: true, ouvertureMarche: true, sourceIntacte: true, choixFichier: null,
+  incident: null, dernierDepot: null, ...p });
 
 // ─────────────────────────────────────────────────────── le banc
 let graine = 0;
@@ -320,6 +326,58 @@ const SCENARIOS = {
     await b.revenirDeWord();
     ck("il ne revient pas au redraw suivant",
       !b.ecran().includes("Installation…"), b.ecran().slice(0, 120));
+  },
+
+  /**
+   * FINALISATION BLOQUÉE PAR WORD — attendre n'est pas échouer.
+   *
+   * Mesuré physiquement sur Windows le 2026-10-13 : finaliser pendant que Word tient le DOCX
+   * rend `scrub_retry_pending` / `remplacement` / `os_error` 5. Windows refuse de remplacer un
+   * fichier ouvert ailleurs ; le retrait fonctionne, et le balayage termine seul dès que Word
+   * relâche. L'utilisateur a UNE chose à faire, et l'écran doit le dire.
+   */
+  async finalisation_bloquee_par_word(ck) {
+    const VERROU = { cause: "scrub_retry_pending", document: "R.docx",
+                     detail: { etape: "remplacement", os_error: 5 } };
+
+    // 1. Fichier tenu par Word : une attente explicite.
+    let b = await demarrer(mondeNeuf({ incident: VERROU }));
+    ck("fichier verrouillé : on demande de fermer Word",
+      b.ecran().includes("Fermez ce document Word"), b.ecran().slice(0, 95));
+    ck("et on annonce que la suite se fera seule",
+      b.ecran().includes("terminera automatiquement"));
+    ck("le document concerné est nommé", b.ecran().includes("R.docx"));
+    ck("ce n'est pas présenté comme une impossibilité",
+      !/impossible/i.test(b.ecran()), b.ecran().slice(0, 95));
+    ck("et aucun succès n'est annoncé pendant l'attente",
+      !b.ecran().includes("Preuve créée"));
+
+    // 2. Word relâche le document : le dépôt a lieu, l'écran passe au succès de lui-même.
+    b.monde.incident = null;
+    b.monde.dernierDepot = { record_id: "A", document: "R.docx", at: new Date().toISOString() };
+    await b.revenirDeWord();
+    ck("Word refermé : l'état devient « Preuve créée »",
+      b.ecran().includes("Preuve créée"), b.ecran().slice(0, 95));
+    ck("et l'attente a disparu", !b.ecran().includes("Fermez ce document Word"));
+    ck("le document de la preuve est nommé", b.ecran().includes("R.docx"));
+
+    // 3. FAIL-CLOSED. Sans dépôt enregistré, aucun succès ne peut s'afficher.
+    b = await demarrer(mondeNeuf());
+    ck("sans dépôt réel, aucun « Preuve créée »", !b.ecran().includes("Preuve créée"),
+      b.ecran().slice(0, 95));
+
+    // 4. Les autres causes restent de vraies erreurs : la porte de l'attente ne s'élargit pas.
+    b = await demarrer(mondeNeuf({ incident: { cause: "scrub_refused", document: "R.docx" } }));
+    ck("un refus de structure n'est pas une attente",
+      !b.ecran().includes("Fermez ce document Word"));
+    b = await demarrer(mondeNeuf({ incident: { cause: "scrub_retry_pending", document: "R.docx",
+      detail: { etape: "ecriture", os_error: 28 } } }));
+    ck("un échec d'écriture n'est pas une attente de fermeture",
+      !b.ecran().includes("Fermez ce document Word"));
+    b = await demarrer(mondeNeuf({ incident: { cause: "scrub_retry_pending", document: "R.docx",
+      detail: { etape: "remplacement", os_error: 13 } } }));
+    ck("un remplacement refusé pour une autre raison n'est pas une attente",
+      !b.ecran().includes("Fermez ce document Word"));
   },
 
   /** Les Réglages sont exclus : rien n'est relu, rien n'est redessiné sous les doigts. */

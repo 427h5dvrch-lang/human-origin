@@ -2059,6 +2059,9 @@ fn ho_finalizer_status() -> serde_json::Value {
         "folders": cfg.folders.len(),
         "active": !cfg.folders.is_empty(),
         "incident": f.incident(),
+        // Le dernier dépôt RÉEL : il n'est écrit qu'après succès au registre, donc l'écran
+        // ne peut pas annoncer une preuve qui n'existe pas.
+        "last_deposit": f.dernier_depot(),
     })
 }
 

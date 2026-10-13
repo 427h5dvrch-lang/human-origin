@@ -12,7 +12,7 @@ import { PAPER, INK, MUTED, BLUE, put, mkButton } from "./ho_ui.js";
 import { reserveRecordId, supabase } from "./ho_reserve.js";
 import { listen } from "@tauri-apps/api/event";
 import {
-  PAPIER, CARTE, MARINE, ENCRE, ATONE, LIGNE, SERIF, SANS, COLONNE, ICONES,
+  PAPIER, CARTE, MARINE, ENCRE, ATONE, LIGNE, SERIF, SANS, COLONNE, ICONES, TEINTES,
   HumanOriginBrandMark, jouerDepot, entete, colonne, medaillon, titre, sousTitre, corps,
   ctaPrincipal, ctaSecondaire, ctaWord, pilule, carteEtat, mention, page, pastilleWord,
   el as sh,
@@ -35,6 +35,26 @@ async function lastProofAt() {
     const d = new Date(dates[dates.length - 1]);
     return isNaN(d) ? null : d;
   } catch (e) { return null; }
+}
+
+/**
+ * ATTENDRE, ou constater une panne ? La distinction vient d'une cause TYPÉE, jamais d'une
+ * devinette sur un message.
+ *
+ * Mesuré physiquement sur Windows le 2026-10-13 : finaliser pendant que Word tient le DOCX
+ * donne `scrub_retry_pending` / étape `remplacement` / `os_error` 5 ou 32. Windows refuse de
+ * remplacer un fichier qu'un autre processus tient ouvert, là où Unix l'accepte sans regarder
+ * les descripteurs. Le retrait lui-même fonctionne, et le balayage de fond — toutes les 1,5 s
+ * — termine seul dès que Word relâche le document.
+ *
+ * Ce n'est donc pas un échec : c'est une attente, et l'utilisateur a UNE chose à faire. Toute
+ * autre cause reste une vraie erreur : on n'élargit pas cette porte.
+ */
+const ATTENTE_OS = [5, 32];   // accès refusé, partage refusé
+function attenteFermetureWord(inc) {
+  if (!inc || inc.cause !== "scrub_retry_pending") return false;
+  const d = inc.detail || {};
+  return d.etape === "remplacement" && ATTENTE_OS.includes(d.os_error);
 }
 
 const ERROR_INK = "#8C2F2F";
@@ -719,6 +739,8 @@ async function ecranPret(ctx) {
     c.appendChild(bloc);
   }
 
+  await etatDeLaPreuve(c);
+
   const cartes = sh("div", { display: "grid", "grid-template-columns": "1fr 1fr",
     gap: "9px", margin: "11px 0 0" });
   cartes.appendChild(carteEtat(pastilleWord(19), t("label.word"), t("status.ready")));
@@ -734,6 +756,65 @@ async function ecranPret(ctx) {
   pied.appendChild(sh("p", { margin: "0", font: "12.5px/1.4 " + SANS, color: ATONE },
     d ? quandDate(d) : t("status.noneYet")));
   p.appendChild(pied);
+}
+
+/**
+ * ÉTAT DE LA PREUVE, sur l'accueil.
+ *
+ * Il existe parce que le badge Word ne doit pas être le seul moyen de comprendre qu'une preuve
+ * est en train de se faire, ou qu'elle existe. Deux états, et ils viennent tous les deux de ce
+ * que le natif a CONSTATÉ — jamais d'une inférence de l'interface :
+ *
+ *   attente  — l'incident typé dit que seul le remplacement du fichier bloque ;
+ *   succès   — `last_deposit` n'est écrit qu'après un succès au registre.
+ *
+ * Fail-closed : sans dépôt réel, aucun « Preuve créée » ne peut s'afficher.
+ */
+async function etatDeLaPreuve(c) {
+  let st = null;
+  try { st = await invoke("ho_finalizer_status"); } catch (e) { return; }
+  const inc = (st && st.incident) || null;
+
+  const carte = (teinte, icone, titreTexte, sousTexte, detail) => {
+    const tt = TEINTES[teinte];
+    const d = sh("div", { display: "flex", "align-items": "flex-start", gap: "12px",
+      padding: "13px 15px", background: tt.fond, "border-radius": "10px",
+      margin: "16px 0 0", "text-align": "left" });
+    const i = ICONES[icone](18, tt.encre);
+    put(i, { "flex-shrink": "0", "margin-top": "2px" });
+    d.appendChild(i);
+    const col = sh("div", { display: "flex", "flex-direction": "column", gap: "3px" });
+    col.appendChild(sh("span", { font: "500 14px/1.45 " + SANS, color: ENCRE }, titreTexte));
+    if (sousTexte) col.appendChild(sh("span", { font: "12.5px/1.5 " + SANS, color: ATONE }, sousTexte));
+    if (detail) col.appendChild(sh("span", { font: "12.5px/1.5 " + SANS, color: ATONE }, detail));
+    d.appendChild(col);
+    c.appendChild(d);
+    return col;
+  };
+
+  if (attenteFermetureWord(inc)) {
+    carte("ambre", "horloge", t("finalize.closeWord"), t("finalize.closeWordWhy"),
+      inc.document || null);
+    return;
+  }
+
+  // Pas d'attente. Seul un dépôt RÉELLEMENT enregistré autorise l'état de succès.
+  const dep = st && st.last_deposit;
+  if (!dep || !dep.record_id) return;
+  const col = carte("vert", "coche", t("finalize.proofCreated"), null, dep.document || null);
+
+  // « Ouvrir ce document » n'existe que si l'application sait encore où il est : elle ne
+  // connaît que les documents ouverts dans Word, et ne conserve aucun chemin.
+  try {
+    const docs = (await invoke("ho_versionable_documents")) || [];
+    const m = docs.find((x) => x && x.record_id === dep.record_id);
+    if (m && m.path) {
+      const b = ctaSecondaire(t("action.openThisDocument"));
+      put(b, { margin: "9px 0 0" });
+      b.onclick = async () => { try { await invoke("ho_open_document", { path: m.path }); } catch (e) {} };
+      col.appendChild(b);
+    }
+  } catch (e) { /* le confort n'est pas une condition */ }
 }
 
 // ---------------------------------------------------------------- 4 · CONTINUER CE DOCUMENT ?
