@@ -1243,7 +1243,7 @@ mod tests {
         let f = fonction(MAIN, "fn ho_copy_verification_link(");
         assert!(f.contains("-> Result<(), String>"),
             "la commande ne doit rendre qu'un succès, jamais le lien");
-        assert!(f.contains("write_text(lien)"),
+        assert!(f.contains("copier_dans_le_presse_papiers(&lien)"),
             "le lien va au presse-papiers, et nulle part ailleurs");
         for interdit in ["Ok(lien", "return lien", "json!({ \"lien", "\"link\""] {
             assert!(!f.contains(interdit), "« {} » ferait fuiter le lien vers l'interface", interdit);

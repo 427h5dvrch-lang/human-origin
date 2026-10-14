@@ -22,12 +22,7 @@ tauri = { version = "1", features = [ "shell-sidecar",
   "path-all",
   "dialog-all",
   "shell-open",
-  "shell-execute",
-  # Presse-papiers côté RUST uniquement. Cette feature ouvre l'API native ; l'allowlist de
-  # tauri.conf.json, elle, n'est PAS touchée, donc la webview ne reçoit aucun accès au
-  # presse-papiers. C'est délibéré : le lien de vérification porte une clé de déchiffrement,
-  # et il ne doit jamais traverser l'interface.
-  "clipboard-write-text"
+  "shell-execute"
 ] }
 tauri-plugin-deep-link = "0.1"
 

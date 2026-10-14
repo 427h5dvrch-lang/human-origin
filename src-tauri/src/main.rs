@@ -2187,17 +2187,14 @@ fn ho_open_folder_by_record(record_id: String) -> Result<(), String> {
 ///
 /// L'écran, lui, doit dire ce que ce lien permet. C'est son rôle, pas celui de cette fonction.
 #[tauri::command]
-fn ho_copy_verification_link(app: tauri::AppHandle, record_id: String) -> Result<(), String> {
-    use tauri::ClipboardManager;
+fn ho_copy_verification_link(record_id: String) -> Result<(), String> {
     if !ho_capability::record_id_valide(&record_id) {
         return Err("Identifiant invalide.".into());
     }
     let lien = ho_finalizer::Finalizer::new(ho_finalizer_dir())
         .lien_verification(&record_id)
         .ok_or("Le lien de vérification n’a pas pu être construit depuis ce document.")?;
-    app.clipboard_manager()
-        .write_text(lien)
-        .map_err(|_| "Le presse-papiers n’a pas pu être utilisé.".to_string())
+    ho_word_setup::copier_dans_le_presse_papiers(&lien)
 }
 
 /// Mesure l'état source d'un document versionnable, sans rien créer.

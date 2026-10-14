@@ -709,6 +709,52 @@ pub fn ouvrir_dossier(path: &Path) -> Result<(), String> {
     }
 }
 
+/// Écrit un texte dans le presse-papiers, par l'utilitaire du système.
+///
+/// Pourquoi pas l'API Tauri : activer sa feature `clipboard` tire **28 caisses**, dont les
+/// piles Wayland et X11, sur un produit qui ne vise que macOS et Windows. Mesuré. C'est
+/// disproportionné pour un bouton, et sur un produit dont la valeur est la confiance, une
+/// surface de dépendances qu'on n'a pas lue se paie cher.
+///
+/// `pbcopy` et `clip` sont présents de base, et cette base lance déjà des processus du système
+/// pour ouvrir un document ou un dossier : on reste dans sa pratique. Le texte passe par
+/// l'entrée standard — il n'apparaît donc dans aucune ligne de commande, qu'un autre processus
+/// pourrait lire dans la table des processus.
+pub fn copier_dans_le_presse_papiers(texte: &str) -> Result<(), String> {
+    use std::io::Write as _;
+    use std::process::{Command, Stdio};
+    #[cfg(target_os = "windows")]
+    let mut cmd = Command::new("clip");
+    #[cfg(target_os = "macos")]
+    let mut cmd = Command::new("/usr/bin/pbcopy");
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    return Err("Le presse-papiers n'est pas disponible sur ce système.".into());
+
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    {
+        let mut enfant = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|_| "Le presse-papiers n'a pas pu être utilisé.".to_string())?;
+        enfant
+            .stdin
+            .as_mut()
+            .ok_or("Le presse-papiers n'a pas pu être utilisé.")?
+            .write_all(texte.as_bytes())
+            .map_err(|_| "Le presse-papiers n'a pas pu être utilisé.".to_string())?;
+        let fin = enfant
+            .wait()
+            .map_err(|_| "Le presse-papiers n'a pas pu être utilisé.".to_string())?;
+        if fin.success() {
+            Ok(())
+        } else {
+            Err("Le presse-papiers n'a pas pu être utilisé.".into())
+        }
+    }
+}
+
 pub fn ouvrir_dans_word(path: &str) -> bool {
     if path.is_empty() {
         return false;
