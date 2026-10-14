@@ -1371,6 +1371,27 @@ mod tests {
         assert_eq!((f.len(), p.map(|x| x.len())), (3, Some(2)));
         let (f, p) = super::split_facts(&serde_json::json!({ "facts": [1] }));
         assert!(f.is_empty() && p.is_none());
+
+        // UNE SEULE PÉRIODE, forme 2. C'est ce que le volet émet désormais systématiquement :
+        // la forme historique jetait les bornes mesurées, et le vérificateur n'avait plus qu'à
+        // déduire l'étendue des événements. Le finalizer doit donc relever cette période comme
+        // n'importe quelle autre — et c'est elle qui alimentera `observation_periods`.
+        let v2u = serde_json::json!({ "schema": "ho-facts/2",
+            "periods": [{ "period": 1, "started_at": "2026-10-14T09:00:00Z",
+                          "ended_at": "2026-10-14T09:30:00Z" }],
+            "facts": [{ "sequence": 0, "period": 1, "length_delta": 4 }] });
+        let (f, p) = super::split_facts(&v2u);
+        assert_eq!(f.len(), 1);
+        let p = p.expect("une période unique doit être relevée, pas ignorée");
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0]["started_at"], "2026-10-14T09:00:00Z");
+        assert_eq!(p[0]["ended_at"], "2026-10-14T09:30:00Z");
+
+        // Et l'ANCIENNE forme reste lue à l'identique : un Record déjà scellé ne doit pas
+        // changer de sens parce que le producteur a évolué.
+        let (f, p) = super::split_facts(&serde_json::json!([{ "sequence": 0 }, { "sequence": 1 }]));
+        assert_eq!((f.len(), p.is_none()), (2, true),
+            "un tableau nu reste un tableau nu, sans période inventée");
     }
 
     // ---------------------------------------------------------------- contrat Record V1
