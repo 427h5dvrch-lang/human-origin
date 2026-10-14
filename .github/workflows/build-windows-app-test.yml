@@ -72,6 +72,31 @@ jobs:
           $json | ConvertTo-Json -Depth 100 | Set-Content $path -Encoding UTF8
           Write-Host "Updater disabled for CI test build only."
 
+      # Depuis 9b87793, `src-tauri/tauri.windows.conf.json` déclare un `signCommand` qui
+      # appelle `C:\ho-sign\signer-un-fichier.ps1`. Tauri fusionne ce fichier de plateforme
+      # SANS qu'on le lui demande, donc TOUT build Windows en hérite — pas seulement la chaîne
+      # de signature. Ce runner-ci ne dépose pas ce script, et le bundling échouait sur
+      # `failed to run pwsh`. Ce n'était pas les sidecars : leur vérification passait.
+      #
+      # On neutralise donc la signature pour ce build de test, exactement comme l'updater
+      # l'est juste au-dessus, et pour la même raison : un build de test n'est ni signé ni
+      # distribuable, et il ne doit pas prétendre l'être. La signature reste vérifiée là où
+      # elle compte, par `windows-release-signed.yml`, qui contrôle les quatre binaires posés.
+      #
+      # Rien du produit n'est modifié : la retouche ne vit que dans le checkout du runner.
+      - name: Disable custom signing for CI test build
+        shell: pwsh
+        run: |
+          $path = "src-tauri/tauri.windows.conf.json"
+          $json = Get-Content $path -Raw | ConvertFrom-Json
+          if ($json.tauri.bundle.windows.PSObject.Properties.Name -contains "signCommand") {
+            $json.tauri.bundle.windows.PSObject.Properties.Remove("signCommand")
+            $json | ConvertTo-Json -Depth 100 | Set-Content $path -Encoding UTF8
+            Write-Host "signCommand retire pour ce build de test uniquement."
+          } else {
+            Write-Host "Aucun signCommand declare : rien a neutraliser."
+          }
+
       - name: Build Windows Tauri app test
         shell: pwsh
         env:
@@ -79,15 +104,23 @@ jobs:
         run: |
           npm run tauri -- build --debug
 
-      - name: Show generated bundles
+      # Ce pas se contentait d'AFFICHER, avec -ErrorAction SilentlyContinue : le workflow
+      # pouvait donc devenir vert sans avoir produit le moindre bundle, et son vert ne
+      # voulait rien dire. Il affirme maintenant ce qu'il montre.
+      - name: Assert the Windows test bundle was produced
         shell: pwsh
         run: |
-          Write-Host "Generated target folders:"
-          Get-ChildItem src-tauri/target/debug/bundle -Recurse -ErrorAction SilentlyContinue | Select-Object FullName, Length | Format-Table -AutoSize
+          $bundle = "src-tauri/target/debug/bundle"
+          if (!(Test-Path $bundle)) { Write-Error "aucun dossier de bundle produit : $bundle" }
+          $installeurs = Get-ChildItem $bundle -Recurse -Include *.exe, *.msi -File
+          Get-ChildItem $bundle -Recurse -File | Select-Object FullName, Length | Format-Table -AutoSize
+          if ($installeurs.Count -eq 0) { Write-Error "aucun installeur produit sous $bundle" }
+          Write-Host "$($installeurs.Count) installeur(s) produit(s) par le build de test."
 
       - name: Upload Windows app test artifact
         uses: actions/upload-artifact@v4
         with:
           name: humanorigin-windows-app-test
+          if-no-files-found: error
           path: |
             src-tauri/target/debug/bundle/**/*
