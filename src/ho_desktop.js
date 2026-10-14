@@ -725,17 +725,14 @@ async function ecranPret(ctx) {
   // Ce que l'application sait réellement : les documents HumanOrigin ouverts dans Word. Pas
   // un historique — elle n'en tient pas — et le libellé ne prétend pas le contraire.
   let ouverts = [];
-  try { ouverts = (await invoke("ho_versionable_documents")) || []; } catch (e) { ouverts = []; }
+  // Les documents DÉTECTÉS, et non plus seulement ceux ouverts dans Word : fermer Word
+  // faisait disparaître son propre travail de l'écran. Le natif en rend cinq au plus.
+  try { ouverts = (await invoke("ho_recent_documents")) || []; } catch (e) { ouverts = []; }
   if (ouverts.length) {
     const bloc = sh("div", { margin: "18px 0 0" });
     bloc.appendChild(sh("p", { margin: "0 0 8px", font: "500 13px/1.4 " + SANS, color: ATONE },
-      t("docs.openInWord")));
-    ouverts.slice(0, 4).forEach((doc) => {
-      const b = ctaSecondaire(doc.name);
-      put(b, { margin: "0 0 7px" });
-      b.onclick = () => router({ ecran: "continuer", doc });
-      bloc.appendChild(b);
-    });
+      t("docs.recent")));
+    ouverts.forEach((doc) => bloc.appendChild(ligneDocument(doc)));
     c.appendChild(bloc);
   }
 
@@ -756,6 +753,65 @@ async function ecranPret(ctx) {
   pied.appendChild(sh("p", { margin: "0", font: "12.5px/1.4 " + SANS, color: ATONE },
     d ? quandDate(d) : t("status.noneYet")));
   p.appendChild(pied);
+}
+
+/**
+ * Une ligne de document, pour les deux listes qui en affichent.
+ *
+ * Le libellé dit « détectés » et non « récents » tout court : la liste est DÉRIVÉE des
+ * fichiers présents dans les dossiers surveillés, elle n'est pas un historique. Un document
+ * déplacé ou supprimé en sort, et c'est la vérité plutôt qu'un souvenir.
+ */
+function ligneDocument(doc) {
+  const b = ctaSecondaire(doc.open_in_word ? doc.name + " · " + t("docs.openTag") : doc.name);
+  put(b, { margin: "0 0 7px" });
+  b.onclick = () => router({ ecran: "continuer", doc });
+  return b;
+}
+
+/**
+ * Les trois accès d'un document prouvé : le document, son dossier, son lien de vérification.
+ *
+ * Tout passe par l'IDENTIFIANT du Record : aucun chemin système ne traverse cette couche, et
+ * le lien de vérification n'y remonte jamais non plus — il est copié côté natif. La webview
+ * ne voit donc jamais la clé de déchiffrement.
+ */
+function accesDuDocument(parent, doc, msg) {
+  const rid = doc && doc.record_id;
+  if (!rid) return;
+
+  const ouvrir = ctaSecondaire(t("action.openThisDocument"));
+  put(ouvrir, { margin: "9px 0 0" });
+  ouvrir.onclick = async () => {
+    try { await invoke("ho_open_document_by_record", { recordId: rid }); say(msg, ""); }
+    catch (e) { say(msg, errorText(e, t("doc.openFailed")), true); }
+  };
+  parent.appendChild(ouvrir);
+
+  const dossier = ctaSecondaire(t("action.openFolder"));
+  put(dossier, { margin: "7px 0 0" });
+  dossier.onclick = async () => {
+    try { await invoke("ho_open_folder_by_record", { recordId: rid }); say(msg, ""); }
+    catch (e) { say(msg, errorText(e, t("doc.folderFailed")), true); }
+  };
+  parent.appendChild(dossier);
+
+  const lien = ctaSecondaire(t("action.copyVerifyLink"));
+  put(lien, { margin: "7px 0 0" });
+  lien.onclick = async () => {
+    try {
+      await invoke("ho_copy_verification_link", { recordId: rid });
+      // La conséquence est redite AU MOMENT où elle devient réelle : la note sous le bouton
+      // prévient, cette phrase-ci confirme. Un lien qui ouvre une preuve à quiconque le
+      // détient mérite d'être annoncé deux fois plutôt qu'une.
+      say(msg, t("share.copied") + " " + t("share.warning"));
+    } catch (e) { say(msg, errorText(e, t("share.failed")), true); }
+  };
+  parent.appendChild(lien);
+
+  // Visible AVANT toute copie, et sans condition.
+  parent.appendChild(sh("p", { margin: "7px 0 0", font: "12.5px/1.5 " + SANS, color: ATONE },
+    t("share.warning")));
 }
 
 /**
@@ -803,18 +859,12 @@ async function etatDeLaPreuve(c) {
   if (!dep || !dep.record_id) return;
   const col = carte("vert", "coche", t("finalize.proofCreated"), null, dep.document || null);
 
-  // « Ouvrir ce document » n'existe que si l'application sait encore où il est : elle ne
-  // connaît que les documents ouverts dans Word, et ne conserve aucun chemin.
-  try {
-    const docs = (await invoke("ho_versionable_documents")) || [];
-    const m = docs.find((x) => x && x.record_id === dep.record_id);
-    if (m && m.path) {
-      const b = ctaSecondaire(t("action.openThisDocument"));
-      put(b, { margin: "9px 0 0" });
-      b.onclick = async () => { try { await invoke("ho_open_document", { path: m.path }); } catch (e) {} };
-      col.appendChild(b);
-    }
-  } catch (e) { /* le confort n'est pas une condition */ }
+  // Les trois accès, par IDENTIFIANT. La version précédente cherchait un chemin dans la liste
+  // des documents ouverts dans Word — or cette liste n'en porte pas : le bouton ne s'affichait
+  // donc jamais. Mesuré en relisant le payload réel du natif, pas en relisant l'intention.
+  const msg = zoneMessage();
+  accesDuDocument(col, dep, msg);
+  col.appendChild(msg);
 }
 
 // ---------------------------------------------------------------- 4 · CONTINUER CE DOCUMENT ?
@@ -876,6 +926,9 @@ async function ecranContinuer(ctx) {
   put(autre, { margin: "9px 0 0" });
   autre.onclick = () => router({ ecran: "documents" });
   c.appendChild(autre);
+  // C'est ICI que l'utilisateur arrive quand il choisit un document : ses trois accès y sont,
+  // plutôt que nulle part. Avant, aucun écran ne permettait d'ouvrir le document prouvé.
+  accesDuDocument(c, doc, msg);
   c.appendChild(msg);
   p.appendChild(c);
 }
@@ -901,19 +954,14 @@ async function ecranDocuments(ctx) {
   const msg = zoneMessage();
   const liste = sh("div", { margin: "18px 0 0" });
   let docs = [];
-  try { docs = (await invoke("ho_versionable_documents")) || []; } catch (e) { docs = []; }
+  try { docs = (await invoke("ho_recent_documents")) || []; } catch (e) { docs = []; }
   if (docs.length) {
     liste.appendChild(sh("p", { margin: "0 0 8px", font: "500 13px/1.4 " + SANS, color: ATONE },
-      t("docs.openInWord")));
-    docs.forEach((doc) => {
-      const b = ctaSecondaire(doc.name);
-      put(b, { margin: "0 0 7px" });
-      b.onclick = () => router({ ecran: "continuer", doc });
-      liste.appendChild(b);
-    });
+      t("docs.recent")));
+    docs.forEach((doc) => liste.appendChild(ligneDocument(doc)));
   } else {
     liste.appendChild(sh("p", { margin: "0", font: "13px/1.5 " + SANS, color: ATONE },
-      t("docs.noneOpen")));
+      t("docs.noneDetected")));
   }
   c.appendChild(liste);
 

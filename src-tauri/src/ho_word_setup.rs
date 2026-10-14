@@ -687,11 +687,94 @@ pub fn ouvrir_document_demande(path: &str) -> Result<(), String> {
     }
 }
 
+/// Révèle un DOSSIER dans le gestionnaire de fichiers du système.
+///
+/// Porte distincte de celle des documents, et volontairement étroite : elle n'accepte qu'un
+/// répertoire existant, et l'appelant ne lui donne jamais un chemin venu de l'interface — il
+/// le résout depuis un identifiant de Record.
+pub fn ouvrir_dossier(path: &Path) -> Result<(), String> {
+    if !path.is_dir() {
+        return Err("Ce dossier est introuvable.".into());
+    }
+    #[cfg(target_os = "windows")]
+    let ok = std::process::Command::new("explorer.exe").arg(path).spawn().is_ok();
+    #[cfg(target_os = "macos")]
+    let ok = std::process::Command::new("/usr/bin/open").arg(path).spawn().is_ok();
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let ok = false;
+    if ok {
+        Ok(())
+    } else {
+        Err("Le dossier n'a pas pu être ouvert.".into())
+    }
+}
+
 pub fn ouvrir_dans_word(path: &str) -> bool {
     if path.is_empty() {
         return false;
     }
     ouvrir_document(Path::new(path))
+}
+
+/// Combien de temps attendre la preuve que Word a VRAIMENT ouvert le document.
+///
+/// Word pose un fichier verrou à côté du document dès qu'il le tient ouvert. C'est le seul
+/// signal multiplateforme dont nous disposons, et le finalizer s'en sert déjà pour savoir si
+/// un document est ouvert — on ne crée donc aucun mécanisme, on réutilise le sien.
+///
+/// Pourquoi cette attente existe : le code de retour d'un lancement n'atteste que
+/// l'ACCEPTATION de la demande par le système, jamais l'ouverture. Mesuré physiquement le
+/// 2026-10-13 — l'application annonçait « Document créé et ouvert dans Word » alors que Word
+/// n'affichait rien, parce qu'il avait cessé d'ouvrir quoi que ce soit. Un utilisateur qui
+/// arrive sans accompagnement lisait donc une phrase fausse comme première information.
+const ATTENTE_OUVERTURE_MS: u64 = 4000;
+const PAS_OUVERTURE_MS: u64 = 250;
+
+/// Le nom du fichier verrou que Word pose à côté d'un document.
+///
+/// Règle d'Office, et elle est particulière : `~$` suivi du nom PRIVÉ DE SES DEUX PREMIERS
+/// caractères. Elle vivait en double dans le finalizer ; elle vit ici une fois.
+pub fn nom_verrou(nom_document: &str) -> Option<String> {
+    if nom_document.chars().count() < 2 {
+        return None;
+    }
+    Some(format!("~${}", nom_document.chars().skip(2).collect::<String>()))
+}
+
+/// Word tient-il ce document ouvert, à cet instant ?
+///
+/// LIMITE de la règle d'Office, constatée en écrivant le banc : deux documents dont les noms
+/// ne diffèrent que par leurs DEUX PREMIERS caractères partagent le même nom de verrou —
+/// « D6.docx » et « D7.docx » donnent tous deux « ~$.docx ». L'un ouvert, l'autre se dira donc
+/// ouvert aussi. Ce défaut est celui de la convention Office, il préexiste à ce cycle
+/// (`documents_versionnables` s'en servait déjà), et on ne le corrige pas en inventant une
+/// autre règle : on ne saurait plus lire les verrous que Word pose réellement. La conséquence
+/// est bornée — un document peut se dire ouvert à tort, jamais fermé à tort — donc elle ne
+/// peut pas produire un « ouvert dans Word » là où rien n'est ouvert du tout.
+pub fn word_tient_le_document(path: &Path) -> bool {
+    let (Some(dir), Some(nom)) = (path.parent(), path.file_name()) else { return false };
+    match nom_verrou(&nom.to_string_lossy()) {
+        Some(v) => dir.join(v).exists(),
+        None => false,
+    }
+}
+
+/// Demande l'ouverture, puis ATTEND la confirmation. Rend `true` seulement si Word tient
+/// réellement le document. Faute de confirmation, l'appelant ne doit pas dire qu'il est ouvert.
+pub fn ouvrir_et_confirmer(path: &Path) -> bool {
+    if !ouvrir_document(path) {
+        return false;
+    }
+    let mut attendu = 0;
+    while attendu < ATTENTE_OUVERTURE_MS {
+        if word_tient_le_document(path) {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(PAS_OUVERTURE_MS));
+        attendu += PAS_OUVERTURE_MS;
+    }
+    // Une dernière lecture : le verrou peut apparaître juste à la fin de l'attente.
+    word_tient_le_document(path)
 }
 
 /// Confie le document au système pour qu'il l'ouvre dans Word. macOS vise le bundle de
@@ -763,7 +846,8 @@ pub fn new_document(work_folders: &[String], record_id: &str) -> Result<serde_js
                     let _ = fs::remove_file(&path);
                     format!("Le document n'a pas pu être créé : {}", e)
                 })?;
-                let opened = ouvrir_document(&path);
+                // On ne dit « ouvert dans Word » que si Word le tient vraiment.
+                let opened = ouvrir_et_confirmer(&path);
                 return Ok(serde_json::json!({
                     "path": path.to_string_lossy(), "name": name, "folder": folder, "opened_in_word": opened
                 }));

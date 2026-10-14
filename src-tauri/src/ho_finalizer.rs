@@ -34,6 +34,12 @@ const REGISTRY_URL: &str = match option_env!("HO_REGISTRY_URL") {
     Some(v) => v,
     None => "https://registry.humanorigin.io",
 };
+// Destination de VÉRIFICATION, compilée elle aussi. Elle n'apparaît que dans un lien que
+// l'utilisateur copie lui-même : rien n'y est envoyé par l'application.
+const VERIFY_URL: &str = match option_env!("HO_VERIFY_URL") {
+    Some(v) => v,
+    None => "https://verify.humanorigin.io",
+};
 // Débounce : on ne lit pas un fichier que Word vient d'écrire. Ce n'est PAS un délai
 // d'éligibilité — un document reste finalisable des heures ou des jours après sa sauvegarde.
 const SETTLE_MS: u64 = 1200;
@@ -800,8 +806,8 @@ impl Finalizer {
                 if name.chars().count() < 2 {
                     continue;
                 }
-                let verrou: String = format!("~${}", name.chars().skip(2).collect::<String>());
-                if !dir.join(&verrou).exists() {
+                // La règle du verrou Word vit dans ho_word_setup, une seule fois.
+                if !crate::ho_word_setup::word_tient_le_document(&p) {
                     continue; // pas ouvert dans Word
                 }
                 out.push(serde_json::json!({
@@ -811,6 +817,70 @@ impl Finalizer {
             }
         }
         out
+    }
+
+    /// DOCUMENTS RÉCENTS DÉTECTÉS. Ce n'est pas un historique, et le libellé de l'écran le dit.
+    ///
+    /// La liste est DÉRIVÉE des fichiers présents dans les dossiers surveillés : aucun nom,
+    /// aucun chemin, aucune date n'est mémorisé ailleurs. Rien à migrer, rien à réécrire, et
+    /// rien qui puisse mentir — si un dossier disparaît, la liste se vide, ce qui est la
+    /// vérité. Un historique mémorisé, lui, aurait continué d'afficher des documents absents.
+    ///
+    /// Un document n'y figure que si une preuve a été DÉPOSÉE pour lui. Triés du plus
+    /// récemment écrit au plus ancien, et plafonnés.
+    pub fn documents_recents(&self, max: usize) -> Vec<serde_json::Value> {
+        let cfg = self.config();
+        let mut trouves: Vec<(std::time::SystemTime, serde_json::Value)> = vec![];
+        for folder in cfg.folders.iter() {
+            let dir = PathBuf::from(folder);
+            let Ok(entries) = fs::read_dir(&dir) else { continue };
+            for e in entries.flatten() {
+                let p = e.path();
+                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if !name.ends_with(".docx") || name.starts_with("~$") {
+                    continue;
+                }
+                let Some(xml) = read_custom_part(&p) else { continue };
+                let Some(m) = parse_marker(&xml) else { continue };
+                if !self.already(&m.record_id) {
+                    continue; // aucune preuve déposée : ce n'est pas un document prouvé
+                }
+                let quand = e.metadata().and_then(|md| md.modified()).unwrap_or(std::time::UNIX_EPOCH);
+                trouves.push((quand, serde_json::json!({
+                    "record_id": m.record_id,
+                    "name": name.trim_end_matches(".docx"),
+                    // Ouvert dans Word ou non : constaté par le verrou, jamais supposé.
+                    "open_in_word": crate::ho_word_setup::word_tient_le_document(&p),
+                })));
+            }
+        }
+        trouves.sort_by(|a, b| b.0.cmp(&a.0));
+        trouves.into_iter().take(max).map(|(_, v)| v).collect()
+    }
+
+    /// Le LIEN DE VÉRIFICATION d'un Record, construit localement.
+    ///
+    /// La clé de déchiffrement vit dans le document, et elle est déjà destinée à voyager avec
+    /// lui — c'est le dessin du produit. Ce lien la porte donc dans son fragment, et c'est
+    /// exactement pour cela qu'il n'est JAMAIS envoyé nulle part : il est calculé ici, écrit
+    /// dans le presse-papiers sur geste explicite, et il ne traverse pas l'interface. Aucune
+    /// mesure, aucune requête, aucun journal ne le voit.
+    pub fn lien_verification(&self, record_id: &str) -> Option<String> {
+        let chemin = self.chemin_versionnable(record_id)?;
+        let xml = read_custom_part(&chemin)?;
+        let locator = prop(&xml, "HOLocator")?;
+        let parts: Vec<&str> = locator.split('.').collect();
+        if parts.len() != 3 || parts[0] != LOCATOR_PREFIX || parts[1] != record_id {
+            return None;
+        }
+        // La clé est reprise TELLE QUELLE depuis le document : aucune réécriture, aucun
+        // réencodage, donc aucune façon de produire un lien qui ne corresponde pas.
+        Some(format!("{}/?record={}#k={}", VERIFY_URL.trim_end_matches('/'), parts[1], parts[2]))
+    }
+
+    /// Le dossier qui contient un document prouvé.
+    pub fn dossier_du_record(&self, record_id: &str) -> Option<PathBuf> {
+        self.chemin_versionnable(record_id)?.parent().map(|p| p.to_path_buf())
     }
 
     /// Le document versionnable désigné par son `record_id`, dans les dossiers autorisés.
@@ -929,6 +999,98 @@ mod incident_tests {
             sortie.write_all(&buf).unwrap();
         }
         sortie.finish().unwrap().into_inner()
+    }
+
+    /// LA RÈGLE DU VERROU WORD, qui est particulière et qui vivait en double.
+    #[test]
+    fn le_nom_du_verrou_word_suit_la_regle_d_office() {
+        use crate::ho_word_setup::nom_verrou;
+        // `~$` suivi du nom PRIVÉ DE SES DEUX PREMIERS caractères. Ce n'est pas `~$` + nom.
+        assert_eq!(nom_verrou("Rapport.docx").as_deref(), Some("~$pport.docx"));
+        assert_eq!(nom_verrou("ab.docx").as_deref(), Some("~$.docx"));
+        // Trop court pour que la règle s'applique : on ne devine pas un nom de verrou.
+        assert_eq!(nom_verrou("a"), None);
+        assert_eq!(nom_verrou(""), None);
+    }
+
+    /// DOCUMENTS DÉTECTÉS : plafonnés, triés, et seulement ceux qui ont une preuve.
+    #[test]
+    fn les_documents_recents_sont_plafonnes_tries_et_prouves() {
+        let dir = bac();
+        let f = Finalizer::new(dir.join("etat"));
+        f.set_config(&FinalizerConfig {
+            folders: vec![dir.to_string_lossy().to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+
+        // Sept documents prouvés, écrits dans l'ordre, plus un SANS preuve déposée.
+        for i in 1..=7 {
+            let rid = format!("HO-recent000000{}", i);
+            let base = crate::ho_word_setup::bootstrap_docx(
+                &[dir.to_string_lossy().to_string()], &rid).unwrap();
+            let doc = ajoute_marqueur(&base, &format!("ho1.{}.{}", rid, b64u(&[3u8; 32])));
+            fs::write(dir.join(format!("Doc{}.docx", i)), &doc).unwrap();
+            f.remember(rid);
+            std::thread::sleep(std::time::Duration::from_millis(12));
+        }
+        let rid_sans = "HO-sanspreuve01";
+        let base_sans = crate::ho_word_setup::bootstrap_docx(
+            &[dir.to_string_lossy().to_string()], rid_sans).unwrap();
+        let sans = ajoute_marqueur(&base_sans, &format!("ho1.{}.{}", rid_sans, b64u(&[3u8; 32])));
+        fs::write(dir.join("Z-sans-preuve.docx"), &sans).unwrap();
+
+        let r = f.documents_recents(5);
+        assert_eq!(r.len(), 5, "cinq au plus, c'est le plafond du produit");
+        let noms: Vec<String> = r.iter().map(|d| d["name"].as_str().unwrap().to_string()).collect();
+        assert_eq!(noms, vec!["Doc7", "Doc6", "Doc5", "Doc4", "Doc3"],
+            "du plus récemment écrit au plus ancien");
+        assert!(!noms.iter().any(|n| n.contains("sans-preuve")),
+            "un document sans preuve déposée n'est pas un document prouvé");
+        assert!(r.iter().all(|d| d["open_in_word"] == serde_json::json!(false)),
+            "aucun verrou Word posé : aucun document ne doit se dire ouvert");
+
+        // Le verrou de Word apparaît : le document le dit, et lui seul.
+        // Verrou de « Doc7.docx » : `~$` + le nom privé de ses deux premiers caractères.
+        fs::write(dir.join("~$c7.docx"), b"x").unwrap();
+        let r = f.documents_recents(5);
+        let d7 = r.iter().find(|d| d["name"] == "Doc7").unwrap();
+        assert_eq!(d7["open_in_word"], serde_json::json!(true), "constaté par le verrou");
+        let d6 = r.iter().find(|d| d["name"] == "Doc6").unwrap();
+        assert_eq!(d6["open_in_word"], serde_json::json!(false));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// LE LIEN DE VÉRIFICATION, et ce qu'il ne doit jamais devenir.
+    #[test]
+    fn le_lien_de_verification_reprend_la_cle_du_document() {
+        let dir = bac();
+        let f = Finalizer::new(dir.join("etat"));
+        f.set_config(&FinalizerConfig {
+            folders: vec![dir.to_string_lossy().to_string()],
+            ..Default::default()
+        })
+        .unwrap();
+        let rid = "HO-lienverif0001";
+        let base = crate::ho_word_setup::bootstrap_docx(
+            &[dir.to_string_lossy().to_string()], rid).unwrap();
+        let doc = ajoute_marqueur(&base, &format!("ho1.{}.{}", rid, b64u(&[3u8; 32])));
+        fs::write(dir.join("Preuve.docx"), &doc).unwrap();
+        f.remember(rid.to_string());
+
+        let lien = f.lien_verification(rid).expect("le lien doit se construire");
+        let cle_attendue = b64u(&[3u8; 32]);
+        assert_eq!(lien, format!("{}/?record={}#k={}", VERIFY_URL, rid, cle_attendue));
+        // La clé est reprise TELLE QUELLE : aucun réencodage ne peut produire un lien faux.
+        assert!(lien.contains(&cle_attendue), "la clé du document, à l'identique");
+        // Elle vit dans le FRAGMENT : un serveur ne la reçoit jamais, par construction HTTP.
+        let (avant, apres) = lien.split_once('#').unwrap();
+        assert!(!avant.contains(&cle_attendue), "la clé ne doit jamais être dans la partie envoyée");
+        assert!(apres.starts_with("k="));
+
+        // Un identifiant qui n'est pas celui du document ne produit rien.
+        assert_eq!(f.lien_verification("HO-autre00000001"), None);
+        let _ = fs::remove_dir_all(&dir);
     }
 
     fn bac() -> PathBuf {
@@ -1068,6 +1230,30 @@ mod tests {
     /// échouer ; et si le code produit cesse de porter le motif, `find` se rabat
     /// silencieusement sur une occurrence située dans un banc au lieu d'échouer. Tout le
     /// code produit précède le premier module de test, d'où la coupe.
+    /// LE LIEN DE VÉRIFICATION NE REMONTE JAMAIS À L'INTERFACE.
+    ///
+    /// Il porte la clé de déchiffrement du Record. S'il traversait la webview — ne serait-ce
+    /// que comme valeur de retour — il deviendrait lisible par tout ce qui s'exécute dedans,
+    /// et consignable par tout ce qui l'observe. La commande le construit donc, l'écrit dans
+    /// le presse-papiers, et ne rend qu'un succès. Ce contrôle lit la SOURCE : une signature
+    /// qui changerait pour rendre une chaîne le ferait tomber.
+    #[test]
+    fn la_commande_de_copie_ne_rend_jamais_le_lien() {
+        const MAIN: &str = include_str!("main.rs");
+        let f = fonction(MAIN, "fn ho_copy_verification_link(");
+        assert!(f.contains("-> Result<(), String>"),
+            "la commande ne doit rendre qu'un succès, jamais le lien");
+        assert!(f.contains("write_text(lien)"),
+            "le lien va au presse-papiers, et nulle part ailleurs");
+        for interdit in ["Ok(lien", "return lien", "json!({ \"lien", "\"link\""] {
+            assert!(!f.contains(interdit), "« {} » ferait fuiter le lien vers l'interface", interdit);
+        }
+        // Et aucune sortie réseau ne doit exister dans ce chemin : pas de dépôt, pas de mesure.
+        for interdit in ["put_record", "http", "fetch", "incrementer", "compteur"] {
+            assert!(!f.contains(interdit), "« {} » n'a rien à faire dans une copie locale", interdit);
+        }
+    }
+
     fn code_produit() -> &'static str {
         const ENTIER: &str = include_str!("ho_finalizer.rs");
         let i = ENTIER.find("\n#[cfg(test)]\nmod ").expect("au moins un module de test");

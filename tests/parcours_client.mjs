@@ -158,6 +158,22 @@ function faireBackend(monde) {
           incident: monde.incident, last_deposit: monde.dernierDepot,
           last_proof_at: monde.dernierePreuve };
         case "ho_versionable_documents": return monde.documents;
+        // Documents DÉTECTÉS : cinq au plus, et chacun dit s'il est ouvert dans Word ou non.
+        // Le natif plafonne ; le double le fait aussi pour que le banc voie la même chose.
+        case "ho_recent_documents":
+          return monde.documents.slice(0, 5).map((d) => ({
+            record_id: d.record_id, name: d.name, open_in_word: d.open_in_word !== false }));
+        // Les trois accès passent par l'IDENTIFIANT : aucun chemin ne traverse l'interface.
+        case "ho_open_document_by_record":
+          journal.push(["ouvre", args.recordId]);
+          if (!monde.ouvertureMarche) throw "Ce document n'a pas pu être ouvert.";
+          return null;
+        case "ho_open_folder_by_record":
+          journal.push(["dossier", args.recordId]); return null;
+        case "ho_copy_verification_link":
+          journal.push(["copie", args.recordId]);
+          if (monde.copieMarche === false) throw "Le lien n'a pas pu être copié.";
+          return null;
         case "ho_default_work_folder": return "/d/HumanOrigin";
         case "ho_check_work_folder": return { ok: true };
         case "ho_finalizer_set_folders": monde.dossiers = args.folders; return null;
@@ -183,7 +199,7 @@ function faireBackend(monde) {
 const mondeNeuf = (p = {}) => ({ connecte: true, complementInstalle: true,
   dossiers: ["/d/HumanOrigin"], documents: [], crees: [], compteur: 0, dernierePreuve: null,
   wordSOuvre: true, ouvertureMarche: true, sourceIntacte: true, choixFichier: null,
-  incident: null, dernierDepot: null, ...p });
+  incident: null, dernierDepot: null, copieMarche: true, ...p });
 
 // ─────────────────────────────────────────────────────── le banc
 let graine = 0;
@@ -235,7 +251,7 @@ const SCENARIOS = {
     const b = await demarrer(mondeNeuf());
     ck("au lancement, l'accueil", b.ecran().includes("Créez votre prochain document"));
     ck("aucun document n'est annoncé comme ouvert dans Word",
-      !b.ecran().includes("Ouverts dans Word"));
+      !b.ecran().includes("récents détectés"));
 
     await b.cliquer("Nouveau document");
     ck("le document est créé et le message le dit",
@@ -248,7 +264,7 @@ const SCENARIOS = {
 
     await b.revenirDeWord();
     ck("au retour de Word, l'accueil connaît le document finalisé",
-      b.ecran().includes("Ouverts dans Word") && b.ecran().includes(nom), b.ecran().slice(0, 90));
+      b.ecran().includes("récents détectés") && b.ecran().includes(nom), b.ecran().slice(0, 90));
     ck("AUCUNE navigation forcée : on est toujours sur l'accueil",
       b.ecran().includes("Créez votre prochain document")
       && !b.ecran().includes("Continuer ce document"));
@@ -380,6 +396,87 @@ const SCENARIOS = {
       detail: { etape: "remplacement", os_error: 13 } } }));
     ck("un remplacement refusé pour une autre raison n'est pas une attente",
       !b.ecran().includes("Fermez Microsoft Word"));
+  },
+
+  /**
+   * ACCÈS AU DOCUMENT, À SON DOSSIER, À SA PREUVE — et la garde du partage.
+   *
+   * Avant ce cycle, aucun écran ne permettait d'ouvrir le document qu'on venait de prouver :
+   * le bouton existait mais cherchait un chemin que le natif ne rend pas, donc il ne
+   * s'affichait jamais. Les trois accès passent désormais par l'IDENTIFIANT du Record.
+   */
+  async acces_et_partage(ck) {
+    const docs = Array.from({ length: 7 }, (_, i) => ({
+      name: "D" + (i + 1), record_id: "HO-00000000000" + (i + 1), open_in_word: i === 0 }));
+
+    let b = await demarrer(mondeNeuf({ documents: docs }));
+    ck("le libellé annonce des documents DÉTECTÉS, pas un historique",
+      b.ecran().includes("récents détectés") && !b.ecran().includes("historique"),
+      b.ecran().slice(0, 80));
+    ck("cinq documents au plus sont listés",
+      b.actions().filter((x) => /^D\d/.test(x.l)).length === 5,
+      b.actions().filter((x) => /^D\d/.test(x.l)).map((x) => x.l).join(" | "));
+    ck("celui que Word tient ouvert est marqué comme tel",
+      b.actions().some((x) => /^D1 · ouvert dans Word/.test(x.l)),
+      b.actions().map((x) => x.l).join(" | "));
+    ck("et les autres ne le sont pas",
+      !b.actions().some((x) => /^D2 · ouvert/.test(x.l)));
+
+    await b.cliquer("D1");
+    ck("les trois accès sont offerts sur le document choisi",
+      ["Ouvrir ce document", "Ouvrir son dossier", "Copier le lien de vérification"]
+        .every((l) => b.actions().some((x) => x.l === l)),
+      b.actions().map((x) => x.l).join(" | "));
+    ck("la conséquence du partage est visible AVANT toute copie",
+      b.ecran().includes("Toute personne disposant de ce lien peut consulter cette preuve"),
+      b.ecran().slice(0, 90));
+
+    await b.cliquer("Ouvrir ce document");
+    ck("l'ouverture passe par l'identifiant du Record",
+      b.back.journal.some((l) => l[0] === "ouvre" && l[1] === "HO-000000000001"));
+    ck("et JAMAIS par la porte qui prend un chemin",
+      !b.back.journal.some((l) => l[1] === "ho_open_document"),
+      b.back.journal.filter((l) => l[0] === "invoke").map((l) => l[1]).join(" "));
+
+    await b.cliquer("Ouvrir son dossier");
+    ck("le dossier aussi est désigné par l'identifiant",
+      b.back.journal.some((l) => l[0] === "dossier" && l[1] === "HO-000000000001"));
+
+    await b.cliquer("Copier le lien de vérification");
+    ck("la copie est demandée au natif, par identifiant",
+      b.back.journal.some((l) => l[0] === "copie" && l[1] === "HO-000000000001"));
+    ck("et la confirmation redit la conséquence au moment où elle devient réelle",
+      b.ecran().includes("Lien copié") &&
+      b.ecran().includes("Toute personne disposant de ce lien"),
+      b.ecran().slice(0, 110));
+
+    // Une copie qui échoue le DIT, et ne laisse pas croire que le lien est dans le presse-papiers.
+    b = await demarrer(mondeNeuf({ documents: docs, copieMarche: false }));
+    await b.cliquer("D1");
+    await b.cliquer("Copier le lien de vérification");
+    ck("une copie qui échoue ne prétend pas avoir réussi",
+      !b.ecran().includes("Lien copié"), b.ecran().slice(0, 90));
+  },
+
+  /**
+   * A — « ouvert dans Word » ne s'écrit que si Word le tient vraiment.
+   *
+   * Mesuré physiquement le 2026-10-13 : l'application annonçait « Document créé et ouvert
+   * dans Word » alors que Word n'affichait rien. Le natif confirme désormais par le fichier
+   * verrou ; l'écran, lui, ne doit jamais devancer cette confirmation.
+   */
+  async ouverture_jamais_affirmee(ck) {
+    let b = await demarrer(mondeNeuf());
+    await b.cliquer("Nouveau document");
+    ck("ouverture confirmée : on peut le dire",
+      b.ecran().includes("Document créé et ouvert dans Word"), b.ecran().slice(0, 80));
+
+    b = await demarrer(mondeNeuf({ wordSOuvre: false }));
+    await b.cliquer("Nouveau document");
+    ck("ouverture NON confirmée : on ne dit jamais « ouvert dans Word »",
+      !b.ecran().includes("ouvert dans Word"), b.ecran().slice(0, 90));
+    ck("et on dit ce qu'il reste à faire",
+      b.ecran().includes("Ouvrez-le dans Word"), b.ecran().slice(0, 90));
   },
 
   /** Les Réglages sont exclus : rien n'est relu, rien n'est redessiné sous les doigts. */

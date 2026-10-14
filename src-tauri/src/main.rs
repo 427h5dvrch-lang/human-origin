@@ -2137,6 +2137,69 @@ fn ho_versionable_documents() -> Vec<serde_json::Value> {
     ho_finalizer::Finalizer::new(ho_finalizer_dir()).documents_versionnables()
 }
 
+/// DOCUMENTS RÉCENTS DÉTECTÉS, cinq au plus.
+///
+/// « Détectés » et non « historique » : la liste est dérivée des fichiers réellement présents
+/// dans les dossiers surveillés, et l'écran le dit dans ces termes. Rien n'est mémorisé, donc
+/// rien ne peut survivre à la disparition d'un document.
+#[tauri::command]
+fn ho_recent_documents() -> Vec<serde_json::Value> {
+    ho_finalizer::Finalizer::new(ho_finalizer_dir()).documents_recents(5)
+}
+
+/// Ouvre un document prouvé, désigné par son IDENTIFIANT.
+///
+/// Le chemin est résolu côté natif et ne traverse jamais l'interface : un chemin système n'est
+/// pas un concept d'écran ici, et l'exposer ferait de cette porte un « ouvre ce que tu veux ».
+#[tauri::command]
+fn ho_open_document_by_record(record_id: String) -> Result<(), String> {
+    if !ho_capability::record_id_valide(&record_id) {
+        return Err("Identifiant invalide.".into());
+    }
+    let chemin = ho_finalizer::Finalizer::new(ho_finalizer_dir())
+        .chemin_versionnable(&record_id)
+        .ok_or("Ce document n’a pas été retrouvé parmi vos dossiers HumanOrigin.")?;
+    ho_word_setup::ouvrir_document_demande(&chemin.to_string_lossy())
+}
+
+/// Révèle le dossier d'un document prouvé, lui aussi désigné par son identifiant.
+#[tauri::command]
+fn ho_open_folder_by_record(record_id: String) -> Result<(), String> {
+    if !ho_capability::record_id_valide(&record_id) {
+        return Err("Identifiant invalide.".into());
+    }
+    let dossier = ho_finalizer::Finalizer::new(ho_finalizer_dir())
+        .dossier_du_record(&record_id)
+        .ok_or("Ce document n’a pas été retrouvé parmi vos dossiers HumanOrigin.")?;
+    ho_word_setup::ouvrir_dossier(&dossier)
+}
+
+/// COPIE le lien de vérification dans le presse-papiers. Il n'est PAS rendu à l'interface.
+///
+/// Ce lien porte la clé de déchiffrement du Record dans son fragment — c'est le dessin du
+/// produit, la clé voyage avec le document. Mais une action « copier » crée un chemin de
+/// diffusion pour un secret, donc elle est tenue serrée :
+///
+///   · le lien est construit ICI, à partir du document, et n'est jamais envoyé nulle part ;
+///   · il ne remonte pas au frontend : la webview ne voit jamais la clé, seulement un succès ;
+///   · il ne quitte le poste que par le presse-papiers, et seulement sur geste explicite ;
+///   · l'application ne porte aucune télémétrie, donc rien ne peut en consigner la trace.
+///
+/// L'écran, lui, doit dire ce que ce lien permet. C'est son rôle, pas celui de cette fonction.
+#[tauri::command]
+fn ho_copy_verification_link(app: tauri::AppHandle, record_id: String) -> Result<(), String> {
+    use tauri::ClipboardManager;
+    if !ho_capability::record_id_valide(&record_id) {
+        return Err("Identifiant invalide.".into());
+    }
+    let lien = ho_finalizer::Finalizer::new(ho_finalizer_dir())
+        .lien_verification(&record_id)
+        .ok_or("Le lien de vérification n’a pas pu être construit depuis ce document.")?;
+    app.clipboard_manager()
+        .write_text(lien)
+        .map_err(|_| "Le presse-papiers n’a pas pu être utilisé.".to_string())
+}
+
 /// Mesure l'état source d'un document versionnable, sans rien créer.
 /// Sert à décider, AVANT toute réservation, s'il faut avertir que la source a changé.
 #[tauri::command]
@@ -2237,7 +2300,10 @@ async fn ho_new_version(
                 return Err(format!("La nouvelle version n’a pas pu être enregistrée : {}", e));
             }
             // 13 : ouvrir dans Word.
-            let ouvert = ho_word_setup::ouvrir_dans_word(ecrit.get("path").and_then(|p| p.as_str()).unwrap_or(""));
+            // Confirmé par le verrou Word, jamais supposé : même règle qu'à la création.
+            let ouvert = ho_word_setup::ouvrir_et_confirmer(std::path::Path::new(
+                ecrit.get("path").and_then(|p| p.as_str()).unwrap_or(""),
+            ));
             let mut v = ecrit;
             v["opened_in_word"] = serde_json::Value::Bool(ouvert);
             v["source_matches_predecessor_final_state"] = match correspondance {
@@ -2364,6 +2430,10 @@ async fn ho_new_document_inner(
             ho_finalizer_get_folders,
             ho_finalizer_set_folders,
             ho_versionable_documents,
+            ho_recent_documents,
+            ho_open_document_by_record,
+            ho_open_folder_by_record,
+            ho_copy_verification_link,
             ho_version_source_state,
             ho_new_version,
             ho_finalizer_status,
