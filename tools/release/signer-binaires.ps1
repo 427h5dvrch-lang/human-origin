@@ -37,6 +37,11 @@ Import-Module TrustedSigning -ErrorAction Stop
 # « premiers » n'étaient pas le même, donc un dossier était signé deux fois et l'autre jamais.
 # Mesuré sur le run 38247618443 — les sidecars de `src-tauri/binaries`, ceux que Tauri installe
 # réellement, ressortaient NotSigned.
+# DÉLAI du service de signature. Le défaut de 300 s a expiré deux fois d'affilée sur main les
+# 2026-10-14 et 15 — runs 38636832622 et 38639353939 — en signant les deux sidecars, et le
+# service lui-même indique le paramètre à augmenter. Ce n'est pas une attente ajoutée : c'est
+# la patience accordée à un service distant avant de déclarer l'échec. Un build qui tombe pour
+# cause de lenteur du signeur ne dit rien de notre code, et il coûte une passe entière.
 $dossiers = $cibles | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique
 foreach ($d in $dossiers) {
   Write-Host "  dossier : $d"
@@ -48,7 +53,8 @@ foreach ($d in $dossiers) {
     -FilesFolderFilter "exe" `
     -FileDigest "SHA256" `
     -TimestampRfc3161 "http://timestamp.acs.microsoft.com" `
-    -TimestampDigest "SHA256"
+    -TimestampDigest "SHA256" `
+    -Timeout 900
 }
 
 # Contrôle immédiat : on ne quitte pas ce script sur une promesse.
