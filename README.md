@@ -1,74 +1,45 @@
-# HumanOrigin™ (Core)
-### La preuve d'effort à l'ère synthétique.
+# HumanOrigin
 
-> **Standard de preuve d’origine humaine par analyse comportementale locale.**
-> *Local-first keystroke dynamics observer & certification layer.*
+**0.3.6** · macOS Apple Silicon et Windows 64 bits · avec Microsoft Word pour ordinateur.
 
----
-
-## 📥 Téléchargement (V1.0)
-
-Ceci est une version Alpha fonctionnelle.
-
-- **🍏 Pour Mac (Apple Silicon & Intel) :** [Télécharger le .dmg](LIEN_VERS_TON_DMG)
-- **🪟 Pour Windows (10/11) :** [Télécharger le .exe](LIEN_VERS_TON_EXE)
-
-*(Note : Le logiciel n'est pas encore signé numériquement. Sur Mac, faites Clic-droit > Ouvrir. Sur Windows, acceptez l'exécution via SmartScreen).*
+Téléchargement : **[humanorigin.io](https://humanorigin.io/telecharger)**
 
 ---
 
-## 📜 Le Manifeste
+## Ce que fait HumanOrigin
 
-Nous sommes entrés dans l'ère de l'abondance synthétique. Si le résultat final d'une IA est indiscernable de celui d'un humain, alors la valeur ne réside plus dans le résultat, mais dans le **processus**.
+HumanOrigin ne cherche pas à déterminer après coup si un contenu a été fait par une personne
+ou par une intelligence artificielle. Il observe une partie de la création **pendant qu'elle se
+produit**, conserve une preuve de ce qu'il a effectivement observé, puis lie cette preuve au
+fichier final.
 
-**HumanOrigin** n'est pas un outil de détection d'IA. C'est une infrastructure de **Preuve d'Effort**.
-Nous construisons le standard technique qui permet à un créateur de prouver, de manière cryptographique et infalsifiable, qu'il a passé du temps, réfléchi, hésité et construit son œuvre lui-même.
+Le destinataire d'un document reçoit un lien. Il ouvre la preuve et voit ce qui a été observé,
+ce qui a été vérifié, et ce qui reste inconnu.
 
-### Nos 3 Piliers
+## Ce qu'il ne fait pas
 
-1.  **La Preuve par le Geste :** L'humain a un rythme, une cadence, des pauses cognitives. Nous capturons cette signature temporelle unique (le "comment") pour certifier l'origine (le "quoi").
-2.  **Souveraineté Radicale (Zero-Knowledge) :** Vos données biométriques ne quittent jamais votre machine. Seul le certificat mathématique final est partagé.
-3.  **Neutralité :** Nous certifions la réalité physique de l'effort de production, pas la qualité des idées.
+HumanOrigin **ne détecte pas l'intelligence artificielle**. Une preuve HumanOrigin ne certifie
+pas qu'un document est « 100 % humain », ne prouve pas l'identité de la personne qui a écrit,
+ne prouve pas l'absence d'utilisation d'une intelligence artificielle, et ne dit rien de la
+vérité, de la qualité ni de l'originalité du contenu.
 
----
+Ce que la preuve porte, elle le porte avec ses limites, et elle les affiche.
 
-## ⚙️ Fonctionnement Technique
+## Installation
 
-HumanOrigin™ est un agent logiciel desktop (Rust/Tauri) fonctionnant en arrière-plan. Il observe la **dynamique de frappe** lors de l’écriture afin de produire, à la demande explicite de l’utilisateur, un certificat de compatibilité avec une origine humaine.
+| | |
+|---|---|
+| macOS | Apple Silicon. Application signée Developer ID et notarisée par Apple. |
+| Windows | 64 bits. Installateur signé par DAZEAS CORP. |
+| Word | Microsoft Word pour ordinateur, connecté une seule fois depuis l'application. |
 
-### 🚫 Règle d’Or (Non négociable)
+Les deux installateurs se téléchargent depuis [humanorigin.io](https://humanorigin.io/telecharger).
 
-* ❌ **Pas de plugin applicatif :** Aucune intrusion dans Word, Chrome, Notion, etc.
-* ❌ **Pas de cloud :** Aucun envoi réseau requis. Tout est local.
-* ❌ **Pas d’analyse de contenu :** Le sens des mots est ignoré (KeyChar non capturé).
-* ❌ **Pas de détection d’IA spécifique :** On certifie l’humain, on ne chasse pas le robot.
-* ❌ **Pas d’auto-certification :** L’utilisateur décide toujours quand observer et quand certifier.
+## Vérifier une preuve
 
-### 🧠 Principe fondamental
-
-Un acte d’écriture humaine laisse des traces motrices et temporelles observables. Le logiciel traite le texte comme une **trace temporelle**, jamais comme un message sémantique.
-
-### 🛠 Tech Stack
-
-* **Core Logic :** Rust (performance, sûreté mémoire, OS-level).
-* **App Framework :** Tauri 2.x (architecture légère).
-* **OS Hooks (Global) :**
-    * macOS : CoreGraphics + Accessibility API.
-    * Windows : Win32 API (SetWindowsHookEx).
-* **Cryptographie :** Chiffrement Argon2 & AES-256 GCM local.
+Un destinataire n'a besoin ni de compte ni d'installation : la vérification se fait sur son
+appareil, à partir du lien reçu ou du fichier qu'on lui a envoyé.
 
 ---
 
-## 🚀 Utilisation (Mode d'emploi)
-
-HumanOrigin™ repose sur deux actions strictement distinctes :
-
-1.  **Activation (Start) :** Démarre l’observation de la dynamique de frappe. Aucune sortie n'est produite à ce stade.
-2.  **Génération (Stop & Finalize) :** Produit volontairement le certificat, stoppe l’observation et détruit les données temporaires.
-
-*Sans activation explicite, aucune observation n’a lieu.*
-
----
-
-**© 2024-2025 HumanOrigin Project.**
-*Construit pour restaurer la confiance.*
+© 2024–2026 HumanOrigin.
