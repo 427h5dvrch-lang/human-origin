@@ -1,7 +1,7 @@
 # Landing Page — V1
 
-> Phrase boussole : **« HumanOrigin prouve que vous avez travaillé sur ce document — pas ce que vous avez écrit. »**
-> Compass line: **“HumanOrigin proves you worked on this document — not what you wrote.”**
+> Phrase boussole : **« HumanOrigin établit qu'un travail a été observé sur ce document — ni son contenu, ni son auteur. »**
+> Compass line: **“HumanOrigin establishes that work was observed on this document — neither its content nor its author.”**
 
 ---
 
@@ -10,7 +10,7 @@
 ### Hero
 
 # HumanOrigin
-## Prouvez que vous avez vraiment travaillé sur votre document.
+## Montrez le travail observé derrière votre document.
 
 HumanOrigin observe votre activité pendant que vous travaillez et la lie cryptographiquement à votre document final. Vous obtenez une preuve portable, vérifiable par n'importe qui.
 
@@ -37,7 +37,7 @@ HumanOrigin traite localement le document pour calculer des empreintes et des in
 
 ### Pied de page
 
-*HumanOrigin prouve que vous avez travaillé sur ce document — pas ce que vous avez écrit.*
+*HumanOrigin établit qu'un travail a été observé sur ce document — ni son contenu, ni son auteur.*
 
 ---
 
@@ -46,7 +46,7 @@ HumanOrigin traite localement le document pour calculer des empreintes et des in
 ### Hero
 
 # HumanOrigin
-## Prove you actually worked on your document.
+## Show the work observed behind your document.
 
 HumanOrigin observes your activity while you work and cryptographically links it to your final document. You get a portable proof anyone can verify.
 
@@ -73,4 +73,4 @@ HumanOrigin processes the document locally to compute fingerprints and change in
 
 ### Footer
 
-*HumanOrigin proves you worked on this document — not what you wrote.*
+*HumanOrigin establishes that work was observed on this document — neither its content nor its author.*

@@ -1,7 +1,7 @@
 # Guide créateur — V1
 
-> Phrase boussole : **« HumanOrigin prouve que vous avez travaillé sur ce document — pas ce que vous avez écrit. »**
-> Compass line: **“HumanOrigin proves you worked on this document — not what you wrote.”**
+> Phrase boussole : **« HumanOrigin établit qu'un travail a été observé sur ce document — ni son contenu, ni son auteur. »**
+> Compass line: **“HumanOrigin establishes that work was observed on this document — neither its content nor its author.”**
 
 ---
 
@@ -33,7 +33,7 @@ HumanOrigin traite localement le document pour calculer des empreintes et des in
 
 HumanOrigin prouve un processus de travail humain observé. Il **ne détecte pas l'IA**, et **ne certifie ni l'originalité, ni la vérité, ni l'auteur unique** du contenu.
 
-*HumanOrigin prouve que vous avez travaillé sur ce document — pas ce que vous avez écrit.*
+*HumanOrigin établit qu'un travail a été observé sur ce document — ni son contenu, ni son auteur.*
 
 ---
 
@@ -65,4 +65,4 @@ HumanOrigin processes the document locally to compute fingerprints and change in
 
 HumanOrigin proves an observed human work process. It **does not detect AI**, and **does not certify originality, factual truth, or sole authorship** of the content.
 
-*HumanOrigin proves you worked on this document — not what you wrote.*
+*HumanOrigin establishes that work was observed on this document — neither its content nor its author.*

@@ -1,7 +1,7 @@
 # Message de lancement contrôlé — V1
 
-> Phrase boussole : **« HumanOrigin prouve que vous avez travaillé sur ce document — pas ce que vous avez écrit. »**
-> Compass line: **“HumanOrigin proves you worked on this document — not what you wrote.”**
+> Phrase boussole : **« HumanOrigin établit qu'un travail a été observé sur ce document — ni son contenu, ni son auteur. »**
+> Compass line: **“HumanOrigin establishes that work was observed on this document — neither its content nor its author.”**
 
 ---
 
@@ -11,7 +11,7 @@
 
 Salut — je lance **HumanOrigin** en accès contrôlé.
 
-C'est un outil macOS qui prouve que vous avez réellement travaillé sur un document : il observe votre processus de travail et le lie cryptographiquement à votre fichier final. Le résultat est une preuve portable, vérifiable par n'importe qui.
+C'est un outil macOS qui établit qu'un travail a réellement été observé sur un document : il observe votre processus de travail et le lie cryptographiquement à votre fichier final. Le résultat est une preuve portable, vérifiable par n'importe qui.
 
 Pour être clair sur ce que c'est — et ce que ce n'est pas : **HumanOrigin ne détecte pas l'IA, ne certifie pas l'originalité ni la vérité du contenu, et ne prouve pas un auteur unique.** Il prouve un *processus humain observé*, pas la nature du texte.
 
@@ -24,7 +24,7 @@ J'aimerais beaucoup ton retour sur la clarté du parcours. Merci 🙏
 
 ### Version une ligne (post public contrôlé)
 
-HumanOrigin prouve que vous avez travaillé sur votre document — pas ce que vous avez écrit. Accès contrôlé macOS ouvert : [lien]
+HumanOrigin établit qu'un travail a été observé sur votre document — ni son contenu, ni son auteur. Accès contrôlé macOS ouvert : [lien]
 
 ---
 
@@ -34,7 +34,7 @@ HumanOrigin prouve que vous avez travaillé sur votre document — pas ce que vo
 
 Hi — I'm launching **HumanOrigin** in controlled access.
 
-It's a macOS tool that proves you actually worked on a document: it observes your work process and cryptographically links it to your final file. The result is a portable proof anyone can verify.
+It's a macOS tool that establishes that work was actually observed on a document: it observes your work process and cryptographically links it to your final file. The result is a portable proof anyone can verify.
 
 To be clear about what it is — and what it isn't: **HumanOrigin does not detect AI, does not certify originality or factual truth, and does not prove sole authorship.** It proves an *observed human process*, not the nature of the text.
 
@@ -47,4 +47,4 @@ I'd really value your feedback on how clear the flow is. Thanks 🙏
 
 ### One-line version (controlled public post)
 
-HumanOrigin proves you worked on your document — not what you wrote. Controlled macOS access now open: [link]
+HumanOrigin establishes that work was observed on your document — neither its content nor its author. Controlled macOS access now open: [link]

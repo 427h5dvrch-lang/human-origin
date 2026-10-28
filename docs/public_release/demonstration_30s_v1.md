@@ -1,7 +1,7 @@
 # Démonstration réelle — 32 secondes · V1
 
-> Phrase boussole : **« HumanOrigin prouve que vous avez travaillé sur ce document — pas ce que vous avez écrit. »**
-> Compass line: **“HumanOrigin proves you worked on this document — not what you wrote.”**
+> Phrase boussole : **« HumanOrigin établit qu'un travail a été observé sur ce document — ni son contenu, ni son auteur. »**
+> Compass line: **“HumanOrigin establishes that work was observed on this document — neither its content nor its author.”**
 
 Produit visé : **HumanOrigin Docs 0.3.6** (macOS Apple Silicon · Windows x64), le compagnon du
 volet Microsoft Word. Le travail se fait **dans Word** ; la fenêtre HumanOrigin répond à une
