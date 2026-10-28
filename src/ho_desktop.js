@@ -1313,7 +1313,11 @@ async function rubrique(nom, hote) {
       const refus = await invoke("ho_check_work_folder", { folder: choisi });
       if (refus) { say(msg, refus, true); return; }
       await invoke("ho_finalizer_set_folders", { folders: [choisi], registry: null });
-      hote.textContent = ""; rubrique(t("label.documents"), hote);
+      // L'IDENTIFIANT de la rubrique, jamais son libellé traduit : « Documents » ne
+      // correspond à aucune rubrique, et le redessin retombait dans le bloc de diagnostic
+      // en fin de fonction. Le dossier qui venait d'être choisi n'était donc jamais
+      // réaffiché : on lisait l'état de la surveillance sous le titre « Documents ».
+      hote.textContent = ""; await rubrique("documents", hote);
     };
     hote.appendChild(carteReglage(ICONES.dossier(17, ATONE),
       nomDeDossier(folders[0]) || t("settings.noFolder"), t("settings.docFolder"), action));

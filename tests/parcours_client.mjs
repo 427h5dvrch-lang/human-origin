@@ -175,7 +175,10 @@ function faireBackend(monde) {
           if (monde.copieMarche === false) throw "Le lien n'a pas pu être copié.";
           return null;
         case "ho_default_work_folder": return "/d/HumanOrigin";
-        case "ho_check_work_folder": return { ok: true };
+        // Contrat réel du natif : `Option<String>` — `null` quand le dossier est accepté,
+        // un message quand il est refusé. `{ ok: true }` était TRUTHY, donc tout choix de
+        // dossier passait pour un refus : aucun scénario ne pouvait en traverser un.
+        case "ho_check_work_folder": return monde.refusDossier || null;
         case "ho_finalizer_set_folders": monde.dossiers = args.folders; return null;
         case "ho_new_document": {
           const n = "Document HumanOrigin " + (monde.crees.length + 1) + ".docx";
@@ -199,7 +202,7 @@ function faireBackend(monde) {
 const mondeNeuf = (p = {}) => ({ connecte: true, complementInstalle: true,
   dossiers: ["/d/HumanOrigin"], documents: [], crees: [], compteur: 0, dernierePreuve: null,
   wordSOuvre: true, ouvertureMarche: true, sourceIntacte: true, choixFichier: null,
-  incident: null, dernierDepot: null, copieMarche: true, ...p });
+  incident: null, dernierDepot: null, copieMarche: true, refusDossier: null, ...p });
 
 // ─────────────────────────────────────────────────────── le banc
 let graine = 0;
@@ -510,6 +513,43 @@ const SCENARIOS = {
     ck("et le message est toujours affiché",
       b.ecran().includes("Document créé et ouvert dans Word"), b.ecran().slice(-120));
     i18n.setLangue("fr");
+  },
+
+  /**
+   * RÉGLAGES · CHANGER LE DOSSIER DE SES DOCUMENTS.
+   *
+   * La rubrique se redessine par son IDENTIFIANT, jamais par son libellé traduit. Mesuré le
+   * 2026-10-28 : le redessin était appelé avec « Documents » — le libellé — qui ne correspond
+   * à aucune rubrique connue. La section tombait alors dans le bloc de diagnostic, en fin de
+   * fonction : après avoir désigné un dossier, l'utilisateur lisait l'état de la surveillance
+   * sous le titre « Documents », et ne voyait JAMAIS le dossier qu'il venait de choisir.
+   *
+   * Le banc de langue ne pouvait pas l'attraper : il n'interdit que les COMPARAISONS sur un
+   * libellé français, pas un APPEL avec ce libellé.
+   */
+  async reglages_dossier_change(ck) {
+    const b = await demarrer(mondeNeuf());
+    await b.cliquer("Réglages").catch(async () => {
+      const roue = b.actions().find((x) => !x.l || x.l.length < 3);
+      if (roue) { await roue.n.click(); await b.reposer(); }
+    });
+    ck("les Réglages nomment le dossier des documents",
+      b.ecran().includes("Dossier de vos documents"), b.ecran().slice(0, 160));
+
+    b.monde.choixFichier = "/d/Memoire";
+    await b.cliquer("Modifier");
+    ck("le dossier désigné est enregistré",
+      b.monde.dossiers.join() === "/d/Memoire", b.monde.dossiers.join());
+
+    const vu = b.ecran();
+    ck("et la rubrique affiche le dossier qui vient d'être choisi",
+      vu.includes("Memoire") && vu.includes("Dossier de vos documents"), vu.slice(0, 220));
+    // Preuve directe du défaut : l'état de la surveillance n'appartient qu'au diagnostic. S'il
+    // apparaît deux fois, c'est que la rubrique Documents a été remplacée par celui-ci.
+    const fois = (s, m) => s.split(m).length - 1;
+    ck("et elle n'est pas remplacée par le diagnostic",
+      fois(vu, "Surveillance de vos documents active") === 1,
+      fois(vu, "Surveillance de vos documents active") + " occurrence(s)");
   },
 
   /** Aucun écran n'est un cul-de-sac, et aucun libellé n'est générique. */

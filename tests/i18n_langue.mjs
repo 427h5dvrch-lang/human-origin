@@ -213,6 +213,18 @@ console.log("\n— Câblage de l'interface —");
     /const RUBRIQUES = \["account", "word", "documents", "language", "about", "diagnostic"\]/.test(desk));
   ck("aucune comparaison de rubrique sur un libellé français",
     !/nom === "(Compte|Documents|Langue|À propos|Microsoft Word)"/.test(desk));
+  // Le contrôle ci-dessus n'interdisait que les COMPARAISONS. Le 2026-10-28, `rubrique()` était
+  // APPELÉE avec `t("label.documents")` : la rubrique Documents se redessinait donc en bloc de
+  // diagnostic après chaque changement de dossier. Un appel ne se compare pas — il faut le dire.
+  ck("aucun appel de rubrique() avec un libellé traduit",
+    !/rubrique\(\s*t\(/.test(desk), (/rubrique\(\s*t\([^)]*\)/.exec(desk) || [""])[0]);
+  {
+    const ids = ["account", "word", "documents", "language", "about", "diagnostic"];
+    const appels = [...desk.matchAll(/\brubrique\(\s*([^,]+?)\s*,/g)].map((m) => m[1].trim());
+    const inconnus = appels.filter((a) => a !== "nom" && !ids.includes(a.replace(/^["']|["']$/g, "")));
+    ck("chaque appel de rubrique() nomme une rubrique existante",
+      inconnus.length === 0, inconnus.join(" | "));
+  }
 }
 
 console.log("\n— -- persistance PROPRE À CETTE SURFACE --");
