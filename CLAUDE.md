@@ -24,7 +24,7 @@ Travailler en priorité dans ces zones, qui sont sûres et ciblées :
 - `tools/` — scripts Python/Bash de post-traitement
 - `docs/` — spécifications, workflows, documentation
 - Textes, package, export : contenu de circulation, wording, guides destinataire
-- `src/main.js` — UX Open First uniquement, par **patch ciblé et isolé**
+- `src/ho_desktop.js` — interface Creator Shell réellement chargée ; **zone protégée** : demander un ticket explicite et respecter le gel visuel. `src/main.js` est historique, non chargé par `index.html` : ne pas le modifier pour corriger l'UX visible.
 - Scripts de packaging (`.sh`, `.py` dans `tools/`)
 
 ---
@@ -36,6 +36,7 @@ Règle : **ne jamais modifier sauf** ticket explicite + plan préalable + confir
 
 | Zone | Fichier(s) concernés | Risque |
 |------|----------------------|--------|
+| Creator Shell Docs / marque gelée | `src/ho_desktop.js`, `src/ho_shell.js`, `src/ho_i18n.js` et assets de marque | Interface réellement utilisée en 0.3.6 ; toute modification doit être ciblée, explicitement autorisée et vérifiée visuellement | 
 | Core scan clavier/souris | `src-tauri/src/main.rs` | Hooks OS, cryptographie locale — cassure silencieuse |
 | Signature HO-JSON | `src-tauri/src/publication_core.rs` | Format Ed25519 verrouillé — certificats invalides si touché |
 | Verifier public | (vérificateur externe) | Confiance publique non réversible |
@@ -73,7 +74,10 @@ Règle : **ne jamais modifier sauf** ticket explicite + plan préalable + confir
 ## Architecture de référence
 
 ```
-src/main.js              — Frontend Tauri (UI, flux UX, orchestration export)
+src/ho_desktop.js        — Frontend Tauri ACTIF (Creator Shell, rendu UX)
+src/ho_shell.js          — Composants et logique de Shell
+src/ho_i18n.js           — Traductions de l'interface active
+src/main.js              — ANCIEN chemin, non chargé par index.html : ne pas patcher pour UX actuelle
 src/style.css            — Styles UI
 src/config.js            — Config frontend
 src/supabase.js          — [PROTÉGÉ] Auth Supabase
