@@ -24,7 +24,7 @@ HumanOrigin observe votre activité pendant que vous travaillez et la lie crypto
 
 ### Ce que HumanOrigin prouve — et ce qu'il ne prouve pas
 
-✅ Qu'un processus de travail humain a été observé sur ce document.
+✅ Qu'un processus de travail a été observé sur ce document.
 ✅ Que le document a été modifié pendant cette observation.
 
 ❌ HumanOrigin **ne détecte pas l'IA**.
@@ -60,7 +60,7 @@ HumanOrigin observes your activity while you work and cryptographically links it
 
 ### What HumanOrigin proves — and what it does not
 
-✅ That a human work process was observed on this document.
+✅ That a work process was observed on this document.
 ✅ That the document was modified during that observation.
 
 ❌ HumanOrigin **does not detect AI**.

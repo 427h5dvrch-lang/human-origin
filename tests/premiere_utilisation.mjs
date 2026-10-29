@@ -104,14 +104,20 @@ console.log("\n— Guide créateur : le parcours de 0.3.6, pas celui d'avant —
     /Cmd\+S/.test(t) ? (/Ctrl\+S/.test(t) ? "Cmd+S et Ctrl+S" : "Cmd+S seul") : "aucun raccourci");
 }
 
-console.log("\n— Ces deux textes ne promettent pas d'humanité —");
+console.log("\n— Ces textes ne promettent pas d'humanité —");
 {
   // Verify énonce lui-même, à chaque destinataire, qu'aucune preuve n'établit « que ce contenu
-  // ait été créé par un être humain ». Les textes du premier parcours ne peuvent pas promettre
-  // le contraire de ce que le vérificateur affiche. Contrôle limité à CES deux documents :
-  // le reste du corpus public porte encore cette formule, et c'est une décision de produit.
-  const HUMAIN = /(travail|processus|origine|contribution)[^.\n]{0,30}humain|human (work|process)/i;
-  for (const f of PREMIERE) {
+  // ait été créé par un être humain ». Ces textes ne peuvent pas promettre le contraire de ce
+  // que le vérificateur affiche.
+  //
+  // La liste est NOMMÉE, et non « tout docs/public_release » : elle est l'étendue exacte de la
+  // décision prise le 2026-10-29, qui a retiré huit formules « processus de travail humain ».
+  // `demo_packages_plan_v1.md` porte encore « Activité humaine observée » et n'est pas couvert ;
+  // l'ajouter ici sans décision rendrait ce banc rouge sur un texte que personne n'a tranché.
+  const DOCTRINE = [...PREMIERE, "faq_v1.md", "landing_page_v1.md",
+                    "launch_message_v1.md", "recipient_guide_v1.md"];
+  const HUMAIN = /(travail|processus|origine|contribution|activit[ée])[^.\n]{0,30}humain|human (work|process|activity)/i;
+  for (const f of DOCTRINE) {
     const t = lire(path.join(PUB, f));
     ck(`${f} : n'annonce pas un processus « humain »`, !HUMAIN.test(t),
       (t.match(HUMAIN) || [""])[0].slice(0, 46));

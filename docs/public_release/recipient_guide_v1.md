@@ -16,7 +16,7 @@
 
 ### Ce que cette preuve vous dit
 
-Un processus de travail humain a été observé sur ce document, à une date donnée, et le document a été modifié pendant cette observation.
+Un processus de travail a été observé sur ce document, à une date donnée, et le document a été modifié pendant cette observation.
 
 ### Ce qu'elle ne vous dit pas
 
@@ -43,7 +43,7 @@ Pour une vérification complète, demandez toujours le **kit complet** (.zip), p
 
 ### What this proof tells you
 
-A human work process was observed on this document, on a given date, and the document was modified during that observation.
+A work process was observed on this document, on a given date, and the document was modified during that observation.
 
 ### What it does not tell you
 
