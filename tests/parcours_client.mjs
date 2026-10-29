@@ -348,6 +348,50 @@ const SCENARIOS = {
   },
 
   /**
+   * L'INSTRUCTION DE RELANCE SURVIT À L'INSTALLATION.
+   *
+   * Mesuré le 2026-10-29 : « Relancez Word » n'était rendue qu'à UN seul endroit de tout le
+   * frontend — la mention de l'écran d'installation. Or la réussite quitte cet écran d'elle-même
+   * pour l'accueil : l'instruction disparaissait à l'instant exact où elle devenait exécutable.
+   * Et elle était ensuite introuvable : `etatCourant` ne renvoie plus jamais vers l'écran
+   * d'installation dès que l'intégration est posée, et la rubrique Réglages › Word ne parle que
+   * d'« Intégration opérationnelle » ou de « Réparer ».
+   *
+   * Pourquoi la relance est nécessaire : Word lit son catalogue de compléments au démarrage,
+   * et `install()` ne regarde pas si Word tourne — seule la mise à NIVEAU le fait. Poser le
+   * manifeste sous un Word déjà ouvert ne fait donc pas apparaître le volet.
+   *
+   * Ce que le frontend NE sait pas : si Word tourne. `ho_word_setup_status` ne porte pas ce
+   * fait. On ne le devine donc pas. On dit la seule chose dont l'interface est certaine —
+   * l'intégration vient d'être posée dans cette session — et on ne la dit pas autrement.
+   */
+  async la_relance_de_word_reste_dite(ck) {
+    const b = await demarrer(mondeNeuf({ complementInstalle: false, etatWord: "absent" }));
+    await b.cliquer("Installer dans Word");
+    ck("après l'installation, l'accueil demande encore de relancer Word",
+      /relancez word/i.test(b.ecran()), b.ecran().slice(-170));
+
+    // On part relancer Word, on revient : l'instruction doit être encore là, pas effacée par
+    // le redessin du réveil.
+    await b.revenirDeWord();
+    ck("et elle survit au retour de Word",
+      /relancez word/i.test(b.ecran()), b.ecran().slice(-170));
+
+    // Le moment où elle compte le plus : le document est créé et s'ouvre dans un Word périmé.
+    // Le message de création ne doit pas la chasser.
+    await b.cliquer("Nouveau document");
+    ck("et elle tient pendant la création du document",
+      /relancez word/i.test(b.ecran()), b.ecran().slice(-220));
+    ck("sans effacer le compte rendu de la création",
+      /ouvert dans Word\.|Ouvrez-le dans Word/i.test(b.ecran()), b.ecran().slice(-220));
+
+    // Pas de bruit : un lancement ordinaire, intégration déjà posée, n'en parle pas.
+    const c = await demarrer(mondeNeuf());
+    ck("un lancement sans installation n'en parle pas",
+      !/relancez word/i.test(c.ecran()), c.ecran().slice(0, 120));
+  },
+
+  /**
    * FINALISATION BLOQUÉE PAR WORD — attendre n'est pas échouer.
    *
    * Mesuré physiquement sur Windows le 2026-10-13 : finaliser pendant que Word tient le DOCX

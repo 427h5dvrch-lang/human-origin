@@ -89,8 +89,22 @@ const say = (node, text, isError) => {
  * Installation du complément Word : le SEUL point du frontend qui invoque la commande
  * native. Deux écrans s'en servent — celui de l'intégration et les Réglages — mais le
  * mécanisme est un. C'est aussi le SEUL moment où HumanOrigin accède au dossier de Word.
+ *
+ * La pose est RETENUE pour la session, parce que Word ne relit son catalogue de compléments
+ * qu'à son démarrage : un manifeste déposé sous un Word déjà ouvert ne fait apparaître aucun
+ * volet, et `install()` — contrairement à la mise à niveau — ne regarde pas si Word tourne.
+ *
+ * L'interface ne sait PAS si Word tourne (`ho_word_setup_status` ne porte pas ce fait), ni s'il
+ * a été relancé depuis. Elle ne retient donc que ce qu'elle a fait elle-même, et ne le dit que
+ * le temps de cette session.
  */
-const installerWord = () => invoke("ho_word_setup_install");
+let wordPoseDansCetteSession = false;
+
+const installerWord = async () => {
+  const r = await invoke("ho_word_setup_install");
+  wordPoseDansCetteSession = true;
+  return r;
+};
 
 async function runSetup(box, button, msg) {
   button.disabled = true;
@@ -721,6 +735,13 @@ async function ecranPret(ctx) {
   put(ouvrir, { margin: "9px 0 0" });
   ouvrir.onclick = () => choisirEtOuvrir(ouvrir, msg);
   c.appendChild(ouvrir);
+
+  // « Relancez Word » ne vit plus seulement sur l'écran d'installation, que la réussite quitte
+  // d'elle-même : l'instruction disparaissait à l'instant exact où elle devenait exécutable, et
+  // restait ensuite introuvable — `etatCourant` ne revient jamais à cet écran une fois
+  // l'intégration posée. Elle tient donc ici, à côté des actions, jusqu'à la fin de la session.
+  // Elle est portée par la MÊME mention que l'écran d'installation : aucun composant nouveau.
+  if (wordPoseDansCetteSession) c.appendChild(mention("info", t("word.restartToSee")));
 
   // Ce que l'application sait réellement : les documents HumanOrigin ouverts dans Word. Pas
   // un historique — elle n'en tient pas — et le libellé ne prétend pas le contraire.
