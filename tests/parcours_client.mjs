@@ -459,6 +459,87 @@ const SCENARIOS = {
   },
 
   /**
+   * FOGG #3 — PARTAGER D'ABORD.
+   *
+   * Mesuré sur Mac le 2026-11-01 : la copie était le cinquième bouton, sous la ligne de
+   * flottaison, sa confirmation s'écrivait hors de vue, et « Créer une nouvelle version » était
+   * l'action principale d'un document déjà prouvé. L'ordre et la place du message sont donc
+   * exigés ici, pas seulement la présence des boutons.
+   */
+  async partage_en_premier(ck) {
+    const docs = [{ name: "D1", record_id: "HO-000000000001", open_in_word: false }];
+    const libelles = (b) => b.actions().map((x) => x.l);
+    const bouton = (b, l) => b.actions().find((x) => x.l === l);
+    const suivant = (n) => { const f = n.parentNode.children; return f[f.indexOf(n) + 1]; };
+
+    // Un seul document prouvé : l'application ouvre directement « Continuer ce document ? ».
+    // Avec plusieurs, on y arrive en choisissant D1. Les deux chemins mènent au même écran.
+    const surLeDocument = async (b) => { if (bouton(b, "D1")) await b.cliquer("D1"); };
+    let b = await demarrer(mondeNeuf());
+    const fondPrincipal = bouton(b, "Nouveau document").n.getAttribute("style:background");
+    b = await demarrer(mondeNeuf({ documents: docs }));
+    await surLeDocument(b);
+    const l = libelles(b);
+    const iCopie = l.indexOf("Copier le lien de vérification");
+    const iVersion = l.indexOf("Créer une nouvelle version");
+    ck("la copie est la première action du document, avant tout le reste",
+      iCopie >= 0 && l.slice(0, iCopie).every((x) => /Accueil|Réglages/.test(x)), l.join(" | "));
+    ck("« Créer une nouvelle version » vient après", iVersion > iCopie, l.join(" | "));
+    const copie = bouton(b, "Copier le lien de vérification").n;
+    ck("la copie porte le style principal",
+      !!fondPrincipal && copie.getAttribute("style:background") === fondPrincipal);
+    ck("« Créer une nouvelle version » ne le porte plus",
+      bouton(b, "Créer une nouvelle version").n.getAttribute("style:background") !== fondPrincipal);
+    const zone = suivant(copie);
+    ck("la zone de message est JUSTE sous le bouton de copie, annoncée",
+      !!zone && zone.getAttribute("role") === "status" && zone.getAttribute("aria-live") === "polite");
+    await b.cliquer("Copier le lien de vérification");
+    const zoneApres = suivant(bouton(b, "Copier le lien de vérification").n);
+    ck("la confirmation s'écrit à cet endroit", zoneApres.vu.includes("Lien copié"), zoneApres.vu);
+    ck("la copie reste demandée au natif, par identifiant, sans lien dans l'interface",
+      b.back.journal.some((x) => x[0] === "copie" && x[1] === "HO-000000000001")
+      && !/verify\.humanorigin\.io|#k=/.test(b.ecran()));
+
+    b = await demarrer(mondeNeuf({ documents: docs, copieMarche: false }));
+    await surLeDocument(b);
+    await b.cliquer("Copier le lien de vérification");
+    const zoneEchec = suivant(bouton(b, "Copier le lien de vérification").n);
+    ck("un échec s'écrit au même endroit, sans prétendre à un succès",
+      !!zoneEchec.vu.trim() && !zoneEchec.vu.includes("Lien copié"), zoneEchec.vu);
+
+    // Redémarrage : un nouveau chargement du module, le même monde natif. Le lien se recopie
+    // depuis l'identifiant, rien n'est retenu par l'interface.
+    b = await demarrer(mondeNeuf({ documents: docs }));
+    await surLeDocument(b);
+    await b.cliquer("Copier le lien de vérification");
+    ck("après redémarrage, la copie est toujours première et fonctionne",
+      libelles(b).indexOf("Copier le lien de vérification") <= 2
+      && suivant(bouton(b, "Copier le lien de vérification").n).vu.includes("Lien copié"));
+
+    const i18n = await import(pathToFileURL(path.join(SRC, "ho_i18n.js")).href);
+    b = await demarrer(mondeNeuf({ documents: docs }));
+    i18n.setLangue("en");
+    await b.reposer();
+    await surLeDocument(b);
+    const le = libelles(b);
+    ck("EN : “Copy the verification link” first, “new version” after",
+      le.indexOf("Copy the verification link") >= 0
+      && le.indexOf("Copy the verification link") < le.findIndex((x) => /new version/i.test(x)), le.join(" | "));
+    i18n.setLangue("fr");
+
+    // La carte « Preuve créée » de l'accueil : même ordre, mais l'action principale de
+    // l'accueil reste « Nouveau document ».
+    b = await demarrer(mondeNeuf({ dernierDepot: { record_id: "A", document: "R.docx", at: new Date().toISOString() } }));
+    const la = libelles(b);
+    ck("carte « Preuve créée » : la copie avant l'ouverture du document",
+      la.indexOf("Copier le lien de vérification") >= 0
+      && la.indexOf("Copier le lien de vérification") < la.indexOf("Ouvrir ce document"), la.join(" | "));
+    ck("et l'accueil garde « Nouveau document » comme seule action principale",
+      bouton(b, "Copier le lien de vérification").n.getAttribute("style:background") !== fondPrincipal
+      && bouton(b, "Nouveau document").n.getAttribute("style:background") === fondPrincipal);
+  },
+
+  /**
    * A — « ouvert dans Word » ne s'écrit que si Word le tient vraiment.
    *
    * Mesuré physiquement le 2026-10-13 : l'application annonçait « Document créé et ouvert
