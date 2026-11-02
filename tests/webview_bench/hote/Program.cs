@@ -129,6 +129,10 @@ static class Programme
         vue.NavigationCompleted += (_, e) => fini.TrySetResult(e.IsSuccess);
         vue.Navigate(url);
         await Task.WhenAny(fini.Task, Task.Delay(20000));
+        // Sur le runner, la fenêtre de test n'est pas au premier plan : sans émulation du focus,
+        // une touche Entrée envoyée par CDP n'atteint pas le bouton (run 41413020508).
+        await vue.CallDevToolsProtocolMethodAsync("Page.bringToFront", "{}");
+        await vue.CallDevToolsProtocolMethodAsync("Emulation.setFocusEmulationEnabled", "{\"enabled\":true}");
         await Task.Delay(2000);
         return new Session(ctl, vue, bloques, refus);
     }
