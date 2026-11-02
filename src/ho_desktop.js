@@ -776,12 +776,44 @@ function ligneDocument(doc) {
  * le lien de vérification n'y remonte jamais non plus — il est copié côté natif. La webview
  * ne voit donc jamais la clé de déchiffrement.
  */
-function accesDuDocument(parent, doc, msg) {
+//
+// FOGG #3, mesuré sur Mac le 2026-11-01 : la copie était le CINQUIÈME bouton, sous la ligne de
+// flottaison, et sa confirmation s'écrivait en bas de l'écran, invisible sans second défilement.
+// Partager est pourtant ce qu'on vient faire sur un document prouvé. La copie passe donc en
+// tête, et la zone de message — celle de l'appelant — se pose JUSTE sous elle, annoncée aux
+// lecteurs d'écran. L'appelant ne l'ajoute plus lui-même. `principal` en fait l'action
+// principale de l'écran, quand rien d'autre ne l'est.
+function accesDuDocument(parent, doc, msg, { principal = false } = {}) {
   const rid = doc && doc.record_id;
-  if (!rid) return;
+  if (!rid) { parent.appendChild(msg); return; }
+
+  const lien = (principal ? ctaPrincipal : ctaSecondaire)(t("action.copyVerifyLink"));
+  // Sur la carte d'accueil (copie non principale), l'espace est compté : sous WebKit à 380×560,
+  // la confirmation finissait à 5 px du bord. On resserre ici, et seulement ici.
+  const serre = !principal;
+  put(lien, { margin: serre ? "4px 0 0" : "9px 0 0" });
+  lien.onclick = async () => {
+    try {
+      await invoke("ho_copy_verification_link", { recordId: rid });
+      // La conséquence est redite AU MOMENT où elle devient réelle : la note sous le bouton
+      // prévient, cette phrase-ci confirme. Un lien qui ouvre une preuve à quiconque le
+      // détient mérite d'être annoncé deux fois plutôt qu'une.
+      say(msg, t("share.copied") + " " + t("share.warning"));
+    } catch (e) { say(msg, errorText(e, t("share.failed")), true); }
+  };
+  parent.appendChild(lien);
+
+  msg.setAttribute("role", "status");
+  msg.setAttribute("aria-live", "polite");
+  put(msg, { margin: serre ? "4px 0 0" : "8px 0 0" });
+  parent.appendChild(msg);
+
+  // Visible AVANT toute copie, et sans condition.
+  parent.appendChild(sh("p", { margin: "7px 0 0", font: "12.5px/1.5 " + SANS, color: ATONE },
+    t("share.warning")));
 
   const ouvrir = ctaSecondaire(t("action.openThisDocument"));
-  put(ouvrir, { margin: "9px 0 0" });
+  put(ouvrir, { margin: "12px 0 0" });
   ouvrir.onclick = async () => {
     try { await invoke("ho_open_document_by_record", { recordId: rid }); say(msg, ""); }
     catch (e) { say(msg, errorText(e, t("doc.openFailed")), true); }
@@ -795,23 +827,6 @@ function accesDuDocument(parent, doc, msg) {
     catch (e) { say(msg, errorText(e, t("doc.folderFailed")), true); }
   };
   parent.appendChild(dossier);
-
-  const lien = ctaSecondaire(t("action.copyVerifyLink"));
-  put(lien, { margin: "7px 0 0" });
-  lien.onclick = async () => {
-    try {
-      await invoke("ho_copy_verification_link", { recordId: rid });
-      // La conséquence est redite AU MOMENT où elle devient réelle : la note sous le bouton
-      // prévient, cette phrase-ci confirme. Un lien qui ouvre une preuve à quiconque le
-      // détient mérite d'être annoncé deux fois plutôt qu'une.
-      say(msg, t("share.copied") + " " + t("share.warning"));
-    } catch (e) { say(msg, errorText(e, t("share.failed")), true); }
-  };
-  parent.appendChild(lien);
-
-  // Visible AVANT toute copie, et sans condition.
-  parent.appendChild(sh("p", { margin: "7px 0 0", font: "12.5px/1.5 " + SANS, color: ATONE },
-    t("share.warning")));
 }
 
 /**
@@ -864,7 +879,6 @@ async function etatDeLaPreuve(c) {
   // donc jamais. Mesuré en relisant le payload réel du natif, pas en relisant l'intention.
   const msg = zoneMessage();
   accesDuDocument(col, dep, msg);
-  col.appendChild(msg);
 }
 
 // ---------------------------------------------------------------- 4 · CONTINUER CE DOCUMENT ?
@@ -902,7 +916,14 @@ async function ecranContinuer(ctx) {
     t("continue.l3")]));
 
   const msg = zoneMessage();
-  const creer = ctaPrincipal(t("version.create"), "feuille");
+  // C'est ICI que l'utilisateur arrive quand il choisit un document : ses accès y sont, et la
+  // copie du lien en est l'action principale. Créer une nouvelle version reste offert, mais en
+  // second : sur un document déjà prouvé, la mettre en avant poussait à en créer une sans le
+  // vouloir (FOGG #3).
+  accesDuDocument(c, doc, msg, { principal: true });
+
+  const creer = ctaSecondaire(t("version.create"), "feuille");
+  put(creer, { margin: "12px 0 0" });
   creer.onclick = async () => {
     creer.disabled = true;
     say(msg, t("continue.checking"));
@@ -926,10 +947,6 @@ async function ecranContinuer(ctx) {
   put(autre, { margin: "9px 0 0" });
   autre.onclick = () => router({ ecran: "documents" });
   c.appendChild(autre);
-  // C'est ICI que l'utilisateur arrive quand il choisit un document : ses trois accès y sont,
-  // plutôt que nulle part. Avant, aucun écran ne permettait d'ouvrir le document prouvé.
-  accesDuDocument(c, doc, msg);
-  c.appendChild(msg);
   p.appendChild(c);
 }
 
