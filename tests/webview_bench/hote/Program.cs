@@ -46,10 +46,12 @@ static class Programme
             foreach (var echelle in new[] { 1.0, 1.5 })
             {
                 var c = await Ouvrir(env, fenetre, 400, 580, echelle, "fr", ORIGINE + "/tests/webview_bench/sonde.html");
-                var v = await Evaluer(c.Vue, "({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio, ch: document.documentElement.clientHeight })");
+                var v = await Evaluer(c.Vue, "({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio, ch: document.documentElement.clientHeight, titre: (document.querySelector('h1') || {}).textContent || '' })");
                 var png = await Capturer(c.Vue, Path.Combine(sortie, $"sonde_{echelle:0.0}.png"));
                 var (pw, ph) = DimensionsPng(png);
-                var attendu = v?["w"]?.GetValue<double>() == 400 && v?["h"]?.GetValue<double>() == 580
+                // Une page d'erreur du navigateur a aussi des dimensions et des pixels : on exige le CONTENU fictif.
+                var attendu = (v?["titre"]?.GetValue<string>() ?? "").StartsWith("Sonde du banc")
+                              && v?["w"]?.GetValue<double>() == 400 && v?["h"]?.GetValue<double>() == 580
                               && Math.Abs((v?["dpr"]?.GetValue<double>() ?? 0) - echelle) < 0.01
                               && pw == (int)Math.Round(400 * echelle) && ph == (int)Math.Round(580 * echelle) && png.Length > 3000
                               && c.Bloques.Count == 0 && c.Refus.Count == 0;
