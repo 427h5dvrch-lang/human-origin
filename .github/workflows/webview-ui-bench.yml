@@ -1,0 +1,101 @@
+# Banc UI Windows du patch B (FOGG #3) — WebView2 réel, échelles 100 % et 150 %.
+# Données FICTIVES uniquement : vrais index.html / src/ho_desktop.js servis en LOCAL (127.0.0.1)
+# avec des doublures natives. Aucun Tauri, aucun Word, aucun Supabase, aucun registre, aucun secret.
+# Le navigateur de test n'accède qu'au serveur local : tout le reste est refusé par l'hôte.
+name: Docs patch B — banc UI Windows WebView2
+
+on:
+  push:
+    branches:
+      - docs-share-cta-webkit-margin-v1
+    paths:
+      - "tests/webview_bench/**"
+      - ".github/workflows/webview-ui-bench.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: webview-ui-bench
+  cancel-in-progress: true
+
+jobs:
+  banc:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout (sans identifiants persistés)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Environnement
+        shell: pwsh
+        run: |
+          Write-Host "Image : $env:ImageOS $env:ImageVersion"
+          dotnet --list-sdks
+          $cle = 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          if (Test-Path $cle) { Write-Host "WebView2 Runtime : $((Get-ItemProperty $cle).pv)" } else { Write-Host "WebView2 Runtime : ABSENT" }
+          Get-CimInstance Win32_VideoController | Select-Object -First 1 Name, CurrentHorizontalResolution, CurrentVerticalResolution | Format-List
+
+      - name: Dépendances frontend (scripts désactivés)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Serveur local du banc (127.0.0.1:5181)
+        shell: pwsh
+        run: |
+          $env:HO_RACINE = (Get-Location).Path
+          Start-Process -FilePath node -ArgumentList 'node_modules/vite/bin/vite.js','--config','tests/webview_bench/vite.config.mjs' `
+            -RedirectStandardOutput vite.log -RedirectStandardError vite.err -WindowStyle Hidden
+          for ($i = 0; $i -lt 60; $i++) {
+            try { if ((Invoke-WebRequest -UseBasicParsing 'http://127.0.0.1:5181/?scenario=accueil').StatusCode -eq 200) { Write-Host "serveur local prêt"; exit 0 } } catch {}
+            Start-Sleep -Seconds 1
+          }
+          Get-Content vite.log, vite.err -ErrorAction SilentlyContinue
+          throw "serveur local indisponible"
+
+      - name: Construire l'hôte WebView2 de test
+        run: dotnet build tests/webview_bench/hote/HoteWebView2.csproj -c Release --nologo
+
+      - name: Sonde WebView2 (page fictive, échelles 1.0 et 1.5)
+        id: sonde
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem tests/webview_bench/hote/bin/Release -Recurse -Filter HoteWebView2.exe | Select-Object -First 1
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList 'sonde','artefacts/sonde' -PassThru -Wait -NoNewWindow
+          Get-Content artefacts/sonde/sonde.json -ErrorAction SilentlyContinue
+          Get-Content artefacts/sonde/erreur.txt -ErrorAction SilentlyContinue
+          Write-Host "code de sortie de la sonde : $($p.ExitCode)"
+          "ok=$([int]($p.ExitCode -eq 0))" >> $env:GITHUB_OUTPUT
+
+      - name: Banc WebView2 — 32 cas
+        if: steps.sonde.outputs.ok == '1'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem tests/webview_bench/hote/bin/Release -Recurse -Filter HoteWebView2.exe | Select-Object -First 1
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList 'banc','artefacts/webview2' -PassThru -Wait -NoNewWindow
+          Get-Content artefacts/webview2/erreur.txt -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { throw "hôte WebView2 : code $($p.ExitCode)" }
+          node tests/webview_bench/verdict.mjs artefacts/webview2 WEBVIEW2
+
+      - name: Repli Edge headless (moteur Blink de WebView2) — 32 cas
+        if: steps.sonde.outputs.ok != '1'
+        shell: pwsh
+        run: |
+          Write-Host "LIMITE : l'hôte WebView2 n'a pas pu s'afficher dans la session CI ; repli Edge headless (pas l'hôte WebView2)."
+          node tests/webview_bench/pilote_edge.mjs artefacts/edge
+          node tests/webview_bench/verdict.mjs artefacts/edge WINDOWS_BLINK
+
+      - name: Publier captures fictives et rapport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: webview-ui-bench
+          path: artefacts/
+          if-no-files-found: warn
+          retention-days: 7
