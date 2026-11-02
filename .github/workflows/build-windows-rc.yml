@@ -203,7 +203,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: humanorigin-windows-rc
-          retention-days: 14
+          retention-days: 1
           path: |
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
             src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.sig

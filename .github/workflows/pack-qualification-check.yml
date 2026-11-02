@@ -87,5 +87,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: exemple-collecte
-          retention-days: 7
+          retention-days: 1
           path: docs/windows/pack_qualification/HO_Qualification_*/**

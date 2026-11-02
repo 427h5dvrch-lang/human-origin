@@ -317,7 +317,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: humanorigin-windows-0.3.4-signed
-          retention-days: 14
+          retention-days: 1
           path: |
             src-tauri/target/release/bundle/nsis/*-setup.exe
             src-tauri/target/release/bundle/nsis/*-setup.nsis.zip

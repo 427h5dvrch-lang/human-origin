@@ -225,6 +225,7 @@ jobs:
         if: matrix.platform == 'macos-latest'
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 1
           name: humanorigin-macos-signed-notarized
           if-no-files-found: error
           path: |

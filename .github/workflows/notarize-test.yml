@@ -102,4 +102,4 @@ jobs:
           name: qualification-${{ github.sha }}
           path: src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 1

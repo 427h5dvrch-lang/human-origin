@@ -84,6 +84,7 @@ jobs:
       - name: Upload Windows sidecars artifact
         uses: actions/upload-artifact@v4
         with:
+          retention-days: 1
           name: humanorigin-windows-sidecars
           path: |
             src-tauri/binaries/humanorigin-publisher-x86_64-pc-windows-msvc.exe
