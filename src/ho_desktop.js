@@ -788,7 +788,10 @@ function accesDuDocument(parent, doc, msg, { principal = false } = {}) {
   if (!rid) { parent.appendChild(msg); return; }
 
   const lien = (principal ? ctaPrincipal : ctaSecondaire)(t("action.copyVerifyLink"));
-  put(lien, { margin: "9px 0 0" });
+  // Sur la carte d'accueil (copie non principale), l'espace est compté : sous WebKit à 380×560,
+  // la confirmation finissait à 5 px du bord. On resserre ici, et seulement ici.
+  const serre = !principal;
+  put(lien, { margin: serre ? "4px 0 0" : "9px 0 0" });
   lien.onclick = async () => {
     try {
       await invoke("ho_copy_verification_link", { recordId: rid });
@@ -802,7 +805,7 @@ function accesDuDocument(parent, doc, msg, { principal = false } = {}) {
 
   msg.setAttribute("role", "status");
   msg.setAttribute("aria-live", "polite");
-  put(msg, { margin: "8px 0 0" });
+  put(msg, { margin: serre ? "4px 0 0" : "8px 0 0" });
   parent.appendChild(msg);
 
   // Visible AVANT toute copie, et sans condition.
